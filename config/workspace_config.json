@@ -1,0 +1,10 @@
+{
+  "workspaceName": "Developer Dashboard",
+  "subtitle": "Operations Control Center",
+  "logoIcon": "logo",
+  "defaultTheme": "dark",
+  "ports": {
+    "controlPort": 18081,
+    "dashboardPort": 18082
+  }
+}

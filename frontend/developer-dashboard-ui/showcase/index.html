@@ -1,0 +1,1741 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Developer Dashboard UI Showcase</title>
+  <link rel="stylesheet" href="../dist/ui.css">
+  <link rel="stylesheet" href="showcase.css">
+</head>
+<body>
+
+  <!-- Showcase Sidebar Navigation -->
+  <aside class="showcase-sidebar">
+    <div class="showcase-brand">
+      <span>⚡ Dashboard UI</span>
+      <span class="showcase-brand-tag">v1.0</span>
+    </div>
+    <nav class="showcase-nav">
+      <div class="showcase-nav-section">Design System</div>
+      <a href="#colors" class="showcase-nav-link" onclick="setActiveNav(this)">Colors & Palette</a>
+
+      <div class="showcase-nav-section" style="margin-top: 16px;">Components</div>
+      <a href="#button" class="showcase-nav-link active" onclick="setActiveNav(this)">Button</a>
+      <a href="#badge" class="showcase-nav-link" onclick="setActiveNav(this)">Badge</a>
+      <a href="#card" class="showcase-nav-link" onclick="setActiveNav(this)">Card</a>
+      <a href="#modal" class="showcase-nav-link" onclick="setActiveNav(this)">Modal</a>
+      <a href="#table" class="showcase-nav-link" onclick="setActiveNav(this)">Table</a>
+      <a href="#input" class="showcase-nav-link" onclick="setActiveNav(this)">Input & Form</a>
+      <a href="#sidebar" class="showcase-nav-link" onclick="setActiveNav(this)">Sidebar Nav</a>
+      <a href="#typography" class="showcase-nav-link" onclick="setActiveNav(this)">Typography</a>
+      <a href="#alert" class="showcase-nav-link" onclick="setActiveNav(this)">Alert</a>
+      <a href="#loader" class="showcase-nav-link" onclick="setActiveNav(this)">Loader & Spinner</a>
+      <a href="#controls" class="showcase-nav-link" onclick="setActiveNav(this)">Controls</a>
+      <a href="#progress" class="showcase-nav-link" onclick="setActiveNav(this)">Progress Bar</a>
+      <a href="#navigation" class="showcase-nav-link" onclick="setActiveNav(this)">Tabs & Breadcrumbs</a>
+      <a href="#avatar" class="showcase-nav-link" onclick="setActiveNav(this)">Avatar</a>
+      <a href="#tooltip" class="showcase-nav-link" onclick="setActiveNav(this)">Tooltip</a>
+      <a href="#skeleton" class="showcase-nav-link" onclick="setActiveNav(this)">Skeleton Loader</a>
+      <a href="#app-card" class="showcase-nav-link" onclick="setActiveNav(this)">App Selector Card</a>
+      <a href="#command-button" class="showcase-nav-link" onclick="setActiveNav(this)">Command Selector Button</a>
+      <a href="#segmented" class="showcase-nav-link" onclick="setActiveNav(this)">Segmented Navigation</a>
+      <a href="#terminal" class="showcase-nav-link" onclick="setActiveNav(this)">Terminal Log Viewer</a>
+      <a href="#tree" class="showcase-nav-link" onclick="setActiveNav(this)">Collapsible Folder Tree</a>
+      <a href="#step-card" class="showcase-nav-link" onclick="setActiveNav(this)">Step Runner Cards</a>
+      <a href="#dropzone" class="showcase-nav-link" onclick="setActiveNav(this)">Image Dropzone Uploader</a>
+      <a href="#modal-tabs" class="showcase-nav-link" onclick="setActiveNav(this)">Modal Sub-Tabs</a>
+      <a href="#lightbox" class="showcase-nav-link" onclick="setActiveNav(this)">Image Lightbox Overlay</a>
+      <a href="#toast" class="showcase-nav-link" onclick="setActiveNav(this)">Toast Notifications</a>
+      <a href="#page-header" class="showcase-nav-link" onclick="setActiveNav(this)">Page Header</a>
+      <a href="#section-header" class="showcase-nav-link" onclick="setActiveNav(this)">Section Header</a>
+      <a href="#layout" class="showcase-nav-link" onclick="setActiveNav(this)">Layout Shell & Grids</a>
+      <a href="#tile-card" class="showcase-nav-link" onclick="setActiveNav(this)">Unified Tile Cards</a>
+      <a href="#tab-views" class="showcase-nav-link" onclick="setActiveNav(this)">Standardized Tab Templates</a>
+    </nav>
+  </aside>
+
+  <!-- Showcase Main Content Area -->
+  <main class="showcase-content">
+    
+    <header class="showcase-header">
+      <div>
+        <h1 class="showcase-title">UI Component Showcase</h1>
+        <p class="showcase-subtitle">Standalone, zero-dependency UI component library for developer tools & web applications.</p>
+      </div>
+      <button class="theme-toggle-btn" onclick="toggleTheme()">
+        <span id="themeIcon">☀️</span> <span id="themeLabel">Light Mode</span>
+      </button>
+    </header>
+
+    <!-- COLORS SECTION -->
+    <section id="colors" class="component-section">
+      <h2 class="component-title">Color Palette & Tokens</h2>
+      <p class="component-description">Theme-level design tokens and variables used across all UI elements.</p>
+
+      <div class="preview-card">
+        <div class="preview-canvas" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 16px; width: 100%;">
+          
+          <!-- Primary -->
+          <div style="border: 1px solid var(--ui-border-color); border-radius: 8px; overflow: hidden; background: var(--ui-bg-surface);">
+            <div style="height: 80px; background: var(--ui-primary-color);"></div>
+            <div style="padding: 12px; font-family: var(--ui-font-family);">
+              <div style="font-weight: 600; font-size: 13px; color: var(--ui-text-primary);">Primary</div>
+              <div style="font-size: 11px; color: var(--ui-text-muted); margin-top: 4px;">--ui-primary-color</div>
+            </div>
+          </div>
+
+          <!-- Secondary -->
+          <div style="border: 1px solid var(--ui-border-color); border-radius: 8px; overflow: hidden; background: var(--ui-bg-surface);">
+            <div style="height: 80px; background: var(--ui-secondary-color);"></div>
+            <div style="padding: 12px; font-family: var(--ui-font-family);">
+              <div style="font-weight: 600; font-size: 13px; color: var(--ui-text-primary);">Secondary</div>
+              <div style="font-size: 11px; color: var(--ui-text-muted); margin-top: 4px;">--ui-secondary-color</div>
+            </div>
+          </div>
+
+          <!-- Tertiary -->
+          <div style="border: 1px solid var(--ui-border-color); border-radius: 8px; overflow: hidden; background: var(--ui-bg-surface);">
+            <div style="height: 80px; background: var(--ui-tertiary-color);"></div>
+            <div style="padding: 12px; font-family: var(--ui-font-family);">
+              <div style="font-weight: 600; font-size: 13px; color: var(--ui-text-primary);">Tertiary</div>
+              <div style="font-size: 11px; color: var(--ui-text-muted); margin-top: 4px;">--ui-tertiary-color</div>
+            </div>
+          </div>
+
+          <!-- Success -->
+          <div style="border: 1px solid var(--ui-border-color); border-radius: 8px; overflow: hidden; background: var(--ui-bg-surface);">
+            <div style="height: 80px; background: var(--ui-success-color);"></div>
+            <div style="padding: 12px; font-family: var(--ui-font-family);">
+              <div style="font-weight: 600; font-size: 13px; color: var(--ui-text-primary);">Success</div>
+              <div style="font-size: 11px; color: var(--ui-text-muted); margin-top: 4px;">--ui-success-color</div>
+            </div>
+          </div>
+
+          <!-- Warning -->
+          <div style="border: 1px solid var(--ui-border-color); border-radius: 8px; overflow: hidden; background: var(--ui-bg-surface);">
+            <div style="height: 80px; background: var(--ui-warning-color);"></div>
+            <div style="padding: 12px; font-family: var(--ui-font-family);">
+              <div style="font-weight: 600; font-size: 13px; color: var(--ui-text-primary);">Warning</div>
+              <div style="font-size: 11px; color: var(--ui-text-muted); margin-top: 4px;">--ui-warning-color</div>
+            </div>
+          </div>
+
+          <!-- Danger -->
+          <div style="border: 1px solid var(--ui-border-color); border-radius: 8px; overflow: hidden; background: var(--ui-bg-surface);">
+            <div style="height: 80px; background: var(--ui-danger-color);"></div>
+            <div style="padding: 12px; font-family: var(--ui-font-family);">
+              <div style="font-weight: 600; font-size: 13px; color: var(--ui-text-primary);">Danger</div>
+              <div style="font-size: 11px; color: var(--ui-text-muted); margin-top: 4px;">--ui-danger-color</div>
+            </div>
+          </div>
+
+          <!-- Info -->
+          <div style="border: 1px solid var(--ui-border-color); border-radius: 8px; overflow: hidden; background: var(--ui-bg-surface);">
+            <div style="height: 80px; background: var(--ui-info-color);"></div>
+            <div style="padding: 12px; font-family: var(--ui-font-family);">
+              <div style="font-weight: 600; font-size: 13px; color: var(--ui-text-primary);">Info / Primary Light</div>
+              <div style="font-size: 11px; color: var(--ui-text-muted); margin-top: 4px;">--ui-info-color</div>
+            </div>
+          </div>
+
+        </div>
+        <div class="snippet-header">
+          <span>CSS Usage Snippet</span>
+          <button class="copy-btn" onclick="copySnippet('snippet-colors')">Copy Code</button>
+        </div>
+        <pre class="code-block" id="snippet-colors"><code>.my-element {
+  color: var(--ui-primary-color);
+  background-color: var(--ui-secondary-bg);
+  border-color: var(--ui-border-color);
+}</code></pre>
+      </div>
+    </section>
+
+    <!-- BUTTON SECTION -->
+    <section id="button" class="component-section">
+      <h2 class="component-title">Button Component (`.ui-button`)</h2>
+      <p class="component-description">Flexible, accessible button component with multiple semantic variants and size controls.</p>
+      
+      <div class="preview-card">
+        <div class="preview-canvas">
+          <button class="ui-button" data-variant="primary">Primary</button>
+          <button class="ui-button" data-variant="secondary">Secondary</button>
+          <button class="ui-button" data-variant="tertiary">Tertiary</button>
+          <button class="ui-button" data-variant="success">Success</button>
+          <button class="ui-button" data-variant="warning">Warning</button>
+          <button class="ui-button" data-variant="danger">Danger</button>
+          <button class="ui-button" data-variant="outline">Outline</button>
+          <button class="ui-button" data-variant="ghost">Ghost</button>
+          <button class="ui-button" data-variant="disabled" disabled>Disabled</button>
+        </div>
+        <div class="snippet-header">
+          <span>HTML Snippet</span>
+          <button class="copy-btn" onclick="copySnippet('snippet-button')">Copy Code</button>
+        </div>
+        <pre class="code-block" id="snippet-button"><code>&lt;button class="ui-button" data-variant="primary"&gt;Primary Action&lt;/button&gt;
+&lt;button class="ui-button" data-variant="secondary"&gt;Secondary Action&lt;/button&gt;
+&lt;button class="ui-button" data-variant="tertiary"&gt;Tertiary Action&lt;/button&gt;
+&lt;button class="ui-button" data-variant="success"&gt;Save Changes&lt;/button&gt;</code></pre>
+      </div>
+
+      <div class="props-table-wrapper">
+        <table class="props-table">
+          <thead>
+            <tr>
+              <th>Attribute / Prop</th>
+              <th>Values</th>
+              <th>Description</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>data-variant</code></td>
+              <td><code>primary</code>, <code>secondary</code>, <code>tertiary</code>, <code>success</code>, <code>warning</code>, <code>danger</code>, <code>outline</code>, <code>ghost</code>, <code>disabled</code></td>
+              <td>Defines semantic color theme and emphasis level</td>
+            </tr>
+            <tr>
+              <td><code>data-size</code></td>
+              <td><code>sm</code>, <code>md</code>, <code>lg</code></td>
+              <td>Controls padding and font size</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- BADGE SECTION -->
+    <section id="badge" class="component-section">
+      <h2 class="component-title">Badge Component (`.ui-badge`)</h2>
+      <p class="component-description">Compact status tags with bullet indicators for labeling metrics, states, and categories.</p>
+      
+      <div class="preview-card">
+        <div class="preview-canvas" style="display: flex; flex-direction: column; gap: 16px;">
+          <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+            <span class="ui-badge" data-variant="primary">Primary</span>
+            <span class="ui-badge" data-variant="success">Passed</span>
+            <span class="ui-badge" data-variant="warning">In Progress</span>
+            <span class="ui-badge" data-variant="danger">Failed</span>
+            <span class="ui-badge" data-variant="secondary">Draft</span>
+            <span class="ui-badge" data-variant="tertiary">Backup</span>
+            <span class="ui-badge" data-variant="neutral">Archived</span>
+          </div>
+          <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+            <span class="ui-tag">design <button class="ui-tag-close">&times;</button></span>
+            <span class="ui-tag">react <button class="ui-tag-close">&times;</button></span>
+            <span class="ui-tag">ui <button class="ui-tag-close">&times;</button></span>
+          </div>
+        </div>
+        <div class="snippet-header">
+          <span>HTML Snippet</span>
+          <button class="copy-btn" onclick="copySnippet('snippet-badge')">Copy Code</button>
+        </div>
+        <pre class="code-block" id="snippet-badge"><code>&lt;span class="ui-badge" data-variant="success"&gt;Passed&lt;/span&gt;
+&lt;span class="ui-tag"&gt;design&lt;button class="ui-tag-close"&gt;&amp;times;&lt;/button&gt;&lt;/span&gt;</code></pre>
+      </div>
+
+      <div class="props-table-wrapper">
+        <table class="props-table">
+          <thead>
+            <tr>
+              <th>Attribute / Prop</th>
+              <th>Values</th>
+              <th>Description</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>data-variant</code></td>
+              <td><code>primary</code>, <code>success</code>, <code>warning</code>, <code>danger</code>, <code>secondary</code>, <code>tertiary</code>, <code>neutral</code></td>
+              <td>Controls badge status color and background tint</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- CARD SECTION -->
+    <section id="card" class="component-section">
+      <h2 class="component-title">Card Component (`.ui-card`)</h2>
+      <p class="component-description">Structured content card container with headers, action footers, and interactive variants.</p>
+      
+      <div class="preview-card">
+        <div class="preview-canvas" style="display: flex; flex-direction: column; gap: 20px; width: 100%;">
+          <!-- Standard & Interactive Cards -->
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; width: 100%;">
+            <div class="ui-card">
+              <div class="ui-card-header">
+                <h3 class="ui-card-title">Standard Card</h3>
+                <span class="ui-badge" data-variant="primary">Active</span>
+              </div>
+              <div class="ui-card-body">
+                <p style="margin: 0;">Basic container for grouping operational metrics or component data.</p>
+              </div>
+              <div class="ui-card-footer">
+                <button class="ui-button" data-variant="ghost" data-size="sm">Cancel</button>
+                <button class="ui-button" data-variant="primary" data-size="sm">Save</button>
+              </div>
+            </div>
+
+            <div class="ui-card" data-variant="interactive">
+              <div class="ui-card-header">
+                <h3 class="ui-card-title">Interactive Card</h3>
+                <span class="ui-badge" data-variant="success">Hover Me</span>
+              </div>
+              <div class="ui-card-body">
+                <p style="margin: 0;">Hoverable card elevation effect ideal for selectable project tiles.</p>
+              </div>
+            </div>
+          </div>
+
+          <!-- Metrics Cards -->
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; width: 100%;">
+            <div class="ui-card">
+              <div class="ui-card-header">
+                <h3 class="ui-card-title">Monthly revenue</h3>
+                <span class="ui-badge" data-variant="success">+12%</span>
+              </div>
+              <div class="ui-card-body">
+                <div class="ui-card-value">$24,800</div>
+                <div class="ui-card-comparison">vs $22,150 last month</div>
+              </div>
+            </div>
+
+            <div class="ui-card">
+              <div class="ui-card-header">
+                <h3 class="ui-card-title">Active users</h3>
+                <span class="ui-badge" data-variant="danger">-3%</span>
+              </div>
+              <div class="ui-card-body">
+                <div class="ui-card-value">1,482</div>
+                <div class="ui-card-comparison">vs 1,529 last month</div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="snippet-header">
+          <span>HTML Snippet</span>
+          <button class="copy-btn" onclick="copySnippet('snippet-card')">Copy Code</button>
+        </div>
+        <pre class="code-block" id="snippet-card"><code>&lt;div class="ui-card" data-variant="accent"&gt;
+  &lt;div class="ui-card-header"&gt;
+    &lt;h3 class="ui-card-title"&gt;Card Title&lt;/h3&gt;
+  &lt;/div&gt;
+  &lt;div class="ui-card-body"&gt;Content...&lt;/div&gt;
+&lt;/div&gt;</code></pre>
+      </div>
+
+      <div class="props-table-wrapper">
+        <table class="props-table">
+          <thead>
+            <tr>
+              <th>Attribute / Prop</th>
+              <th>Values</th>
+              <th>Description</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>data-variant</code></td>
+              <td><code>standard</code>, <code>interactive</code>, <code>accent</code>, <code>success</code>, <code>warning</code>, <code>danger</code>, <code>flat</code></td>
+              <td>Defines card border highlights and hover interactions</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- MODAL SECTION -->
+    <section id="modal" class="component-section">
+      <h2 class="component-title">Modal Component (`.ui-modal`)</h2>
+      <p class="component-description">Overlay dialog popup for user actions, edit forms, or confirmations.</p>
+      
+      <div class="preview-card">
+        <div class="preview-canvas" style="justify-content: center;">
+          <button class="ui-button" data-variant="primary" onclick="toggleModal(true)">Trigger Live Modal Preview</button>
+        </div>
+        <div class="snippet-header">
+          <span>HTML Snippet</span>
+          <button class="copy-btn" onclick="copySnippet('snippet-modal')">Copy Code</button>
+        </div>
+        <pre class="code-block" id="snippet-modal"><code>&lt;div class="ui-modal-backdrop ui-active" id="modalExample"&gt;
+  &lt;div class="ui-modal" data-size="md"&gt;
+    &lt;div class="ui-modal-header"&gt;
+      &lt;h3 class="ui-modal-title"&gt;Modal Header&lt;/h3&gt;
+      &lt;button class="ui-modal-close"&gt;&amp;times;&lt;/button&gt;
+    &lt;/div&gt;
+    &lt;div class="ui-modal-body"&gt;Modal body content...&lt;/div&gt;
+    &lt;div class="ui-modal-footer"&gt;
+      &lt;button class="ui-button" data-variant="ghost"&gt;Cancel&lt;/button&gt;
+      &lt;button class="ui-button" data-variant="primary"&gt;Confirm&lt;/button&gt;
+    &lt;/div&gt;
+  &lt;/div&gt;
+&lt;/div&gt;</code></pre>
+      </div>
+
+      <div class="props-table-wrapper">
+        <table class="props-table">
+          <thead>
+            <tr>
+              <th>Attribute / Prop</th>
+              <th>Values</th>
+              <th>Description</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>data-size</code></td>
+              <td><code>sm</code> (400px), <code>md</code> (540px), <code>lg</code> (760px), <code>full</code> (95vw)</td>
+              <td>Controls maximum dialog width</td>
+            </tr>
+            <tr>
+              <td><code>.ui-active</code> / <code>data-state="active"</code></td>
+              <td>Class or attribute on <code>.ui-modal-backdrop</code></td>
+              <td>Toggles modal visibility and backdrop blur</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- TABLE SECTION -->
+    <section id="table" class="component-section">
+      <h2 class="component-title">Table Component (`.ui-table`)</h2>
+      <p class="component-description">Data table with hover rows, striped options, and responsive scroll wrapper.</p>
+      
+      <div class="preview-card">
+        <div class="preview-canvas" style="padding: 0;">
+          <div class="ui-table-container">
+            <table class="ui-table" data-variant="hover">
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>Task Name</th>
+                  <th>Module</th>
+                  <th>Status</th>
+                  <th>Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>1</td>
+                  <td>User Authentication Flow</td>
+                  <td>auth</td>
+                  <td><span class="ui-badge" data-variant="success">Passed</span></td>
+                  <td><button class="ui-button" data-variant="ghost" data-size="sm">Edit</button></td>
+                </tr>
+                <tr>
+                  <td>2</td>
+                  <td>Dashboard Filtering Matrix</td>
+                  <td>core</td>
+                  <td><span class="ui-badge" data-variant="warning">In Progress</span></td>
+                  <td><button class="ui-button" data-variant="ghost" data-size="sm">Edit</button></td>
+                </tr>
+                <tr>
+                  <td>3</td>
+                  <td>Delete Account Lifecycle</td>
+                  <td>profile</td>
+                  <td><span class="ui-badge" data-variant="danger">Failed</span></td>
+                  <td><button class="ui-button" data-variant="ghost" data-size="sm">Edit</button></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+        <div class="snippet-header">
+          <span>HTML Snippet</span>
+          <button class="copy-btn" onclick="copySnippet('snippet-table')">Copy Code</button>
+        </div>
+        <pre class="code-block" id="snippet-table"><code>&lt;div class="ui-table-container"&gt;
+  &lt;table class="ui-table" data-variant="hover"&gt;
+    &lt;thead&gt;
+      &lt;tr&gt;&lt;th&gt;Name&lt;/th&gt;&lt;th&gt;Status&lt;/th&gt;&lt;/tr&gt;
+    &lt;/thead&gt;
+    &lt;tbody&gt;
+      &lt;tr&gt;&lt;td&gt;Login Flow&lt;/td&gt;&lt;td&gt;&lt;span class="ui-badge" data-variant="success"&gt;Passed&lt;/span&gt;&lt;/td&gt;&lt;/tr&gt;
+    &lt;/tbody&gt;
+  &lt;/table&gt;
+&lt;/div&gt;</code></pre>
+      </div>
+
+      <div class="props-table-wrapper">
+        <table class="props-table">
+          <thead>
+            <tr>
+              <th>Attribute / Prop</th>
+              <th>Values</th>
+              <th>Description</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>data-variant</code></td>
+              <td><code>hover</code>, <code>striped</code>, <code>compact</code>, <code>bordered</code></td>
+              <td>Defines cell padding, row highlights, and grid borders</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- INPUT SECTION -->
+    <section id="input" class="component-section">
+      <h2 class="component-title">Input & Form Components (`.ui-input`, `.ui-select`)</h2>
+      <p class="component-description">Styled text fields, dropdown selectors, textareas, and validation states.</p>
+      
+      <div class="preview-card">
+        <div class="preview-canvas" style="display: flex; flex-direction: column; width: 100%; gap: 12px;">
+          <div class="ui-field" style="margin-bottom: 0;">
+            <label class="ui-label">Project Name</label>
+            <input type="text" class="ui-input" placeholder="e.g. Dashboard Core" />
+          </div>
+
+          <div class="ui-field" style="margin-bottom: 0;">
+            <label class="ui-label">Search Repository</label>
+            <div class="ui-input-group">
+              <input type="text" class="ui-input" placeholder="Search..." style="border-top-right-radius: 0; border-bottom-right-radius: 0;" />
+              <button class="ui-button" data-variant="primary" style="border-top-left-radius: 0; border-bottom-left-radius: 0; border-left: none;">Go</button>
+            </div>
+          </div>
+
+          <div class="ui-field" style="margin-bottom: 0;">
+            <label class="ui-label">Category</label>
+            <select class="ui-select">
+              <option value="ui">UI / UX</option>
+              <option value="api">API Integration</option>
+            </select>
+          </div>
+
+          <div class="ui-field" style="margin-bottom: 0;">
+            <label class="ui-label">Validation Error State</label>
+            <input type="text" class="ui-input" data-variant="error" value="INVALID_KEY" />
+            <span class="ui-help-text" data-variant="error">Invalid key format.</span>
+          </div>
+        </div>
+        <div class="snippet-header">
+          <span>HTML Snippet</span>
+          <button class="copy-btn" onclick="copySnippet('snippet-input')">Copy Code</button>
+        </div>
+        <pre class="code-block" id="snippet-input"><code>&lt;div class="ui-field"&gt;
+  &lt;label class="ui-label"&gt;Title&lt;/label&gt;
+  &lt;input type="text" class="ui-input" placeholder="Enter title..." /&gt;
+&lt;/div&gt;</code></pre>
+      </div>
+
+      <div class="props-table-wrapper">
+        <table class="props-table">
+          <thead>
+            <tr>
+              <th>Attribute / Prop</th>
+              <th>Values</th>
+              <th>Description</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>data-variant</code></td>
+              <td><code>standard</code>, <code>error</code>, <code>success</code>, <code>disabled</code></td>
+              <td>Validation highlight colors for inputs and helper text</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- SIDEBAR SECTION -->
+    <section id="sidebar" class="component-section">
+      <h2 class="component-title">Sidebar Component (`.ui-sidebar`)</h2>
+      <p class="component-description">Vertical navigation sidebar container with grouped headers and item badges.</p>
+      
+      <div class="preview-card">
+        <div class="preview-canvas">
+          <aside class="ui-sidebar" style="height: 280px;">
+            <div class="ui-sidebar-header">
+              <span class="ui-sidebar-brand">⚡ Dashboard UI</span>
+            </div>
+            <div class="ui-sidebar-nav">
+              <div class="ui-sidebar-group-title">Modules</div>
+              <a class="ui-sidebar-item ui-active">
+                <span>Business App</span>
+                <span class="ui-badge" data-variant="primary">14</span>
+              </a>
+              <a class="ui-sidebar-item">
+                <span>Customer App</span>
+                <span class="ui-badge" data-variant="neutral">8</span>
+              </a>
+            </div>
+          </aside>
+        </div>
+        <div class="snippet-header">
+          <span>HTML Snippet</span>
+          <button class="copy-btn" onclick="copySnippet('snippet-sidebar')">Copy Code</button>
+        </div>
+        <pre class="code-block" id="snippet-sidebar"><code>&lt;aside class="ui-sidebar"&gt;
+  &lt;div class="ui-sidebar-header"&gt;&lt;span class="ui-sidebar-brand"&gt;Brand&lt;/span&gt;&lt;/div&gt;
+  &lt;div class="ui-sidebar-nav"&gt;
+    &lt;a class="ui-sidebar-item ui-active"&gt;Dashboard&lt;/a&gt;
+  &lt;/div&gt;
+&lt;/aside&gt;</code></pre>
+      </div>
+    </section>
+
+    <!-- TYPOGRAPHY SECTION -->
+    <section id="typography" class="component-section">
+      <h2 class="component-title">Typography Component (`.ui-title`, `.ui-paragraph`, etc.)</h2>
+      <p class="component-description">Flexible heading scales, lead text, links, blockquotes, and code representation styles.</p>
+
+      <div class="preview-card">
+        <div class="preview-canvas" style="display: block; width: 100%;">
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px;">
+            <div>
+              <h1 class="ui-title" data-level="1">Display Heading 1</h1>
+              <h2 class="ui-title" data-level="2">Section Heading 2</h2>
+              <h3 class="ui-title" data-level="3">Sub-section Heading 3</h3>
+              <p class="ui-lead">This is lead paragraph text. Slightly larger for intros.</p>
+              <p class="ui-paragraph">This is default paragraph body text. Regular line-height and color designed for readability. Includes a <a href="#" class="ui-link">link to page</a> and <code class="ui-code">code</code>.</p>
+              <span class="ui-caption">This is caption or form label helper text (.ui-caption)</span>
+            </div>
+            
+            <div>
+              <!-- Weights and Styles -->
+              <h4 class="ui-title" data-level="4">Weights & Formatting</h4>
+              <div style="display: flex; flex-direction: column; gap: 6px; margin-bottom: 16px;">
+                <span class="ui-text" data-weight="bold">Bold text (700)</span>
+                <span class="ui-text" data-weight="medium">Medium text (500)</span>
+                <span class="ui-text" data-style="italic">Italic styled text</span>
+                <span class="ui-text" data-transform="uppercase" data-tracking="wide">uppercase wide tracking</span>
+              </div>
+              
+              <!-- Lists -->
+              <h4 class="ui-title" data-level="4">Lists</h4>
+              <ul class="ui-list" data-variant="unordered" style="margin-bottom: 12px;">
+                <li>Unordered bullet list item</li>
+                <li>Another bullet item</li>
+              </ul>
+              
+              <ul class="ui-list" data-variant="inline">
+                <li><a href="#" class="ui-link">Home</a></li>
+                <li><a href="#" class="ui-link">Settings</a></li>
+              </ul>
+            </div>
+          </div>
+          
+          <blockquote class="ui-blockquote">
+            "This is a blockquote element. It helps highlight key quotes, testimonials, or notes in the dashboard layout."
+          </blockquote>
+          
+          <!-- Truncation and Clamping -->
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-top: 16px;">
+            <div style="border: 1px solid var(--ui-border-color); padding: 12px; border-radius: 6px; background: var(--ui-bg-muted);">
+              <span class="ui-text ui-truncate" style="font-weight: 500;">Truncation: long-file-name-goes-here-and-will-be-truncated-with-ellipsis.json</span>
+            </div>
+            <div style="border: 1px solid var(--ui-border-color); padding: 12px; border-radius: 6px; background: var(--ui-bg-muted);">
+              <p class="ui-text ui-clamp" data-lines="2" style="font-size: 12px; margin: 0; color: var(--ui-text-secondary);">
+                Clamping: This text is very long and is clamped to exactly two lines of height before fading or truncating with an ellipsis.
+              </p>
+            </div>
+          </div>
+        </div>
+        <div class="snippet-header">
+          <span>HTML Snippet</span>
+          <button class="copy-btn" onclick="copySnippet('snippet-typography')">Copy Code</button>
+        </div>
+        <pre class="code-block" id="snippet-typography"><code>&lt;h1 class="ui-title" data-level="1"&gt;Heading 1&lt;/h1&gt;
+&lt;p class="ui-paragraph"&gt;Standard body copy...&lt;/p&gt;
+&lt;span class="ui-text ui-truncate"&gt;Single line truncate&lt;/span&gt;
+&lt;ul class="ui-list" data-variant="unordered"&gt;
+  &lt;li&gt;Bullet item&lt;/li&gt;
+&lt;/ul&gt;</code></pre>
+      </div>
+
+      <div class="props-table-wrapper">
+        <table class="props-table">
+          <thead>
+            <tr>
+              <th>Class / Attribute</th>
+              <th>Values / Modifiers</th>
+              <th>Description</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>.ui-title</code></td>
+              <td><code>data-level="1"</code> to <code>"6"</code></td>
+              <td>Title headings matching h1 to h6 visual hierarchies</td>
+            </tr>
+            <tr>
+              <td><code>.ui-list</code></td>
+              <td><code>data-variant="unordered"</code>, <code>"ordered"</code>, <code>"unstyled"</code>, <code>"inline"</code></td>
+              <td>Prestyled list markers and layout formats</td>
+            </tr>
+            <tr>
+              <td><code>.ui-truncate</code>, <code>.ui-clamp</code></td>
+              <td><code>data-lines="2"</code> to <code>"4"</code></td>
+              <td>Utility classes for overflow ellipses and multiline clamping</td>
+            </tr>
+            <tr>
+              <td><code>.ui-text</code> utilities</td>
+              <td><code>data-weight</code>, <code>data-style</code>, <code>data-transform</code>, <code>data-align</code>, <code>data-tracking</code></td>
+              <td>Typographic modifier tokens</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- ALERT SECTION -->
+    <section id="alert" class="component-section">
+      <h2 class="component-title">Alert Component (`.ui-alert`)</h2>
+      <p class="component-description">Status highlights for notifications, warnings, successfully processed operations, and system errors.</p>
+
+      <div class="preview-card">
+        <div class="preview-canvas" style="display: flex; flex-direction: column; gap: 12px; width: 100%;">
+          <div class="ui-alert" data-variant="info">
+            <span class="ui-alert-icon">ℹ️</span>
+            <div class="ui-alert-content">
+              <h4 class="ui-alert-title">System Update</h4>
+              <p class="ui-alert-body">A new deployment version v1.2.0 is available. Please rebuild your project.</p>
+            </div>
+          </div>
+          <div class="ui-alert" data-variant="success">
+            <span class="ui-alert-icon">✅</span>
+            <div class="ui-alert-content">
+              <h4 class="ui-alert-title">Build Succeeded</h4>
+              <p class="ui-alert-body">All tests passed and assets were successfully bundled.</p>
+            </div>
+          </div>
+          <div class="ui-alert" data-variant="warning">
+            <span class="ui-alert-icon">⚠️</span>
+            <div class="ui-alert-content">
+              <h4 class="ui-alert-title">Deprecated API Usage</h4>
+              <p class="ui-alert-body">Endpoint <code class="ui-code">/v1/metrics</code> will be removed in next major release.</p>
+            </div>
+          </div>
+          <div class="ui-alert" data-variant="danger">
+            <span class="ui-alert-icon">🚨</span>
+            <div class="ui-alert-content">
+              <h4 class="ui-alert-title">Connection Lost</h4>
+              <p class="ui-alert-body">Could not connect to the remote database cluster. Re-attempting...</p>
+            </div>
+          </div>
+        </div>
+        <div class="snippet-header">
+          <span>HTML Snippet</span>
+          <button class="copy-btn" onclick="copySnippet('snippet-alert')">Copy Code</button>
+        </div>
+        <pre class="code-block" id="snippet-alert"><code>&lt;div class="ui-alert" data-variant="danger"&gt;
+  &lt;span class="ui-alert-icon"&gt;🚨&lt;/span&gt;
+  &lt;div class="ui-alert-content"&gt;
+    &lt;h4 class="ui-alert-title"&gt;Connection Lost&lt;/h4&gt;
+    &lt;p class="ui-alert-body"&gt;Could not connect to database.&lt;/p&gt;
+  &lt;/div&gt;
+&lt;/div&gt;</code></pre>
+      </div>
+
+      <div class="props-table-wrapper">
+        <table class="props-table">
+          <thead>
+            <tr>
+              <th>Attribute / Prop</th>
+              <th>Values</th>
+              <th>Description</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>data-variant</code></td>
+              <td><code>info</code>, <code>success</code>, <code>warning</code>, <code>danger</code></td>
+              <td>Determines boundary and text semantic colors of the banner</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- LOADER SECTION -->
+    <section id="loader" class="component-section">
+      <h2 class="component-title">Loader / Spinner Component (`.ui-loader`)</h2>
+      <p class="component-description">Visual feedback of ongoing loading processes and database operations.</p>
+
+      <div class="preview-card">
+        <div class="preview-canvas" style="display: flex; align-items: center; gap: 24px;">
+          <div class="ui-loader" data-size="sm" data-variant="primary"></div>
+          <div class="ui-loader" data-size="md" data-variant="primary"></div>
+          <div class="ui-loader" data-size="lg" data-variant="primary"></div>
+          <div class="ui-loader" data-size="md" data-variant="secondary"></div>
+          <div class="ui-loader" data-size="md" data-variant="success"></div>
+          <div class="ui-loader" data-size="md" data-variant="danger"></div>
+        </div>
+        <div class="snippet-header">
+          <span>HTML Snippet</span>
+          <button class="copy-btn" onclick="copySnippet('snippet-loader')">Copy Code</button>
+        </div>
+        <pre class="code-block" id="snippet-loader"><code>&lt;div class="ui-loader" data-size="md" data-variant="primary"&gt;&lt;/div&gt;
+&lt;div class="ui-loader" data-size="sm" data-variant="success"&gt;&lt;/div&gt;</code></pre>
+      </div>
+
+      <div class="props-table-wrapper">
+        <table class="props-table">
+          <thead>
+            <tr>
+              <th>Attribute / Prop</th>
+              <th>Values</th>
+              <th>Description</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>data-size</code></td>
+              <td><code>sm</code>, <code>md</code>, <code>lg</code></td>
+              <td>Alters loader diameter and border thickness</td>
+            </tr>
+            <tr>
+              <td><code>data-variant</code></td>
+              <td><code>primary</code>, <code>secondary</code>, <code>success</code>, <code>danger</code></td>
+              <td>Alters the highlight border-top color</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- CONTROLS SECTION -->
+    <section id="controls" class="component-section">
+      <h2 class="component-title">Controls Component (`.ui-checkbox`, `.ui-radio`, `.ui-toggle`)</h2>
+      <p class="component-description">Interactive selection inputs including native styled checkboxes, radios, and switch toggles.</p>
+
+      <div class="preview-card">
+        <div class="preview-canvas" style="display: flex; flex-direction: column; gap: 16px;">
+          <div>
+            <label class="ui-control">
+              <input type="checkbox" class="ui-checkbox" checked />
+              Checkbox checked
+            </label>
+            <label class="ui-control">
+              <input type="checkbox" class="ui-checkbox" />
+              Checkbox unchecked
+            </label>
+          </div>
+          <div>
+            <label class="ui-control">
+              <input type="radio" name="radio-showcase" class="ui-radio" checked />
+              Radio A
+            </label>
+            <label class="ui-control">
+              <input type="radio" name="radio-showcase" class="ui-radio" />
+              Radio B
+            </label>
+          </div>
+          <div>
+            <label class="ui-control">
+              <input type="checkbox" class="ui-toggle" checked />
+              <span style="margin-left: 8px;">Toggle on</span>
+            </label>
+            <label class="ui-control">
+              <input type="checkbox" class="ui-toggle" />
+              <span style="margin-left: 8px;">Toggle off</span>
+            </label>
+          </div>
+        </div>
+        <div class="snippet-header">
+          <span>HTML Snippet</span>
+          <button class="copy-btn" onclick="copySnippet('snippet-controls')">Copy Code</button>
+        </div>
+        <pre class="code-block" id="snippet-controls"><code>&lt;label class="ui-control"&gt;
+  &lt;input type="checkbox" class="ui-checkbox" checked /&gt; Checkbox
+&lt;/label&gt;
+&lt;label class="ui-control"&gt;
+  &lt;input type="checkbox" class="ui-toggle" /&gt; &lt;span style="margin-left:8px"&gt;Toggle&lt;/span&gt;
+&lt;/label&gt;</code></pre>
+      </div>
+    </section>
+
+    <!-- PROGRESS SECTION -->
+    <section id="progress" class="component-section">
+      <h2 class="component-title">Progress Component (`.ui-progress`)</h2>
+      <p class="component-description">Fills showing operational percentages, bandwidths, and visual progress thresholds.</p>
+
+      <div class="preview-card">
+        <div class="preview-canvas" style="display: flex; flex-direction: column; gap: 16px; width: 100%;">
+          <div class="ui-progress-container">
+            <div class="ui-progress-label">
+              <span>Upload</span>
+              <span>72%</span>
+            </div>
+            <div class="ui-progress">
+              <div class="ui-progress-bar" style="width: 72%;"></div>
+            </div>
+          </div>
+          <div class="ui-progress-container">
+            <div class="ui-progress-label">
+              <span>Processing</span>
+              <span>35%</span>
+            </div>
+            <div class="ui-progress">
+              <div class="ui-progress-bar" data-variant="success" style="width: 35%;"></div>
+            </div>
+          </div>
+        </div>
+        <div class="snippet-header">
+          <span>HTML Snippet</span>
+          <button class="copy-btn" onclick="copySnippet('snippet-progress')">Copy Code</button>
+        </div>
+        <pre class="code-block" id="snippet-progress"><code>&lt;div class="ui-progress-container"&gt;
+  &lt;div class="ui-progress-label"&gt;&lt;span&gt;Upload&lt;/span&gt;&lt;span&gt;72%&lt;/span&gt;&lt;/div&gt;
+  &lt;div class="ui-progress"&gt;
+    &lt;div class="ui-progress-bar" style="width: 72%;"&gt;&lt;/div&gt;
+  &lt;/div&gt;
+&lt;/div&gt;</code></pre>
+      </div>
+    </section>
+
+    <!-- NAVIGATION TABS & BREADCRUMBS -->
+    <section id="navigation" class="component-section">
+      <h2 class="component-title">Tabs & Breadcrumbs Component</h2>
+      <p class="component-description">Navigation pill selectors and breadcrumb trail locators.</p>
+
+      <div class="preview-card">
+        <div class="preview-canvas" style="display: flex; flex-direction: column; gap: 20px; width: 100%;">
+          <div class="ui-tabs">
+            <button class="ui-tab ui-active">Overview</button>
+            <button class="ui-tab">Details</button>
+            <button class="ui-tab">History</button>
+          </div>
+          
+          <nav class="ui-breadcrumbs">
+            <a href="#" class="ui-breadcrumb-link">Home</a>
+            <span class="ui-breadcrumb-separator">/</span>
+            <a href="#" class="ui-breadcrumb-link">Components</a>
+            <span class="ui-breadcrumb-separator">/</span>
+            <span class="ui-breadcrumb-current">Buttons</span>
+          </nav>
+        </div>
+        <div class="snippet-header">
+          <span>HTML Snippet</span>
+          <button class="copy-btn" onclick="copySnippet('snippet-navigation')">Copy Code</button>
+        </div>
+        <pre class="code-block" id="snippet-navigation"><code>&lt;div class="ui-tabs"&gt;
+  &lt;button class="ui-tab ui-active"&gt;Overview&lt;/button&gt;
+&lt;/div&gt;
+&lt;nav class="ui-breadcrumbs"&gt;
+  &lt;a href="#" class="ui-breadcrumb-link"&gt;Home&lt;/a&gt;
+  &lt;span class="ui-breadcrumb-separator"&gt;/&lt;/span&gt;
+  &lt;span class="ui-breadcrumb-current"&gt;Current&lt;/span&gt;
+&lt;/nav&gt;</code></pre>
+      </div>
+    </section>
+
+    <!-- AVATAR SECTION -->
+    <section id="avatar" class="component-section">
+      <h2 class="component-title">Avatar Component (`.ui-avatar`, `.ui-avatar-group`)</h2>
+      <p class="component-description">Circular identifiers with colors and stacking options for lists or user groups.</p>
+
+      <div class="preview-card">
+        <div class="preview-canvas" style="display: flex; flex-direction: column; gap: 16px;">
+          <div style="display: flex; gap: 12px; align-items: center;">
+            <div class="ui-avatar" data-variant="blue">AB</div>
+            <div class="ui-avatar" data-variant="purple">CD</div>
+            <div class="ui-avatar" data-variant="orange">EF</div>
+          </div>
+          <div class="ui-avatar-group">
+            <div class="ui-avatar" data-variant="blue">AB</div>
+            <div class="ui-avatar" data-variant="purple">CD</div>
+            <div class="ui-avatar" data-variant="orange">EF</div>
+            <div class="ui-avatar">+3</div>
+          </div>
+        </div>
+        <div class="snippet-header">
+          <span>HTML Snippet</span>
+          <button class="copy-btn" onclick="copySnippet('snippet-avatar')">Copy Code</button>
+        </div>
+        <pre class="code-block" id="snippet-avatar"><code>&lt;div class="ui-avatar-group"&gt;
+  &lt;div class="ui-avatar" data-variant="blue"&gt;AB&lt;/div&gt;
+  &lt;div class="ui-avatar" data-variant="purple"&gt;CD&lt;/div&gt;
+&lt;/div&gt;</code></pre>
+      </div>
+    </section>
+
+    <!-- TOOLTIP SECTION -->
+    <section id="tooltip" class="component-section">
+      <h2 class="component-title">Tooltip Component (`.ui-tooltip-trigger`)</h2>
+      <p class="component-description">Lightweight CSS-only hover bubbles for inline metrics or action labels.</p>
+
+      <div class="preview-card">
+        <div class="preview-canvas" style="padding: 24px 0;">
+          <span class="ui-tooltip-trigger ui-button" data-variant="secondary" data-tooltip="This is a helpful hint!">Hover me</span>
+        </div>
+        <div class="snippet-header">
+          <span>HTML Snippet</span>
+          <button class="copy-btn" onclick="copySnippet('snippet-tooltip')">Copy Code</button>
+        </div>
+        <pre class="code-block" id="snippet-tooltip"><code>&lt;span class="ui-tooltip-trigger" data-tooltip="Tooltip Content"&gt;Hover me&lt;/span&gt;</code></pre>
+      </div>
+    </section>
+
+    <!-- SKELETON SECTION -->
+    <section id="skeleton" class="component-section">
+      <h2 class="component-title">Skeleton Loader Component (`.ui-skeleton`)</h2>
+      <p class="component-description">Active shimmer placeholder layouts serving as loading states for widgets.</p>
+
+      <div class="preview-card">
+        <div class="preview-canvas">
+          <div style="display: flex; gap: 16px; align-items: center; border: 1px solid var(--ui-border-color); padding: 18px; border-radius: 8px; background: var(--ui-bg-surface); max-width: 320px; width: 100%;">
+            <div class="ui-skeleton ui-skeleton-avatar" style="flex-shrink: 0;"></div>
+            <div style="flex: 1; display: flex; flex-direction: column; gap: 8px;">
+              <div class="ui-skeleton ui-skeleton-line" style="width: 40%;"></div>
+              <div class="ui-skeleton ui-skeleton-line" style="width: 80%;"></div>
+              <div class="ui-skeleton ui-skeleton-line" style="width: 60%;"></div>
+            </div>
+          </div>
+        </div>
+        <div class="snippet-header">
+          <span>HTML Snippet</span>
+          <button class="copy-btn" onclick="copySnippet('snippet-skeleton')">Copy Code</button>
+        </div>
+        <pre class="code-block" id="snippet-skeleton"><code>&lt;div class="ui-skeleton ui-skeleton-avatar"&gt;&lt;/div&gt;
+&lt;div class="ui-skeleton ui-skeleton-line" style="width: 80%;"&gt;&lt;/div&gt;</code></pre>
+      </div>
+    </section>
+
+    <!-- APP CARD SECTION -->
+    <section id="app-card" class="component-section">
+      <h2 class="component-title">App Selector Card Component (`.ui-app-card`)</h2>
+      <p class="component-description">Grid-tile selector element commonly representing microservices, database targets, or back-end deployments.</p>
+
+      <div class="preview-card">
+        <div class="preview-canvas" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 16px; width: 100%;">
+          <div class="ui-app-card" data-state="active" data-status="online">
+            <div class="ui-app-icon">🔐</div>
+            <div class="ui-app-info">
+              <div class="ui-app-name">Auth Service</div>
+              <div class="ui-app-version">v1.2.4</div>
+            </div>
+            <div class="ui-app-status-indicator"></div>
+          </div>
+          <div class="ui-app-card" data-status="offline">
+            <div class="ui-app-icon">📊</div>
+            <div class="ui-app-info">
+              <div class="ui-app-name">Metrics Engine</div>
+              <div class="ui-app-version">v0.9.8</div>
+            </div>
+            <div class="ui-app-status-indicator"></div>
+          </div>
+          <div class="ui-app-card" data-status="warning">
+            <div class="ui-app-icon">📩</div>
+            <div class="ui-app-info">
+              <div class="ui-app-name">Notifier App</div>
+              <div class="ui-app-version">v2.1.0</div>
+            </div>
+            <div class="ui-app-status-indicator"></div>
+          </div>
+        </div>
+        <div class="snippet-header">
+          <span>HTML Snippet</span>
+          <button class="copy-btn" onclick="copySnippet('snippet-app-card')">Copy Code</button>
+        </div>
+        <pre class="code-block" id="snippet-app-card"><code>&lt;div class="ui-app-card" data-state="active" data-status="online"&gt;
+  &lt;div class="ui-app-icon"&gt;🔐&lt;/div&gt;
+  &lt;div class="ui-app-info"&gt;
+    &lt;div class="ui-app-name"&gt;Auth Service&lt;/div&gt;
+    &lt;div class="ui-app-version"&gt;v1.2.4&lt;/div&gt;
+  &lt;/div&gt;
+  &lt;div class="ui-app-status-indicator"&gt;&lt;/div&gt;
+&lt;/div&gt;</code></pre>
+      </div>
+    </section>
+
+    <!-- COMMAND BUTTON SECTION -->
+    <section id="command-button" class="component-section">
+      <h2 class="component-title">Command Selector Button Component (`.ui-command-button`)</h2>
+      <p class="component-description">Build Selection list selector showing outcomes, commit authors, and system status locks.</p>
+
+      <div class="preview-card">
+        <div class="preview-canvas" style="max-width: 400px; width: 100%;">
+          <button class="ui-command-button" data-state="selected">
+            <div class="ui-command-info">
+              <span class="ui-command-title">Build #482</span>
+              <span class="ui-command-meta">10m ago by sunil</span>
+            </div>
+            <div class="ui-command-status">
+              <span class="ui-badge" data-variant="success">Passed</span>
+              <span class="ui-lock-badge">🔒</span>
+            </div>
+          </button>
+          <button class="ui-command-button">
+            <div class="ui-command-info">
+              <span class="ui-command-title">Build #481</span>
+              <span class="ui-command-meta">1h ago by alex</span>
+            </div>
+            <div class="ui-command-status">
+              <span class="ui-badge" data-variant="success">Passed</span>
+            </div>
+          </button>
+          <button class="ui-command-button">
+            <div class="ui-command-info">
+              <span class="ui-command-title">Build #480</span>
+              <span class="ui-command-meta">2h ago by jenny</span>
+            </div>
+            <div class="ui-command-status">
+              <span class="ui-badge" data-variant="danger">Failed</span>
+            </div>
+          </button>
+        </div>
+        <div class="snippet-header">
+          <span>HTML Snippet</span>
+          <button class="copy-btn" onclick="copySnippet('snippet-command-button')">Copy Code</button>
+        </div>
+        <pre class="code-block" id="snippet-command-button"><code>&lt;button class="ui-command-button" data-state="selected"&gt;
+  &lt;div class="ui-command-info"&gt;
+    &lt;span class="ui-command-title"&gt;Build #482&lt;/span&gt;
+    &lt;span class="ui-command-meta"&gt;10m ago by author&lt;/span&gt;
+  &lt;/div&gt;
+  &lt;div class="ui-command-status"&gt;
+    &lt;span class="ui-badge" data-variant="success"&gt;Passed&lt;/span&gt;
+    &lt;span class="ui-lock-badge"&gt;🔒&lt;/span&gt;
+  &lt;/div&gt;
+&lt;/button&gt;</code></pre>
+      </div>
+    </section>
+
+    <!-- SEGMENTED NAVIGATION SECTION -->
+    <section id="segmented" class="component-section">
+      <h2 class="component-title">Segmented Navigation Component (`.ui-segmented`)</h2>
+      <p class="component-description">Full-width environmental switch selectors (Dev, QA, Prod) with block transitions.</p>
+
+      <div class="preview-card">
+        <div class="preview-canvas" style="display: flex; flex-direction: column; gap: 16px; width: 100%; max-width: 400px;">
+          <div class="ui-segmented">
+            <button class="ui-segmented-item ui-active">Dev</button>
+            <button class="ui-segmented-item">QA</button>
+            <button class="ui-segmented-item">Prod</button>
+          </div>
+          <div class="ui-segmented" data-width="auto">
+            <button class="ui-segmented-item ui-active">Active Builds</button>
+            <button class="ui-segmented-item">History Logs</button>
+          </div>
+        </div>
+        <div class="snippet-header">
+          <span>HTML Snippet</span>
+          <button class="copy-btn" onclick="copySnippet('snippet-segmented')">Copy Code</button>
+        </div>
+        <pre class="code-block" id="snippet-segmented"><code>&lt;div class="ui-segmented"&gt;
+  &lt;button class="ui-segmented-item ui-active"&gt;Dev&lt;/button&gt;
+  &lt;button class="ui-segmented-item"&gt;QA&lt;/button&gt;
+  &lt;button class="ui-segmented-item"&gt;Prod&lt;/button&gt;
+&lt;/div&gt;</code></pre>
+      </div>
+    </section>
+
+    <!-- TERMINAL SECTION -->
+    <section id="terminal" class="component-section">
+      <h2 class="component-title">Terminal Log Viewer Component (`.ui-terminal`)</h2>
+      <p class="component-description">Mock console logger outputs with color coding and window action controls.</p>
+
+      <div class="preview-card">
+        <div class="preview-canvas" style="width: 100%;">
+          <div class="ui-terminal" style="max-width: 600px; width: 100%;">
+            <div class="ui-terminal-header">
+              <div class="ui-terminal-actions">
+                <span class="ui-terminal-dot" data-action="close"></span>
+                <span class="ui-terminal-dot" data-action="minimize"></span>
+                <span class="ui-terminal-dot" data-action="maximize"></span>
+              </div>
+              <div class="ui-terminal-title">Build output — auth-service</div>
+            </div>
+            <div class="ui-terminal-body" style="height: 180px;">
+              <div class="ui-terminal-line" data-log="command">npm run build</div>
+              <div class="ui-terminal-line" data-log="info">Initializing build process...</div>
+              <div class="ui-terminal-line" data-log="info">Bundling files with esbuild...</div>
+              <div class="ui-terminal-line" data-log="success">Webpack bundled files successfully in 320ms.</div>
+              <div class="ui-terminal-line" data-log="warning">Warning: deprecated css tokens used.</div>
+              <div class="ui-terminal-line" data-log="error">Error: build test failed at suite AuthModule.L40.</div>
+            </div>
+          </div>
+        </div>
+        <div class="snippet-header">
+          <span>HTML Snippet</span>
+          <button class="copy-btn" onclick="copySnippet('snippet-terminal')">Copy Code</button>
+        </div>
+        <pre class="code-block" id="snippet-terminal"><code>&lt;div class="ui-terminal"&gt;
+  &lt;div class="ui-terminal-header"&gt;
+    &lt;div class="ui-terminal-title"&gt;Title&lt;/div&gt;
+  &lt;/div&gt;
+  &lt;div class="ui-terminal-body"&gt;
+    &lt;div class="ui-terminal-line" data-log="command"&gt;build&lt;/div&gt;
+    &lt;div class="ui-terminal-line" data-log="success"&gt;Done&lt;/div&gt;
+  &lt;/div&gt;
+&lt;/div&gt;</code></pre>
+      </div>
+    </section>
+
+    <!-- TREE SECTION -->
+    <section id="tree" class="component-section">
+      <h2 class="component-title">Collapsible Folder Tree Component (`.ui-tree`)</h2>
+      <p class="component-description">Hierarchical module folder navigation sidebar with nested items and badges.</p>
+
+      <div class="preview-card">
+        <div class="preview-canvas">
+          <div class="ui-tree" style="max-width: 280px; width: 100%; border: 1px solid var(--ui-border-color); padding: 12px; border-radius: 8px; background: var(--ui-bg-surface);">
+            <div class="ui-tree-node ui-open">
+              <div class="ui-tree-label">
+                <span class="ui-tree-icon">📂</span>
+                <span class="ui-tree-title">Authentication Module</span>
+                <span class="ui-badge" data-variant="neutral">12</span>
+              </div>
+              <div class="ui-tree-children">
+                <div class="ui-tree-item ui-active">
+                  <span class="ui-tree-icon">📄</span>
+                  <span class="ui-tree-title">Login Flow Spec</span>
+                </div>
+                <div class="ui-tree-item">
+                  <span class="ui-tree-icon">📄</span>
+                  <span class="ui-tree-title">OAuth Callback</span>
+                </div>
+              </div>
+            </div>
+            <div class="ui-tree-node">
+              <div class="ui-tree-label">
+                <span class="ui-tree-icon">📁</span>
+                <span class="ui-tree-title">Payment Gateway</span>
+                <span class="ui-badge" data-variant="neutral">4</span>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="snippet-header">
+          <span>HTML Snippet</span>
+          <button class="copy-btn" onclick="copySnippet('snippet-tree')">Copy Code</button>
+        </div>
+        <pre class="code-block" id="snippet-tree"><code>&lt;div class="ui-tree"&gt;
+  &lt;div class="ui-tree-node ui-open"&gt;
+    &lt;div class="ui-tree-label"&gt;&lt;span class="ui-tree-icon"&gt;📂&lt;/span&gt;&lt;span class="ui-tree-title"&gt;Folder&lt;/span&gt;&lt;/div&gt;
+    &lt;div class="ui-tree-children"&gt;
+      &lt;div class="ui-tree-item ui-active"&gt;&lt;span class="ui-tree-title"&gt;Item&lt;/span&gt;&lt;/div&gt;
+    &lt;/div&gt;
+  &lt;/div&gt;
+&lt;/div&gt;</code></pre>
+      </div>
+    </section>
+
+    <!-- STEP CARD SECTION -->
+    <section id="step-card" class="component-section">
+      <h2 class="component-title">Interactive Step Cards Component (`.ui-step-card`)</h2>
+      <p class="component-description">Sequential step execution card list with step numbers, title headers, and outcome badges.</p>
+
+      <div class="preview-card">
+        <div class="preview-canvas" style="width: 100%; max-width: 480px;">
+          <div class="ui-steps-row">
+            <div class="ui-step-card" data-status="passed">
+              <div class="ui-step-number">1</div>
+              <div class="ui-step-content">
+                <div class="ui-step-title">Open Login Page</div>
+                <div class="ui-step-desc">Navigates to /login and verifies title tag</div>
+              </div>
+              <span class="ui-badge" data-variant="success">Passed</span>
+            </div>
+            <div class="ui-step-card" data-status="failed">
+              <div class="ui-step-number">2</div>
+              <div class="ui-step-content">
+                <div class="ui-step-title">Submit Valid Credentials</div>
+                <div class="ui-step-desc">Element #submit-btn was not clickable</div>
+              </div>
+              <span class="ui-badge" data-variant="danger">Failed</span>
+            </div>
+          </div>
+        </div>
+        <div class="snippet-header">
+          <span>HTML Snippet</span>
+          <button class="copy-btn" onclick="copySnippet('snippet-step-card')">Copy Code</button>
+        </div>
+        <pre class="code-block" id="snippet-step-card"><code>&lt;div class="ui-step-card" data-status="passed"&gt;
+  &lt;div class="ui-step-number"&gt;1&lt;/div&gt;
+  &lt;div class="ui-step-content"&gt;
+    &lt;div class="ui-step-title"&gt;Step Name&lt;/div&gt;
+  &lt;/div&gt;
+  &lt;span class="ui-badge" data-variant="success"&gt;Passed&lt;/span&gt;
+&lt;/div&gt;</code></pre>
+      </div>
+    </section>
+
+    <!-- DROPZONE SECTION -->
+    <section id="dropzone" class="component-section">
+      <h2 class="component-title">Image Drop Zone Uploader Component (`.ui-dropzone`)</h2>
+      <p class="component-description">Dashed file attachment target area supporting drag-and-drop and Cmd+V paste uploads.</p>
+
+      <div class="preview-card">
+        <div class="preview-canvas" style="width: 100%; max-width: 480px;">
+          <div class="ui-dropzone" style="width: 100%;">
+            <div class="ui-dropzone-icon">📁</div>
+            <div class="ui-dropzone-title">Drag & drop files or click to browse</div>
+            <div class="ui-dropzone-subtitle">Supports PNG, JPG, GIF up to 10MB or paste (Cmd+V / Ctrl+V)</div>
+          </div>
+        </div>
+        <div class="snippet-header">
+          <span>HTML Snippet</span>
+          <button class="copy-btn" onclick="copySnippet('snippet-dropzone')">Copy Code</button>
+        </div>
+        <pre class="code-block" id="snippet-dropzone"><code>&lt;div class="ui-dropzone"&gt;
+  &lt;div class="ui-dropzone-icon"&gt;📁&lt;/div&gt;
+  &lt;div class="ui-dropzone-title"&gt;Drag & drop files or click to browse&lt;/div&gt;
+&lt;/div&gt;</code></pre>
+      </div>
+    </section>
+
+    <!-- MODAL TABS SECTION -->
+    <section id="modal-tabs" class="component-section">
+      <h2 class="component-title">Modal Sub-Tabs Navigation Component (`.ui-modal-tabs`)</h2>
+      <p class="component-description">Underlined sub-navigation tabs styled for modal headers and card panes.</p>
+
+      <div class="preview-card">
+        <div class="preview-canvas" style="width: 100%; max-width: 480px;">
+          <div class="ui-modal-tabs">
+            <button class="ui-modal-tab ui-active">General Config</button>
+            <button class="ui-modal-tab">Steps & Actions</button>
+            <button class="ui-modal-tab">Logs & Attachments</button>
+          </div>
+        </div>
+        <div class="snippet-header">
+          <span>HTML Snippet</span>
+          <button class="copy-btn" onclick="copySnippet('snippet-modal-tabs')">Copy Code</button>
+        </div>
+        <pre class="code-block" id="snippet-modal-tabs"><code>&lt;div class="ui-modal-tabs"&gt;
+  &lt;button class="ui-modal-tab ui-active"&gt;General Config&lt;/button&gt;
+  &lt;button class="ui-modal-tab"&gt;Steps&lt;/button&gt;
+&lt;/div&gt;</code></pre>
+      </div>
+    </section>
+
+    <!-- LIGHTBOX SECTION -->
+    <section id="lightbox" class="component-section">
+      <h2 class="component-title">Image Lightbox Overlay Component (`.ui-lightbox`)</h2>
+      <p class="component-description">Full-screen backdrop screenshot viewer for image zoom modal overlays.</p>
+
+      <div class="preview-card">
+        <div class="preview-canvas">
+          <button class="ui-button" data-variant="primary" onclick="document.getElementById('demoLightboxShowcase').classList.add('ui-active')">Launch Lightbox Demo</button>
+          
+          <div class="ui-lightbox" id="demoLightboxShowcase">
+            <button class="ui-lightbox-close" onclick="document.getElementById('demoLightboxShowcase').classList.remove('ui-active')">&times;</button>
+            <div class="ui-lightbox-container">
+              <div style="background: var(--ui-primary-color); width: 480px; height: 280px; border-radius: 8px; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold; font-family: var(--ui-font-family);">
+                [ Full Screen Image Zoom Preview Target ]
+              </div>
+              <div class="ui-lightbox-caption">Test Execution Failure Screenshot — Chrome 118</div>
+            </div>
+          </div>
+        </div>
+        <div class="snippet-header">
+          <span>HTML Snippet</span>
+          <button class="copy-btn" onclick="copySnippet('snippet-lightbox')">Copy Code</button>
+        </div>
+        <pre class="code-block" id="snippet-lightbox"><code>&lt;div class="ui-lightbox ui-active"&gt;
+  &lt;button class="ui-lightbox-close"&gt;&amp;times;&lt;/button&gt;
+  &lt;div class="ui-lightbox-container"&gt;
+    &lt;img src="screenshot.png" class="ui-lightbox-image" /&gt;
+  &lt;/div&gt;
+&lt;/div&gt;</code></pre>
+      </div>
+    </section>
+
+    <!-- TOAST SECTION -->
+    <section id="toast" class="component-section">
+      <h2 class="component-title">Floating Toast Notifications Component (`.ui-toast`)</h2>
+      <p class="component-description">Corner-anchored status notification cards with close triggers.</p>
+
+      <div class="preview-card">
+        <div class="preview-canvas">
+          <div style="display: flex; flex-direction: column; gap: 12px; max-width: 360px; width: 100%;">
+            <div class="ui-toast" data-variant="success" style="animation: none;">
+              <span class="ui-toast-icon">✅</span>
+              <div class="ui-toast-content">
+                <div class="ui-toast-title">Sync Complete</div>
+                <div class="ui-toast-body">All test suites updated successfully.</div>
+              </div>
+              <button class="ui-toast-close">&times;</button>
+            </div>
+            <div class="ui-toast" data-variant="danger" style="animation: none;">
+              <span class="ui-toast-icon">🚨</span>
+              <div class="ui-toast-content">
+                <div class="ui-toast-title">Build Failed</div>
+                <div class="ui-toast-body">2 integration tests failed in pipeline.</div>
+              </div>
+              <button class="ui-toast-close">&times;</button>
+            </div>
+          </div>
+        </div>
+        <div class="snippet-header">
+          <span>HTML Snippet</span>
+          <button class="copy-btn" onclick="copySnippet('snippet-toast')">Copy Code</button>
+        </div>
+        <pre class="code-block" id="snippet-toast"><code>&lt;div class="ui-toast-container" data-position="bottom-right"&gt;
+  &lt;div class="ui-toast" data-variant="success"&gt;
+    &lt;span class="ui-toast-icon"&gt;✅&lt;/span&gt;
+    &lt;div class="ui-toast-content"&gt;
+      &lt;div class="ui-toast-title"&gt;Success&lt;/div&gt;
+    &lt;/div&gt;
+  &lt;/div&gt;
+&lt;/div&gt;</code></pre>
+      </div>
+    </section>
+
+    <!-- PAGE HEADER SECTION -->
+    <section id="page-header" class="component-section">
+      <h2 class="component-title">Page Header Component (`.ui-page-header`)</h2>
+      <p class="component-description">Standardized top page title section establishing visual hierarchy across all dashboard views.</p>
+
+      <div class="preview-card">
+        <div class="preview-canvas" style="width: 100%;">
+          <div class="ui-page-header" style="margin-bottom: 0;">
+            <span class="ui-page-eyebrow">WORKSPACE</span>
+            <div class="ui-page-title-row">
+              <h1 class="ui-page-title">
+                <span>📁</span> My Projects
+              </h1>
+              <div class="ui-page-actions">
+                <button class="ui-button" data-variant="secondary" data-size="sm">Manage Groups</button>
+                <button class="ui-button" data-variant="primary" data-size="sm">+ New Project</button>
+              </div>
+            </div>
+            <p class="ui-page-subtitle">Manage apps and packages, and analyze project files.</p>
+          </div>
+        </div>
+        <div class="snippet-header">
+          <span>HTML Snippet</span>
+          <button class="copy-btn" onclick="copySnippet('snippet-page-header')">Copy Code</button>
+        </div>
+        <pre class="code-block" id="snippet-page-header"><code>&lt;div class="ui-page-header"&gt;
+  &lt;span class="ui-page-eyebrow"&gt;WORKSPACE&lt;/span&gt;
+  &lt;div class="ui-page-title-row"&gt;
+    &lt;h1 class="ui-page-title"&gt;📁 My Projects&lt;/h1&gt;
+    &lt;div class="ui-page-actions"&gt;
+      &lt;button class="ui-button" data-variant="primary" data-size="sm"&gt;Action&lt;/button&gt;
+    &lt;/div&gt;
+  &lt;/div&gt;
+  &lt;p class="ui-page-subtitle"&gt;Manage apps...&lt;/p&gt;
+&lt;/div&gt;</code></pre>
+      </div>
+    </section>
+
+    <!-- SECTION HEADER SECTION -->
+    <section id="section-header" class="component-section">
+      <h2 class="component-title">Section Header Component (`.ui-section-header`)</h2>
+      <p class="component-description">Standardized inner section dividers and subsection titles for grouping cards.</p>
+
+      <div class="preview-card">
+        <div class="preview-canvas" style="width: 100%;">
+          <div class="ui-section-header">
+            <h3 class="ui-section-title">SELECT TARGET PROJECT</h3>
+            <div class="ui-section-actions">
+              <button class="ui-button" data-variant="ghost" data-size="sm">Manage Groups</button>
+            </div>
+          </div>
+        </div>
+        <div class="snippet-header">
+          <span>HTML Snippet</span>
+          <button class="copy-btn" onclick="copySnippet('snippet-section-header')">Copy Code</button>
+        </div>
+        <pre class="code-block" id="snippet-section-header"><code>&lt;div class="ui-section-header"&gt;
+  &lt;h3 class="ui-section-title"&gt;SELECT TARGET PROJECT&lt;/h3&gt;
+  &lt;div class="ui-section-actions"&gt;
+    &lt;button class="ui-button" data-variant="ghost" data-size="sm"&gt;Manage&lt;/button&gt;
+  &lt;/div&gt;
+&lt;/div&gt;</code></pre>
+      </div>
+    </section>
+
+    <!-- LAYOUT SHELL SECTION -->
+    <section id="layout" class="component-section">
+      <h2 class="component-title">Layout Shell & Grids Component (`.ui-page`, `.ui-grid`, `.ui-panel-group`)</h2>
+      <p class="component-description">Standardized view containers, column grids, and split-pane layout structures.</p>
+
+      <div class="preview-card">
+        <div class="preview-canvas" style="width: 100%;">
+          <div class="ui-grid" data-columns="3" style="margin-bottom: 0;">
+            <div class="ui-panel">
+              <div style="font-weight: bold; margin-bottom: 4px;">Grid Item 1</div>
+              <div style="color: var(--ui-text-muted); font-size: 12px;">Standardized card padding</div>
+            </div>
+            <div class="ui-panel">
+              <div style="font-weight: bold; margin-bottom: 4px;">Grid Item 2</div>
+              <div style="color: var(--ui-text-muted); font-size: 12px;">Identical borders and background</div>
+            </div>
+            <div class="ui-panel">
+              <div style="font-weight: bold; margin-bottom: 4px;">Grid Item 3</div>
+              <div style="color: var(--ui-text-muted); font-size: 12px;">Responsive columns</div>
+            </div>
+          </div>
+        </div>
+        <div class="snippet-header">
+          <span>HTML Snippet</span>
+          <button class="copy-btn" onclick="copySnippet('snippet-layout')">Copy Code</button>
+        </div>
+        <pre class="code-block" id="snippet-layout"><code>&lt;div class="ui-grid" data-columns="3"&gt;
+  &lt;div class="ui-panel"&gt;Panel Content&lt;/div&gt;
+&lt;/div&gt;</code></pre>
+      </div>
+    </section>
+
+    <!-- TILE CARD SECTION -->
+    <section id="tile-card" class="component-section">
+      <h2 class="component-title">Unified Tile Cards Component (`.ui-tile-card`)</h2>
+      <p class="component-description">Generic tile component for apps, packages, modules, git repos, and project cards.</p>
+
+      <div class="preview-card">
+        <div class="preview-canvas" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 16px; width: 100%;">
+          <div class="ui-tile-card" data-variant="interactive">
+            <div class="ui-tile-header">
+              <div class="ui-tile-icon">📦</div>
+              <div class="ui-tile-badge">
+                <span class="ui-badge" data-variant="success">STABLE</span>
+              </div>
+            </div>
+            <div class="ui-tile-body">
+              <h4 class="ui-tile-title">pkg_notifications</h4>
+              <div class="ui-tile-meta">
+                <span class="ui-tile-branch">⌥ main</span>
+                <span class="ui-tile-stats">52 branches</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="ui-tile-card" data-variant="interactive">
+            <div class="ui-tile-header">
+              <div class="ui-tile-icon">📱</div>
+              <div class="ui-tile-badge">
+                <span class="ui-badge" data-variant="warning">2 CHANGES</span>
+              </div>
+            </div>
+            <div class="ui-tile-body">
+              <h4 class="ui-tile-title">mobile_app</h4>
+              <div class="ui-tile-meta">
+                <span class="ui-tile-branch">⌥ develop</span>
+                <span class="ui-tile-stats">18 branches</span>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="snippet-header">
+          <span>HTML Snippet</span>
+          <button class="copy-btn" onclick="copySnippet('snippet-tile-card')">Copy Code</button>
+        </div>
+        <pre class="code-block" id="snippet-tile-card"><code>&lt;div class="ui-tile-card" data-variant="interactive"&gt;
+  &lt;div class="ui-tile-header"&gt;
+    &lt;div class="ui-tile-icon"&gt;📦&lt;/div&gt;
+    &lt;span class="ui-badge" data-variant="success"&gt;STABLE&lt;/span&gt;
+  &lt;/div&gt;
+  &lt;div class="ui-tile-body"&gt;
+    &lt;h4 class="ui-tile-title"&gt;pkg_notifications&lt;/h4&gt;
+    &lt;div class="ui-tile-meta"&gt;
+      &lt;span class="ui-tile-branch"&gt;⌥ main&lt;/span&gt;
+      &lt;span class="ui-tile-stats"&gt;52 branches&lt;/span&gt;
+    &lt;/div&gt;
+  &lt;/div&gt;
+&lt;/div&gt;</code></pre>
+      </div>
+    </section>
+
+    <!-- STANDARDIZED TAB TEMPLATES SECTION -->
+    <section id="tab-views" class="component-section">
+      <h2 class="component-title">Standardized Tab View Templates</h2>
+      <p class="component-description">Complete, 100% consistent view templates built entirely from developer-dashboard-ui primitives for My Projects, Git Updates, Personal Notes, and Documentation.</p>
+
+      <div class="preview-card">
+        <div class="preview-canvas" style="display: flex; flex-direction: column; gap: 24px; width: 100%;">
+          
+          <!-- View 1: My Projects -->
+          <div class="ui-page">
+            <div class="ui-page-header">
+              <span class="ui-page-eyebrow">WORKSPACE</span>
+              <div class="ui-page-title-row">
+                <h1 class="ui-page-title">📁 My Projects</h1>
+                <div class="ui-page-actions">
+                  <button class="ui-button" data-variant="secondary" data-size="sm">Manage Groups</button>
+                </div>
+              </div>
+              <p class="ui-page-subtitle">Manage apps and packages, and analyze project files.</p>
+            </div>
+
+            <div class="ui-page-body">
+              <div class="ui-section-header">
+                <h3 class="ui-section-title">Packages</h3>
+              </div>
+              <div class="ui-grid" data-columns="4">
+                <div class="ui-tile-card" data-variant="interactive">
+                  <div class="ui-tile-header">
+                    <div class="ui-tile-icon">📦</div>
+                  </div>
+                  <div class="ui-tile-body">
+                    <h4 class="ui-tile-title">pkg_notifications</h4>
+                  </div>
+                </div>
+                <div class="ui-tile-card" data-variant="interactive">
+                  <div class="ui-tile-header">
+                    <div class="ui-tile-icon">📦</div>
+                  </div>
+                  <div class="ui-tile-body">
+                    <h4 class="ui-tile-title">pkg_analytics</h4>
+                  </div>
+                </div>
+                <div class="ui-tile-card" data-variant="interactive">
+                  <div class="ui-tile-header">
+                    <div class="ui-tile-icon">📦</div>
+                  </div>
+                  <div class="ui-tile-body">
+                    <h4 class="ui-tile-title">pkg_store</h4>
+                  </div>
+                </div>
+                <div class="ui-tile-card" data-variant="interactive">
+                  <div class="ui-tile-header">
+                    <div class="ui-tile-icon">📦</div>
+                  </div>
+                  <div class="ui-tile-body">
+                    <h4 class="ui-tile-title">pkg_billing</h4>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- View 2: Git Updates -->
+          <div class="ui-page">
+            <div class="ui-page-header">
+              <span class="ui-page-eyebrow">WORKSPACE</span>
+              <div class="ui-page-title-row">
+                <h1 class="ui-page-title">🔄 Git Updates</h1>
+                <div class="ui-page-actions">
+                  <button class="ui-button" data-variant="secondary" data-size="sm">Refresh Repositories</button>
+                  <button class="ui-button" data-variant="primary" data-size="sm">Git Fetch All</button>
+                </div>
+              </div>
+              <p class="ui-page-subtitle">Track multi-repo branches, dirty working trees, and remote syncs.</p>
+            </div>
+
+            <div class="ui-page-body">
+              <div class="ui-section-header">
+                <h3 class="ui-section-title">Apps & Repositories</h3>
+              </div>
+              <div class="ui-grid" data-columns="3">
+                <div class="ui-tile-card" data-variant="interactive">
+                  <div class="ui-tile-header">
+                    <div class="ui-tile-icon">🔐</div>
+                    <span class="ui-badge" data-variant="success">STABLE</span>
+                  </div>
+                  <div class="ui-tile-body">
+                    <h4 class="ui-tile-title">auth_service</h4>
+                    <div class="ui-tile-meta">
+                      <span class="ui-tile-branch">⌥ main</span>
+                      <span>84 branches</span>
+                    </div>
+                  </div>
+                </div>
+                <div class="ui-tile-card" data-variant="interactive">
+                  <div class="ui-tile-header">
+                    <div class="ui-tile-icon">📊</div>
+                    <span class="ui-badge" data-variant="warning">2 CHANGES</span>
+                  </div>
+                  <div class="ui-tile-body">
+                    <h4 class="ui-tile-title">admin_portal</h4>
+                    <div class="ui-tile-meta">
+                      <span class="ui-tile-branch">⌥ feature/v1.0.4</span>
+                      <span>18 branches</span>
+                    </div>
+                  </div>
+                </div>
+                <div class="ui-tile-card" data-variant="interactive">
+                  <div class="ui-tile-header">
+                    <div class="ui-tile-icon">📦</div>
+                    <span class="ui-badge" data-variant="success">STABLE</span>
+                  </div>
+                  <div class="ui-tile-body">
+                    <h4 class="ui-tile-title">catalog_service</h4>
+                    <div class="ui-tile-meta">
+                      <span class="ui-tile-branch">⌥ main</span>
+                      <span>12 branches</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+        </div>
+        <div class="snippet-header">
+          <span>HTML Snippet</span>
+          <button class="copy-btn" onclick="copySnippet('snippet-tab-views')">Copy Code</button>
+        </div>
+        <pre class="code-block" id="snippet-tab-views"><code>&lt;div class="ui-page"&gt;
+  &lt;div class="ui-page-header"&gt;
+    &lt;span class="ui-page-eyebrow"&gt;WORKSPACE&lt;/span&gt;
+    &lt;div class="ui-page-title-row"&gt;
+      &lt;h1 class="ui-page-title"&gt;📁 Tab Title&lt;/h1&gt;
+    &lt;/div&gt;
+    &lt;p class="ui-page-subtitle"&gt;Tab Subtitle...&lt;/p&gt;
+  &lt;/div&gt;
+  &lt;div class="ui-page-body"&gt;
+    &lt;div class="ui-section-header"&gt;&lt;h3 class="ui-section-title"&gt;Section&lt;/h3&gt;&lt;/div&gt;
+    &lt;div class="ui-grid" data-columns="4"&gt;
+      &lt;div class="ui-tile-card"&gt;Card Content&lt;/div&gt;
+    &lt;/div&gt;
+  &lt;/div&gt;
+&lt;/div&gt;</code></pre>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- Live Demo Modal -->
+  <div class="ui-modal-backdrop" id="demoModal">
+    <div class="ui-modal" data-size="md">
+      <div class="ui-modal-header">
+        <h3 class="ui-modal-title">Live Showcase Modal</h3>
+        <button class="ui-modal-close" onclick="toggleModal(false)">&times;</button>
+      </div>
+      <div class="ui-modal-body">
+        <p>This is a live interactive preview of the <code>.ui-modal</code> component running with standard UI styles!</p>
+        <div class="ui-field">
+          <label class="ui-label">Modal Input</label>
+          <input type="text" class="ui-input" placeholder="Type something..." />
+        </div>
+      </div>
+      <div class="ui-modal-footer">
+        <button class="ui-button" data-variant="ghost" onclick="toggleModal(false)">Close</button>
+        <button class="ui-button" data-variant="primary" onclick="toggleModal(false)">Save Changes</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    function toggleTheme() {
+      const html = document.documentElement;
+      const current = html.getAttribute('data-theme');
+      const next = current === 'dark' ? 'light' : 'dark';
+      html.setAttribute('data-theme', next);
+      
+      document.getElementById('themeIcon').textContent = next === 'dark' ? '☀️' : '🌙';
+      document.getElementById('themeLabel').textContent = next === 'dark' ? 'Light Mode' : 'Dark Mode';
+    }
+
+    function toggleModal(open) {
+      const m = document.getElementById('demoModal');
+      if (open) {
+        m.classList.add('ui-active');
+      } else {
+        m.classList.remove('ui-active');
+      }
+    }
+
+    function setActiveNav(el) {
+      document.querySelectorAll('.showcase-nav-link').forEach(a => a.classList.remove('active'));
+      el.classList.add('active');
+    }
+
+    function copySnippet(elementId) {
+      const text = document.getElementById(elementId).innerText;
+      navigator.clipboard.writeText(text).then(() => {
+        alert('Snippet copied to clipboard!');
+      }).catch(err => {
+        console.error('Failed to copy text: ', err);
+      });
+    }
+  </script>
+</body>
+</html>

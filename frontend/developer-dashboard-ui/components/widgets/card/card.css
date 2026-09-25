@@ -1,0 +1,101 @@
+/* ==========================================================================
+   UI Component Library — Card Component
+   Prefix: .ui-card, .ui-card-header, .ui-card-title, .ui-card-body, .ui-card-footer,
+           .ui-card-value, .ui-card-comparison, .ui-card-trend
+   ========================================================================== */
+
+.ui-card {
+  background-color: var(--ui-bg-surface, #0f172a);
+  border: 1px solid var(--ui-border-color, #1e293b);
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+  overflow: hidden;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.ui-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--ui-border-color, #1e293b);
+  background-color: transparent;
+}
+
+.ui-card-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ui-text-primary, #f8fafc);
+  margin: 0;
+}
+
+.ui-card-body {
+  padding: 18px;
+  font-size: 13px;
+  color: var(--ui-text-secondary, #cbd5e1);
+  line-height: 1.5;
+}
+
+.ui-card-footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 12px 18px;
+  border-top: 1px solid var(--ui-border-color, #1e293b);
+  background-color: transparent;
+}
+
+/* --- Variants --- */
+.ui-card[data-variant="interactive"],
+.ui-card[data-interactive="true"],
+.ui-card-interactive {
+  cursor: pointer;
+}
+
+.ui-card[data-variant="interactive"]:hover,
+.ui-card[data-interactive="true"]:hover,
+.ui-card-interactive:hover {
+  transform: translateY(-2px);
+  border-color: var(--ui-primary-color, #6366f1);
+  background-color: var(--ui-bg-muted, #1e293b);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35), 0 0 0 1px var(--ui-primary-glow, rgba(99, 102, 241, 0.25));
+}
+
+.ui-card[data-variant="accent"] {
+  border-top: 3px solid var(--ui-primary-color, #3b82f6);
+}
+
+.ui-card[data-variant="success"] {
+  border-top: 3px solid var(--ui-success-color, #10b981);
+}
+
+.ui-card[data-variant="warning"] {
+  border-top: 3px solid var(--ui-warning-color, #f59e0b);
+}
+
+.ui-card[data-variant="danger"] {
+  border-top: 3px solid var(--ui-danger-color, #ef4444);
+}
+
+.ui-card[data-variant="flat"] {
+  box-shadow: none;
+  background-color: rgba(15, 23, 42, 0.6);
+}
+
+/* --- Metrics Extension --- */
+.ui-card-value {
+  font-family: var(--ui-font-family);
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--ui-text-primary, #f8fafc);
+  line-height: 1.2;
+  margin-top: 8px;
+  margin-bottom: 4px;
+}
+
+.ui-card-comparison {
+  font-family: var(--ui-font-family);
+  font-size: 12px;
+  color: var(--ui-text-muted, #64748b);
+}

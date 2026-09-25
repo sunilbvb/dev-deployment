@@ -1,0 +1,73 @@
+/* ==========================================================================
+   UI Component Library — Collapsible Folder Tree Component
+   Prefix: .ui-tree, .ui-tree-node, .ui-tree-label, .ui-tree-item, .ui-tree-children
+   ========================================================================== */
+
+.ui-tree {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-family: var(--ui-font-family);
+  user-select: none;
+  box-sizing: border-box;
+}
+
+.ui-tree-node {
+  display: flex;
+  flex-direction: column;
+}
+
+.ui-tree-label,
+.ui-tree-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  color: var(--ui-text-primary);
+  font-size: 13px;
+  font-weight: 500;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.ui-tree-label:hover,
+.ui-tree-item:hover {
+  background-color: var(--ui-bg-muted);
+}
+
+.ui-tree-item.ui-active,
+.ui-tree-label.ui-active {
+  background-color: var(--ui-info-bg);
+  color: var(--ui-primary-color);
+  font-weight: 600;
+}
+
+.ui-tree-icon {
+  font-size: 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  color: var(--ui-text-muted);
+}
+
+.ui-tree-title {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ui-tree-children {
+  display: none;
+  flex-direction: column;
+  gap: 2px;
+  padding-left: 20px;
+  margin-top: 2px;
+}
+
+.ui-tree-node.ui-open > .ui-tree-children {
+  display: flex;
+}

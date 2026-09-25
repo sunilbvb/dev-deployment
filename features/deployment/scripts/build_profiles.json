@@ -1,0 +1,29 @@
+{
+  "APP_DEV": {
+    "app_name": "sample_app",
+    "env_name": "dev",
+    "secret_file": "dev.json",
+    "package_name": "com.example.sample_app.dev",
+    "internal_test_app_id": "",
+    "app_icon": "📱",
+    "app_logo_url": ""
+  },
+  "APP_QA": {
+    "app_name": "sample_app",
+    "env_name": "qa",
+    "secret_file": "qa.json",
+    "package_name": "com.example.sample_app.qa",
+    "internal_test_app_id": "",
+    "app_icon": "📱",
+    "app_logo_url": ""
+  },
+  "APP_PROD": {
+    "app_name": "sample_app",
+    "env_name": "prod",
+    "secret_file": "prod.json",
+    "package_name": "com.example.sample_app",
+    "internal_test_app_id": "",
+    "app_icon": "📱",
+    "app_logo_url": ""
+  }
+}

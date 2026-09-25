@@ -1,0 +1,56 @@
+/* ==========================================================================
+   UI Component Library — Tooltip Component
+   Prefix: .ui-tooltip-trigger
+   ========================================================================== */
+
+.ui-tooltip-trigger {
+  position: relative;
+  display: inline-block;
+  cursor: pointer;
+  box-sizing: border-box;
+}
+
+/* --- Tooltip bubble --- */
+.ui-tooltip-trigger::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  bottom: 125%;
+  left: 50%;
+  transform: translateX(-50%) translateY(4px);
+  background-color: var(--ui-text-primary);
+  color: var(--ui-bg-surface);
+  font-family: var(--ui-font-family);
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1.3;
+  padding: 6px 10px;
+  border-radius: 6px;
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  z-index: 100;
+}
+
+/* --- Arrow indicator --- */
+.ui-tooltip-trigger::before {
+  content: "";
+  position: absolute;
+  bottom: 112%;
+  left: 50%;
+  transform: translateX(-50%) translateY(4px);
+  border-width: 6px;
+  border-style: solid;
+  border-color: var(--ui-text-primary) transparent transparent transparent;
+  opacity: 0;
+  pointer-events: none;
+  transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+  z-index: 100;
+}
+
+.ui-tooltip-trigger:hover::after,
+.ui-tooltip-trigger:hover::before {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}

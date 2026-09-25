@@ -1,0 +1,118 @@
+/* ==========================================================================
+   Developer Dashboard UI — Direct Import Reference
+   Imported directly from developer-dashboard-ui project (Zero Duplication)
+   ========================================================================== */
+
+@import url('/developer-dashboard-ui/dist/ui.css');
+
+/* ==========================================================================
+   Developer Dashboard UI — Utility Aliases & Extensions
+   ========================================================================== */
+
+/* Button Aliases */
+.ui-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-family: var(--ui-font-family);
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1;
+  padding: 8px 16px;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  cursor: pointer;
+  user-select: none;
+  text-decoration: none;
+  white-space: nowrap;
+  transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+  outline: none;
+}
+.ui-btn-primary { background-color: var(--ui-primary-color); color: #ffffff; border-color: var(--ui-primary-color); }
+.ui-btn-primary:hover:not(:disabled) { background-color: var(--ui-primary-hover); border-color: var(--ui-primary-hover); }
+.ui-btn-secondary { background-color: var(--ui-bg-muted); color: var(--ui-text-primary); border-color: var(--ui-border-color); }
+.ui-btn-secondary:hover:not(:disabled) { background-color: var(--ui-border-color); }
+.ui-btn-sm { font-size: 12px; padding: 5px 10px; border-radius: 4px; }
+.ui-btn-md { font-size: 13px; padding: 8px 16px; border-radius: 6px; }
+.ui-btn-lg { font-size: 15px; padding: 11px 22px; border-radius: 8px; }
+
+/* KPI Metric Cards */
+.ui-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.ui-kpi-card {
+  background: var(--ui-bg-surface);
+  border: 1px solid var(--ui-border-color);
+  border-radius: 8px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  transition: all 0.2s ease;
+}
+
+.ui-kpi-card:hover {
+  border-color: var(--ui-primary-color);
+  transform: translateY(-2px);
+}
+
+.ui-kpi-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.ui-kpi-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ui-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.ui-kpi-icon {
+  width: 18px;
+  height: 18px;
+  color: var(--ui-primary-color);
+}
+
+.ui-kpi-value {
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--ui-text-primary);
+  letter-spacing: -0.5px;
+  font-family: var(--ui-font-family);
+}
+
+/* Segmented Controls */
+.ui-segmented-control {
+  display: flex;
+  background: var(--ui-bg-muted);
+  padding: 4px;
+  border-radius: 8px;
+  border: 1px solid var(--ui-border-color);
+}
+
+.ui-segment {
+  flex: 1;
+  text-align: center;
+  padding: 6px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 13px;
+  color: var(--ui-text-secondary);
+  transition: all 0.15s ease;
+}
+
+.ui-segment.active,
+.ui-segment[data-state="active"] {
+  background: var(--ui-primary-color, #6366f1);
+  color: #ffffff;
+  box-shadow: 0 2px 8px rgba(99, 102, 241, 0.25);
+}

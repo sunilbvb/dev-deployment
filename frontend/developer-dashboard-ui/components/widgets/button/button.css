@@ -1,0 +1,171 @@
+/* ==========================================================================
+   UI Component Library — Button Component
+   Prefix: .ui-button
+   ========================================================================== */
+
+.ui-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.2;
+  padding: 8px 16px;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  cursor: pointer;
+  user-select: none;
+  text-decoration: none;
+  white-space: nowrap;
+  transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+  outline: none;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+}
+
+.ui-button:focus-visible {
+  box-shadow: 0 0 0 2px var(--ui-bg-surface, #0f172a), 0 0 0 4px var(--ui-primary-color, #3b82f6);
+}
+
+/* --- Sizes --- */
+.ui-button[data-size="sm"] {
+  font-size: 12px;
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-weight: 600;
+}
+
+.ui-button[data-size="md"] {
+  font-size: 13px;
+  padding: 8px 16px;
+  border-radius: 6px;
+}
+
+.ui-button[data-size="lg"] {
+  font-size: 15px;
+  padding: 11px 22px;
+  border-radius: 8px;
+}
+
+/* --- Variants --- */
+.ui-button,
+.ui-button[data-variant="primary"] {
+  background-color: var(--ui-primary-color, #3b82f6);
+  color: #ffffff;
+  border-color: var(--ui-primary-color, #3b82f6);
+}
+
+.ui-button[data-variant="primary"]:hover:not(:disabled):not([data-variant="disabled"]) {
+  background-color: #2563eb;
+  border-color: #2563eb;
+  color: #ffffff !important;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
+}
+
+.ui-button[data-variant="secondary"] {
+  background-color: #1e293b;
+  color: #f8fafc;
+  border-color: #334155;
+}
+
+.ui-button[data-variant="secondary"]:hover:not(:disabled):not([data-variant="disabled"]) {
+  background-color: #334155;
+  color: #ffffff !important;
+  border-color: #475569;
+  transform: translateY(-1px);
+}
+
+.ui-button[data-variant="tertiary"] {
+  background-color: #0f172a;
+  color: #cbd5e1;
+  border-color: #334155;
+}
+
+.ui-button[data-variant="tertiary"]:hover:not(:disabled):not([data-variant="disabled"]) {
+  background-color: #1e293b;
+  color: #ffffff !important;
+  border-color: #475569;
+  transform: translateY(-1px);
+}
+
+.ui-button[data-variant="success"] {
+  background-color: #10b981;
+  color: #ffffff;
+  border-color: #10b981;
+}
+
+.ui-button[data-variant="success"]:hover:not(:disabled):not([data-variant="disabled"]) {
+  background-color: #059669;
+  border-color: #059669;
+  color: #ffffff !important;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
+}
+
+.ui-button[data-variant="warning"] {
+  background-color: #f59e0b;
+  color: #0f172a;
+  border-color: #f59e0b;
+}
+
+.ui-button[data-variant="warning"]:hover:not(:disabled):not([data-variant="disabled"]) {
+  background-color: #d97706;
+  border-color: #d97706;
+  color: #ffffff !important;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(245, 158, 11, 0.3);
+}
+
+.ui-button[data-variant="danger"] {
+  background-color: #ef4444;
+  color: #ffffff;
+  border-color: #ef4444;
+}
+
+.ui-button[data-variant="danger"]:hover:not(:disabled):not([data-variant="disabled"]) {
+  background-color: #dc2626;
+  border-color: #dc2626;
+  color: #ffffff !important;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(239, 68, 68, 0.3);
+}
+
+.ui-button[data-variant="outline"] {
+  background-color: rgba(30, 41, 59, 0.6);
+  color: #e2e8f0;
+  border-color: #334155;
+}
+
+.ui-button[data-variant="outline"]:hover:not(:disabled):not([data-variant="disabled"]) {
+  background-color: #334155;
+  color: #ffffff !important;
+  border-color: #64748b;
+  transform: translateY(-1px);
+}
+
+.ui-button[data-variant="ghost"] {
+  background-color: transparent;
+  color: #cbd5e1;
+  border-color: transparent;
+  box-shadow: none;
+}
+
+.ui-button[data-variant="ghost"]:hover:not(:disabled):not([data-variant="disabled"]) {
+  background-color: rgba(51, 65, 85, 0.5);
+  color: #ffffff !important;
+}
+
+/* --- Disabled State --- */
+.ui-button:disabled,
+.ui-button[data-variant="disabled"] {
+  background-color: #1e293b !important;
+  color: #64748b !important;
+  border-color: #334155 !important;
+  cursor: not-allowed !important;
+  transform: none !important;
+  box-shadow: none !important;
+  opacity: 0.5;
+}
+

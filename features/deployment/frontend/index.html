@@ -1,0 +1,414 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Deployment Console</title>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="../../../css/core.css">
+    <!-- Vendored copy of developer-dashboard-ui's dist/ui.css - avoids a hard dependency on that sibling repo -->
+    <link rel="stylesheet" href="../../../css/developer-dashboard-ui-kit.css">
+    <link rel="stylesheet" href="styles.css">
+    <script>
+        (function() {
+            const theme = localStorage.getItem('app_theme') || 'dark';
+            document.documentElement.setAttribute('data-theme', theme);
+            window.addEventListener('message', function(e) {
+                if (e.data && (e.data.type === 'THEME_CHANGE' || e.data.type === 'DEPLOYMENT_THEME_CHANGE')) {
+                    document.documentElement.setAttribute('data-theme', e.data.theme);
+                    if (document.body) document.body.setAttribute('data-theme', e.data.theme);
+                }
+            });
+        })();
+    </script>
+</head>
+<body>
+<main class="ui-page-shell deployment-shell">
+    <header class="ui-page-header">
+        <span class="ui-page-eyebrow" id="workspaceLabel">WORKSPACE</span>
+        <div class="ui-page-title-row">
+            <h1 class="ui-page-title">Deployment Console</h1>
+            <div class="ui-page-actions">
+                <button id="deployAllBtn" class="ui-button" data-variant="secondary" data-size="sm" type="button" title="Deploy All Apps">
+                    <i data-lucide="layers"></i>
+                    <span>Deploy All Apps</span>
+                </button>
+                <button id="openSetupBtn" class="ui-button" data-variant="secondary" data-size="sm" type="button" title="Deployment Setup">
+                    <i data-lucide="settings-2"></i>
+                    <span>Configure</span>
+                </button>
+            </div>
+        </div>
+        <p class="ui-page-subtitle">Select target apps, environments, and trigger automated build pipelines.</p>
+    </header>
+
+    <section class="workspace-grid">
+        <aside class="ui-panel app-panel">
+            <div class="ui-card-header">
+                <h3 class="ui-card-title">Select App</h3>
+            </div>
+            <div class="ui-card-body">
+                <div id="appGrid" class="ui-app-grid"></div>
+            </div>
+        </aside>
+
+        <section class="ui-panel command-panel">
+            <div class="ui-card-header">
+                <h3 class="ui-card-title">Select Deployment Command</h3>
+            </div>
+            <div class="ui-card-body">
+
+            <div class="filter-row">
+                <div class="ui-segmented-control" id="envTabs" aria-label="Environment">
+                    <button class="ui-segment active" type="button" data-env="dev">Dev</button>
+                    <button class="ui-segment" type="button" data-env="qa">QA</button>
+                    <button class="ui-segment" type="button" data-env="prod">Prod</button>
+                </div>
+                <div class="selected-app-summary" style="display: none;">
+                    <span>Selected</span>
+                    <strong id="selectedAppName">None</strong>
+                </div>
+            </div>
+
+            <div id="commandGrid">
+                <div class="empty-state">Select an app to load deployment commands.</div>
+            </div>
+
+            <div id="executionPanel" class="execution-panel hidden">
+                <div class="execution-header">
+                    <div>
+                        <p class="eyebrow">Ready to Execute</p>
+                        <h3 id="selectedCommandTitle">No command selected</h3>
+                    </div>
+                    <div class="timer" id="executionTimer">00:00</div>
+                </div>
+                <div id="iosCertBanner" class="cert-expiry-banner hidden"></div>
+                <pre id="selectedCommandPreview"></pre>
+                <div class="action-row">
+                    <button id="runButton" class="ui-button" data-variant="primary" type="button" disabled>
+                        <i data-lucide="play"></i>
+                        <span>Run</span>
+                    </button>
+                    <button id="stopJobBtn" class="ui-button" data-variant="danger" type="button" disabled>
+                        <i data-lucide="square"></i>
+                        <span>Stop</span>
+                    </button>
+                </div>
+            </div>
+            </div>
+        </section>
+    </section>
+
+    <section id="batchProgressPanel" class="ui-card batch-progress-panel hidden">
+        <div class="ui-card-header">
+            <div>
+                <p class="eyebrow">Deploy All Apps</p>
+                <h2 id="batchSummaryLine">Running batch...</h2>
+            </div>
+            <button id="batchStopBtn" class="ui-button" data-variant="danger" type="button">
+                <i data-lucide="square"></i>
+                <span>Stop Batch</span>
+            </button>
+        </div>
+        <div class="ui-card-body">
+            <div id="batchPillRow" class="batch-pill-row"></div>
+        </div>
+    </section>
+
+    <section class="ui-card terminal-panel">
+        <div class="ui-card-header terminal-header">
+            <div>
+                <p class="eyebrow">Live Terminal</p>
+                <h2>Execution Output</h2>
+            </div>
+        </div>
+        <div class="ui-card-body">
+            <div class="filter-row" style="margin-bottom: 16px;">
+                <div class="ui-segmented-control" id="outputTabs" aria-label="Output view">
+                    <button class="ui-segment active" type="button" data-view="live">Live Terminal</button>
+                    <button class="ui-segment" type="button" data-view="history">History</button>
+                </div>
+                <button id="clearTerminalBtn" class="ui-button" data-variant="ghost" type="button" title="Clear output">
+                    <i data-lucide="trash-2"></i>
+                </button>
+                <button id="historyRefreshBtn" class="ui-button hidden" data-variant="ghost" data-size="sm" type="button" title="Refresh history">
+                    <i data-lucide="refresh-cw"></i>
+                </button>
+            </div>
+
+            <div id="terminalView">
+                <div id="terminalOutput" class="terminal-output">
+                    <div class="terminal-line muted">Deployment logs will appear here.</div>
+                </div>
+            </div>
+
+            <div id="historyView" class="hidden">
+                <div class="filter-row" style="margin-bottom: 12px;">
+                    <select id="historyAppFilter" class="ui-input" style="max-width:160px;">
+                        <option value="">All apps</option>
+                    </select>
+                    <select id="historyFlavorFilter" class="ui-input" style="max-width:140px;">
+                        <option value="">All flavors</option>
+                        <option value="dev">Dev</option>
+                        <option value="qa">QA</option>
+                        <option value="prod">Prod</option>
+                    </select>
+                    <select id="historyStatusFilter" class="ui-input" style="max-width:140px;">
+                        <option value="">All statuses</option>
+                        <option value="success">Success</option>
+                        <option value="error">Error</option>
+                        <option value="stopped">Stopped</option>
+                    </select>
+                </div>
+                <div id="historyOutput" class="terminal-output">
+                    <div class="terminal-line muted">No deployment history yet.</div>
+                </div>
+            </div>
+        </div>
+    </section>
+</main>
+
+<div id="toast" class="toast hidden"></div>
+
+<!-- ═══════════════════════════ PROD DEPLOY CONFIRM MODAL ═══════════════════════════ -->
+<div id="prodConfirmOverlay" class="ui-modal-backdrop" role="dialog" aria-modal="true" aria-label="Confirm Production Deploy">
+    <div class="ui-modal" data-size="sm" style="max-width: 480px;">
+        <div class="ui-modal-header">
+            <div>
+                <h3 class="ui-modal-title" style="display:flex; align-items:center; gap:8px;">
+                    <i data-lucide="alert-triangle" style="color:#ef4444;"></i>
+                    <span>Confirm Production Deploy</span>
+                </h3>
+            </div>
+            <button id="closeProdConfirmBtn" class="ui-modal-close" type="button">&times;</button>
+        </div>
+        <div class="ui-modal-body">
+            <p class="prod-confirm-lead">
+                You're about to run a <strong>PROD</strong> deploy for
+                <strong id="prodConfirmAppName">-</strong>. This can publish a real
+                build to the App Store / Google Play.
+            </p>
+            <pre id="prodConfirmCommandPreview" class="prod-confirm-command"></pre>
+        </div>
+        <div class="ui-modal-footer" style="display:flex; gap:8px; justify-content:flex-end; padding:16px;">
+            <button id="cancelProdConfirmBtn" type="button" class="ui-button" data-variant="ghost">
+                <span>Cancel</span>
+            </button>
+            <button id="confirmProdDeployBtn" type="button" class="ui-button" data-variant="danger">
+                <i data-lucide="rocket"></i>
+                <span>Yes, Deploy to Production</span>
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- ═══════════════════════════ DEPLOY ALL APPS MODAL ═══════════════════════════ -->
+<div id="batchDeployOverlay" class="ui-modal-backdrop" role="dialog" aria-modal="true" aria-label="Deploy All Apps">
+    <div class="ui-modal" data-size="md" style="max-width: 640px;">
+        <div class="ui-modal-header">
+            <div>
+                <h3 class="ui-modal-title">Deploy All Apps</h3>
+                <p class="modal-subtitle" style="font-size: 0.8rem; color: var(--ui-muted, #9aa6b8); margin: 0;">Runs sequentially, one app at a time, for the currently selected environment.</p>
+            </div>
+            <button id="closeBatchModalBtn" class="ui-modal-close" type="button">&times;</button>
+        </div>
+        <div class="ui-modal-body">
+            <div class="ui-field" style="margin-bottom: 16px;">
+                <label class="ui-label">Command</label>
+                <select id="batchTemplateSelect" class="ui-input">
+                    <option value="auto">Auto (Combined Deploy if configured, else single platform)</option>
+                    <option value="deploy_both">Build & Deploy Both (iOS + Android)</option>
+                    <option value="deploy_aab">Build & Upload AAB</option>
+                    <option value="deploy_ipa">Build & Upload IPA</option>
+                    <option value="upload_aab">Upload AAB only</option>
+                    <option value="upload_ipa">Upload IPA only</option>
+                </select>
+            </div>
+            <div id="batchPlanList" class="batch-plan-list"></div>
+        </div>
+        <div class="ui-modal-footer" style="display:flex; gap:8px; justify-content:flex-end; padding:16px;">
+            <button id="batchCancelBtn" type="button" class="ui-button" data-variant="ghost">
+                <span>Cancel</span>
+            </button>
+            <button id="batchStartBtn" type="button" class="ui-button" data-variant="primary">
+                <i data-lucide="play"></i>
+                <span>Start</span>
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- ═══════════════════════════ DEPLOYMENT SETUP MODAL ═══════════════════════════ -->
+<div id="setupOverlay" class="ui-modal-backdrop" role="dialog" aria-modal="true" aria-label="Deployment Setup">
+    <div class="ui-modal" data-size="lg" style="height: 90vh; max-width: 900px; display: flex; flex-direction: column;">
+        <div class="ui-modal-header">
+            <div>
+                <h3 class="ui-modal-title">Deployment Setup</h3>
+                <p class="modal-subtitle" style="font-size: 0.8rem; color: var(--ui-muted, #9aa6b8); margin: 0;">Configure credentials and settings per app. Commands are generated from templates.</p>
+            </div>
+            <button id="closeSetupBtn" class="ui-modal-close" type="button">&times;</button>
+        </div>
+
+        <div class="ui-modal-body" style="padding: 0; display: flex; flex: 1; overflow: hidden;">
+            <!-- App selector sidebar -->
+            <aside class="ui-sidebar" id="setupAppNav" style="height: 100%; width: 220px; border-right: 1px solid var(--ui-border-color); border-radius: 0; background: transparent; padding: 16px 8px; flex-shrink: 0; display: flex; flex-direction: column; justify-content: space-between;">
+                <div class="ui-sidebar-nav" style="gap: 4px; width: 100%;">
+                    <div class="ui-sidebar-group-title" style="font-size: 0.7rem; font-weight: 700; text-transform: uppercase; color: var(--ui-text-muted); margin-bottom: 8px; padding-left: 8px;">Apps</div>
+                    <div id="setupAppList" style="display: flex; flex-direction: column; gap: 4px;"></div>
+                </div>
+                <button id="addCustomAppBtn" type="button" class="ui-button" data-variant="secondary" style="margin-top: 12px; width: 100%;">
+                    <i data-lucide="plus"></i>
+                    <span>Add Custom App</span>
+                </button>
+            </aside>
+
+            <!-- Config form -->
+            <div class="setup-form-area" style="padding: 24px; overflow-y: auto;">
+                <div id="setupNoApp" class="setup-placeholder" style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; color: var(--ui-text-muted);">
+                    <i data-lucide="layers" style="width: 48px; height: 48px; opacity: 0.5; margin-bottom: 12px;"></i>
+                    <p>Select an app from the left to configure.</p>
+                </div>
+
+                <!-- Add App Form -->
+                <form id="addAppForm" class="setup-form" style="display: none;" autocomplete="off">
+                    <h3 class="ui-title" data-level="3">Add Custom App</h3>
+                    <fieldset class="setup-fieldset" style="border: 1px solid var(--ui-border-color); padding: 16px; border-radius: 8px; margin-bottom: 16px;">
+                        <legend style="padding: 0 8px; font-weight: bold; color: var(--ui-text-muted);">App Metadata</legend>
+                        <div class="ui-field" style="margin-bottom: 12px;">
+                            <label class="ui-label">App ID (e.g. mobile_app, my_service)</label>
+                            <input id="newAppId" class="ui-input" type="text" placeholder="my_app" required>
+                        </div>
+                        <div class="ui-field" style="margin-bottom: 12px;">
+                            <label class="ui-label">App Name (display title)</label>
+                            <input id="newAppName" class="ui-input" type="text" placeholder="My Mobile App" required>
+                        </div>
+                        <div class="ui-field" style="margin-bottom: 12px;">
+                            <label class="ui-label">Version (optional)</label>
+                            <input id="newAppVersion" class="ui-input" type="text" placeholder="1.0.0 (1)">
+                        </div>
+                    </fieldset>
+                    <div class="setup-actions" style="display: flex; gap: 8px;">
+                        <button id="saveNewAppBtn" type="button" class="ui-button" data-variant="primary">
+                            <i data-lucide="save"></i>
+                            <span>Register App</span>
+                        </button>
+                        <button id="cancelAddAppBtn" type="button" class="ui-button" data-variant="ghost">
+                            <span>Cancel</span>
+                        </button>
+                    </div>
+                </form>
+
+                <!-- Configuration Form -->
+                <form id="setupForm" class="setup-form" style="display: none;" autocomplete="off">
+                    <h3 id="setupAppTitle" class="ui-title" data-level="3">App Name</h3>
+
+                    <fieldset class="setup-fieldset" style="border: 1px solid var(--ui-border-color); padding: 16px; border-radius: 8px; margin-bottom: 16px;">
+                        <legend style="padding: 0 8px; font-weight: bold; color: var(--ui-text-muted);">Flavor Configuration</legend>
+                        <div class="ui-field" style="margin-bottom: 12px;">
+                            <label class="ui-label">Flavors (comma-separated list)</label>
+                            <input id="cfgFlavors" class="ui-input" type="text" placeholder="dev, qa, prod">
+                            <span class="ui-help-text" style="display: block; font-size: 0.72rem; color: var(--ui-text-muted); margin-top: 4px;">Dynamic tabs and bundle/package fields will regenerate automatically for these flavors.</span>
+                        </div>
+                    </fieldset>
+
+                    <fieldset class="setup-fieldset" style="border: 1px solid var(--ui-border-color); padding: 16px; border-radius: 8px; margin-bottom: 16px;">
+                        <legend style="padding: 0 8px; font-weight: bold; color: var(--ui-text-muted);">Release Automation</legend>
+                        <div class="ui-field" style="margin-bottom: 12px;">
+                            <label class="ui-label" style="display: flex; align-items: center; gap: 8px;">
+                                <input id="cfgAutoReleaseEnabled" type="checkbox">
+                                <span>Auto-run Release after successful Deploy/Upload</span>
+                            </label>
+                            <span class="ui-help-text" style="display: block; font-size: 0.72rem; color: var(--ui-text-muted); margin-top: 4px;">When a Deploy/Upload command for this app succeeds, automatically run the Release action below for the same flavor - no manual click needed.</span>
+                        </div>
+                        <div class="ui-field" style="margin-bottom: 12px;">
+                            <label class="ui-label">Release Action to run</label>
+                            <select id="cfgAutoReleaseAction" class="ui-input"></select>
+                        </div>
+                        <div class="ui-field" style="margin-bottom: 12px;">
+                            <label class="ui-label">Flavors that trigger it (comma-separated)</label>
+                            <input id="cfgAutoReleaseFlavors" class="ui-input" type="text" placeholder="prod">
+                        </div>
+                    </fieldset>
+
+                    <fieldset class="setup-fieldset" style="border: 1px solid var(--ui-border-color); padding: 16px; border-radius: 8px; margin-bottom: 16px;">
+                        <legend style="padding: 0 8px; font-weight: bold; color: var(--ui-text-muted);">App Identifiers (Bundle IDs &amp; Package Names)</legend>
+                        <div class="setup-sub-section">
+                            <span class="sub-legend" style="font-weight: bold; color: var(--ui-text-primary);">iOS Bundle IDs</span>
+                            <div id="dynamicBundleIdsContainer" class="dynamic-inputs-grid"></div>
+                        </div>
+                        <div class="setup-sub-section" style="margin-top: 16px;">
+                            <span class="sub-legend" style="font-weight: bold; color: var(--ui-text-primary);">Android Package Names (Application IDs)</span>
+                            <div id="dynamicPackageNamesContainer" class="dynamic-inputs-grid"></div>
+                        </div>
+                    </fieldset>
+
+                    <fieldset class="setup-fieldset" style="border: 1px solid var(--ui-border-color); padding: 16px; border-radius: 8px; margin-bottom: 16px;">
+                        <legend style="padding: 0 8px; font-weight: bold; color: var(--ui-text-muted);">iOS Certificates &amp; Credentials</legend>
+                        <div class="ui-field" style="margin-bottom: 12px;">
+                            <label class="ui-label">Apple ID (email)</label>
+                            <input id="cfgAppleId" class="ui-input" type="text" placeholder="developer@company.com">
+                            <span class="ui-help-text" style="display: block; font-size: 0.72rem; color: var(--ui-text-muted); margin-top: 4px;">Your Apple developer account email, used to authenticate with App Store Connect for TestFlight upload tasks.</span>
+                        </div>
+                        <div class="ui-field" style="margin-bottom: 12px;">
+                            <label class="ui-label">APNs p8 Key Path</label>
+                            <input id="cfgP8Path" class="ui-input" type="text" placeholder="private_keys/APNs Keys/AuthKey.p8">
+                            <span class="ui-help-text" style="display: block; font-size: 0.72rem; color: var(--ui-text-muted); margin-top: 4px;">Apple Push Notification service token signing key (.p8) relative path to authorize notifications on iOS.</span>
+                        </div>
+                        <div class="ui-field" style="margin-bottom: 0;">
+                            <label class="ui-label" style="display:flex; align-items:center; justify-content:space-between;">
+                                <span>Certificate / Provisioning Profile Status (Prod)</span>
+                                <button id="iosCertRecheckBtn" type="button" class="ui-button" data-variant="ghost" data-size="sm">
+                                    <i data-lucide="refresh-cw"></i>
+                                    <span>Re-check</span>
+                                </button>
+                            </label>
+                            <div id="iosCertStatus" class="cert-status-box" data-status="unknown">Select an app to check.</div>
+                        </div>
+                    </fieldset>
+
+                    <fieldset class="setup-fieldset" style="border: 1px solid var(--ui-border-color); padding: 16px; border-radius: 8px; margin-bottom: 16px;">
+                        <legend style="padding: 0 8px; font-weight: bold; color: var(--ui-text-muted);">Android Certificates &amp; Credentials</legend>
+                        <div class="ui-field" style="margin-bottom: 12px;">
+                            <label class="ui-label">Google Play Service Account JSON Path</label>
+                            <input id="cfgPlayService" class="ui-input" type="text" placeholder="private_keys/play-service-account.json">
+                            <span class="ui-help-text" style="display: block; font-size: 0.72rem; color: var(--ui-text-muted); margin-top: 4px;">Google Developer API Service Account credentials key in JSON format, required to upload Android App Bundles (AAB).</span>
+                        </div>
+                        <div class="setup-sub-section">
+                            <span class="sub-legend" style="font-weight: bold; color: var(--ui-text-primary);">google-services.json Client Config Paths</span>
+                            <span class="ui-help-text" style="display: block; font-size: 0.72rem; color: var(--ui-text-muted); margin-bottom: 8px;">Firebase Client config files required for each respective Android environment/flavor.</span>
+                            <div id="dynamicGoogleServicesContainer" class="dynamic-inputs-grid"></div>
+                        </div>
+                    </fieldset>
+
+                    <div class="setup-actions" style="display: flex; gap: 8px; flex-wrap: wrap; margin-top: 24px;">
+                        <button id="autoScanBtn" type="button" class="ui-button" data-variant="warning">
+                            <i data-lucide="scan-search"></i>
+                            <span>Auto-Scan Workspace</span>
+                        </button>
+                        <button id="saveConfigBtn" type="button" class="ui-button" data-variant="primary">
+                            <i data-lucide="save"></i>
+                            <span>Save Config</span>
+                        </button>
+                        <button id="injectMelosBtn" type="button" class="ui-button" data-variant="success">
+                            <i data-lucide="code-2"></i>
+                            <span>Generate &amp; Inject into pubspec.yaml</span>
+                        </button>
+                        <button id="regenerateBtn" type="button" class="ui-button" data-variant="secondary">
+                            <i data-lucide="refresh-cw"></i>
+                            <span>Regenerate Commands</span>
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="../../../js/core_utils.js"></script>
+<script src="app.js"></script>
+<script src="setup.js"></script>
+</body>
+</html>

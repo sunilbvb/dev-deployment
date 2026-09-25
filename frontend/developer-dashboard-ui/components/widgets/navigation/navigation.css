@@ -1,0 +1,76 @@
+/* ==========================================================================
+   UI Component Library — Navigation Tabs and Breadcrumbs
+   Prefix: .ui-tabs, .ui-tab, .ui-breadcrumbs, .ui-breadcrumb-link
+   ========================================================================== */
+
+/* --- Pill Tabs --- */
+.ui-tabs {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background-color: var(--ui-secondary-bg);
+  border-radius: 8px;
+  padding: 4px;
+  width: fit-content;
+  box-sizing: border-box;
+}
+
+.ui-tab {
+  font-family: var(--ui-font-family);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ui-text-secondary);
+  padding: 6px 16px;
+  border-radius: 6px;
+  cursor: pointer;
+  user-select: none;
+  border: none;
+  background: transparent;
+  transition: all 0.15s ease;
+  display: inline-flex;
+  align-items: center;
+}
+
+.ui-tab:hover {
+  color: var(--ui-text-primary);
+}
+
+.ui-tab.ui-active {
+  background-color: var(--ui-bg-surface);
+  color: var(--ui-text-primary);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+
+/* --- Breadcrumbs --- */
+.ui-breadcrumbs {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  font-family: var(--ui-font-family);
+  font-size: 13px;
+  line-height: 1;
+  box-sizing: border-box;
+}
+
+.ui-breadcrumb-link {
+  color: var(--ui-primary-color);
+  text-decoration: none;
+  font-weight: 500;
+  transition: color 0.15s ease;
+}
+
+.ui-breadcrumb-link:hover {
+  color: var(--ui-primary-hover);
+  text-decoration: underline;
+}
+
+.ui-breadcrumb-separator {
+  color: var(--ui-text-muted);
+  user-select: none;
+}
+
+.ui-breadcrumb-current {
+  color: var(--ui-text-secondary);
+  font-weight: 400;
+}

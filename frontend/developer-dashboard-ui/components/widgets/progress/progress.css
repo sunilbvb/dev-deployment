@@ -1,0 +1,50 @@
+/* ==========================================================================
+   UI Component Library — Progress Bar Component
+   Prefix: .ui-progress, .ui-progress-container, .ui-progress-bar, .ui-progress-label
+   ========================================================================== */
+
+.ui-progress-container {
+  font-family: var(--ui-font-family);
+  font-size: 13px;
+  color: var(--ui-text-primary);
+  margin-bottom: 16px;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.ui-progress-label {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 6px;
+  font-weight: 500;
+}
+
+.ui-progress {
+  height: 8px;
+  background-color: var(--ui-secondary-bg);
+  border-radius: 99px;
+  overflow: hidden;
+  width: 100%;
+  border: 1px solid var(--ui-border-color);
+  box-sizing: border-box;
+}
+
+.ui-progress-bar {
+  height: 100%;
+  background-color: var(--ui-primary-color);
+  border-radius: 99px;
+  transition: width 0.3s ease;
+}
+
+/* --- Variants --- */
+.ui-progress-bar[data-variant="success"] {
+  background-color: var(--ui-success-color);
+}
+
+.ui-progress-bar[data-variant="warning"] {
+  background-color: var(--ui-warning-color);
+}
+
+.ui-progress-bar[data-variant="danger"] {
+  background-color: var(--ui-danger-color);
+}

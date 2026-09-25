@@ -1,0 +1,96 @@
+/* ==========================================================================
+   UI Component Library — Alert Component
+   Prefix: .ui-alert
+   ========================================================================== */
+
+.ui-alert {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px 16px;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  font-family: var(--ui-font-family);
+  font-size: 13px;
+  line-height: 1.5;
+  margin-bottom: 16px;
+}
+
+.ui-alert-content {
+  flex: 1;
+}
+
+.ui-alert-title {
+  font-weight: 600;
+  margin: 0 0 4px 0;
+  color: inherit;
+}
+
+.ui-alert-body {
+  margin: 0;
+  color: inherit;
+  opacity: 0.9;
+}
+
+.ui-alert-icon {
+  font-size: 16px;
+  line-height: 1;
+  user-select: none;
+}
+
+/* --- Variants --- */
+
+/* Info Variant (Default) */
+.ui-alert,
+.ui-alert[data-variant="info"] {
+  background-color: rgba(99, 102, 241, 0.08);
+  border-color: rgba(99, 102, 241, 0.25);
+  color: #4f46e5;
+}
+
+/* Success Variant */
+.ui-alert[data-variant="success"] {
+  background-color: rgba(16, 185, 129, 0.08);
+  border-color: rgba(16, 185, 129, 0.25);
+  color: #059669;
+}
+
+/* Warning Variant */
+.ui-alert[data-variant="warning"] {
+  background-color: rgba(245, 158, 11, 0.08);
+  border-color: rgba(245, 158, 11, 0.25);
+  color: #b45309;
+}
+
+/* Danger Variant */
+.ui-alert[data-variant="danger"] {
+  background-color: rgba(239, 68, 68, 0.08);
+  border-color: rgba(239, 68, 68, 0.25);
+  color: #dc2626;
+}
+
+/* --- Dark Mode Overrides --- */
+[data-theme="dark"] .ui-alert,
+[data-theme="dark"] .ui-alert[data-variant="info"] {
+  background-color: rgba(99, 102, 241, 0.12);
+  border-color: rgba(99, 102, 241, 0.35);
+  color: #a5b4fc;
+}
+
+[data-theme="dark"] .ui-alert[data-variant="success"] {
+  background-color: rgba(16, 185, 129, 0.12);
+  border-color: rgba(16, 185, 129, 0.35);
+  color: #6ee7b7;
+}
+
+[data-theme="dark"] .ui-alert[data-variant="warning"] {
+  background-color: rgba(245, 158, 11, 0.12);
+  border-color: rgba(245, 158, 11, 0.35);
+  color: #fcd34d;
+}
+
+[data-theme="dark"] .ui-alert[data-variant="danger"] {
+  background-color: rgba(239, 68, 68, 0.12);
+  border-color: rgba(239, 68, 68, 0.35);
+  color: #fca5a5;
+}

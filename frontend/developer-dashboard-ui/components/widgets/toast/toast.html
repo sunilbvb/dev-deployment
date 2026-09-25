@@ -1,0 +1,20 @@
+<!-- Floating Toast Banner Example -->
+<div style="display: flex; flex-direction: column; gap: 12px; max-width: 360px;">
+  <div class="ui-toast" data-variant="success" style="animation: none;">
+    <span class="ui-toast-icon">✅</span>
+    <div class="ui-toast-content">
+      <div class="ui-toast-title">Sync Complete</div>
+      <div class="ui-toast-body">All test suites updated successfully.</div>
+    </div>
+    <button class="ui-toast-close">&times;</button>
+  </div>
+
+  <div class="ui-toast" data-variant="danger" style="animation: none;">
+    <span class="ui-toast-icon">🚨</span>
+    <div class="ui-toast-content">
+      <div class="ui-toast-title">Build Failed</div>
+      <div class="ui-toast-body">2 integration tests failed in pipeline.</div>
+    </div>
+    <button class="ui-toast-close">&times;</button>
+  </div>
+</div>

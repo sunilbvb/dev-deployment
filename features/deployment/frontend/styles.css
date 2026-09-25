@@ -1,0 +1,436 @@
+/* ==========================================================================
+   Deployment Console — Professional Styling
+   ========================================================================== */
+
+/* ── Base Reset & Typography overrides ─────────────────────────────────── */
+body {
+    background: transparent !important;
+    color: var(--ui-text-primary, #f8fafc);
+    font-family: var(--ui-font-family), sans-serif;
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+    min-height: 100vh !important;
+    padding: 0;
+    margin: 0;
+}
+
+/* ── Layout Shell ───────────────────────────────────────────────────────── */
+.deployment-shell {
+    width: 100%;
+    margin: 0;
+    padding: 24px 24px 100px 24px !important;
+    background: var(--ui-bg-surface, #0f172a);
+    border: 1px solid var(--ui-border-color, #334155);
+    border-radius: 16px;
+    box-sizing: border-box;
+}
+
+.topbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 16px;
+    margin-bottom: 24px;
+}
+
+.topbar h1 {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: var(--ui-text-primary, #f8fafc);
+    margin: 0;
+}
+
+.eyebrow {
+    font-size: 0.65rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--ui-text-muted, #64748b);
+    margin: 0 0 2px 0;
+}
+
+/* ── Workspace Grid Layout ─────────────────────────────────────────────── */
+.workspace-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    margin-bottom: 20px;
+}
+
+.ui-panel,
+.app-panel,
+.command-panel {
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+    border-radius: 0 !important;
+    padding: 0 !important;
+    margin-bottom: 24px;
+    box-sizing: border-box;
+}
+
+.ui-panel:hover,
+.app-panel:hover,
+.command-panel:hover {
+    transform: none !important;
+    border-color: transparent !important;
+    box-shadow: none !important;
+}
+
+.app-panel .ui-card-header,
+.command-panel .ui-card-header {
+    border-bottom: none !important;
+    padding: 0 0 16px 0 !important;
+    background: transparent !important;
+    justify-content: flex-start !important;
+}
+
+.app-panel .ui-card-body,
+.command-panel .ui-card-body {
+    padding: 0 !important;
+    background: transparent !important;
+}
+
+/* Ensure Card Titles look modern */
+.ui-card-title {
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: var(--ui-text-primary, #f8fafc);
+}
+
+.ui-card-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--ui-border-color, #334155);
+}
+
+.ui-card-body {
+    padding: 20px;
+}
+
+/* ── App Grid & Selection Cards ─────────────────────────────────────────── */
+/* .compact-app-grid / .compact-app-card are shared — defined once in
+   frontend/css/core.css. .ui-app-grid is kept as an alias for markup that still
+   uses the older class name. */
+.ui-app-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    gap: 12px;
+    width: 100%;
+}
+
+.ui-app-card[data-state="active"],
+.ui-app-card.active {
+    background: rgba(59, 130, 246, 0.1) !important;
+    border-color: #3b82f6 !important;
+}
+
+.ui-app-card .app-card-badge {
+    position: absolute;
+    top: -4px;
+    right: -4px;
+    width: 18px;
+    height: 18px;
+    background: #3b82f6;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    transform: scale(0.5);
+    transition: all 0.2s ease;
+    z-index: 2;
+}
+
+.ui-app-card.active .app-card-badge,
+.ui-app-card[data-state="active"] .app-card-badge {
+    opacity: 1;
+    transform: scale(1);
+}
+
+.ui-app-card .app-card-badge i,
+.ui-app-card .app-card-badge svg {
+    width: 10px;
+    height: 10px;
+    color: #ffffff;
+}
+
+/* Command cards now render as .compact-app-card (frontend/css/core.css) so they
+   match the same shape/color/hover as every other selectable card in the app.
+   They carry a title + description + badge (more content than a plain app
+   tile), so give them a wider minimum column than the default 180px. */
+.compact-app-grid--commands {
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+}
+
+.compact-app-card[data-locked="true"] {
+    opacity: 0.55;
+    border-style: dashed;
+}
+
+.compact-app-card[data-locked="true"]:hover {
+    transform: none;
+}
+.selected-app-summary {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.78rem;
+}
+
+.selected-app-summary strong {
+    color: var(--ui-text-primary, #f8fafc);
+    font-weight: 600;
+}
+
+/* ── Execution Panel ──────────────────────────────────────────────────── */
+.execution-panel {
+    margin-top: 20px;
+    padding-top: 20px;
+    border-top: 1px solid var(--ui-border-color, #334155);
+}
+
+.execution-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+}
+
+#selectedCommandPreview {
+    background: rgba(0, 0, 0, 0.2);
+    padding: 12px 16px;
+    border-radius: 6px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.78rem;
+    color: var(--ui-text-secondary, #cbd5e1);
+    white-space: pre-wrap;
+    word-break: break-all;
+    max-height: 120px;
+    overflow-y: auto;
+    margin-bottom: 16px;
+    border: 1px solid var(--ui-border-color, #334155);
+}
+
+.action-row {
+    display: flex;
+    gap: 8px;
+}
+
+/* ── Live Terminal Output ─────────────────────────────────────────────── */
+.terminal-panel {
+    margin-top: 20px;
+}
+
+.terminal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 20px;
+    border-bottom: 1px solid var(--ui-border-color, #334155);
+}
+
+.terminal-output {
+    height: 320px;
+    background: #000000;
+    border-radius: 0 0 8px 8px;
+    padding: 16px;
+    overflow-y: auto;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.78rem;
+    line-height: 1.6;
+}
+
+.terminal-line {
+    word-wrap: break-word;
+    white-space: pre-wrap;
+    margin-bottom: 2px;
+}
+
+.terminal-line.error { color: var(--ui-danger-color, #ef4444); }
+.terminal-line.success { color: var(--ui-success-color, #10b981); }
+.terminal-line.warning { color: var(--ui-warning-color, #f59e0b); }
+.terminal-line.info { color: var(--ui-primary-color, #6366f1); }
+.terminal-line.muted { color: var(--ui-text-muted, #64748b); }
+
+/* Setup Layout overrides */
+.setup-layout {
+    display: flex;
+    min-height: 480px;
+}
+
+.app-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+}
+
+.setup-form-area {
+    flex: 1;
+}
+
+.setup-fieldset {
+    border: 1px solid var(--ui-border-color, #334155);
+    border-radius: 8px;
+    padding: 16px;
+    margin-bottom: 16px;
+}
+
+.setup-fieldset legend {
+    font-size: 0.72rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--ui-text-muted, #64748b);
+    padding: 0 6px;
+}
+
+.dynamic-inputs-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 12px;
+    margin-top: 8px;
+}
+
+.not-configured-badge {
+    margin-top: 6px;
+}
+
+.hidden {
+    display: none !important;
+}
+
+/* ── Filter Row & Segmented Control Alignment ───────────────────────────── */
+.filter-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+    width: 100%;
+}
+
+.ui-segmented-control {
+    display: inline-flex !important;
+    width: max-content !important;
+}
+
+/* ── History Tab ──────────────────────────────────────────────────────── */
+.history-row {
+    padding: 6px 0;
+    border-bottom: 1px solid var(--ui-border-color, #334155);
+}
+.history-row:last-child { border-bottom: none; }
+
+.history-excerpt {
+    margin: 6px 0 0 0;
+    padding: 8px 10px;
+    background: rgba(255, 255, 255, 0.04);
+    border-radius: 4px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.72rem;
+    max-height: 140px;
+    overflow-y: auto;
+    white-space: pre-wrap;
+    color: var(--ui-text-secondary, #cbd5e1);
+}
+
+/* ── iOS Cert/Profile Expiry ──────────────────────────────────────────── */
+.cert-status-box {
+    margin-top: 6px;
+    padding: 10px 12px;
+    border-radius: 6px;
+    font-size: 0.78rem;
+    line-height: 1.5;
+    border: 1px solid var(--ui-border-color, #334155);
+    background: rgba(255, 255, 255, 0.03);
+    color: var(--ui-text-secondary, #cbd5e1);
+}
+.cert-status-box[data-status="ok"] { border-color: var(--ui-success-color, #10b981); }
+.cert-status-box[data-status="warning"] { border-color: var(--ui-warning-color, #f59e0b); color: var(--ui-warning-color, #f59e0b); }
+.cert-status-box[data-status="expired"] { border-color: var(--ui-danger-color, #ef4444); color: var(--ui-danger-color, #ef4444); }
+
+.cert-expiry-banner {
+    margin-bottom: 12px;
+    padding: 8px 12px;
+    border-radius: 6px;
+    font-size: 0.78rem;
+    font-weight: 600;
+    border: 1px solid var(--ui-warning-color, #f59e0b);
+    background: rgba(245, 158, 11, 0.1);
+    color: var(--ui-warning-color, #f59e0b);
+}
+.cert-expiry-banner[data-status="expired"] {
+    border-color: var(--ui-danger-color, #ef4444);
+    background: rgba(239, 68, 68, 0.1);
+    color: var(--ui-danger-color, #ef4444);
+}
+
+/* ── Prod Deploy Confirm Modal ────────────────────────────────────────── */
+.prod-confirm-lead {
+    margin: 0 0 12px 0;
+    font-size: 0.85rem;
+    line-height: 1.5;
+    color: var(--ui-text-primary, inherit);
+}
+.prod-confirm-command {
+    margin: 0;
+    padding: 10px 12px;
+    border-radius: 8px;
+    background: var(--ui-surface-muted, rgba(127,127,127,0.12));
+    border: 1px solid var(--ui-border-color, #334155);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.78rem;
+    white-space: pre-wrap;
+    word-break: break-all;
+}
+
+/* ── Deploy All Apps (batch) ──────────────────────────────────────────── */
+.batch-plan-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    max-height: 320px;
+    overflow-y: auto;
+}
+.batch-plan-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 10px;
+    border: 1px solid var(--ui-border-color, #334155);
+    border-radius: 6px;
+    font-size: 0.82rem;
+}
+.batch-progress-panel {
+    margin-top: 20px;
+}
+.batch-pill-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+.batch-pill {
+    padding: 6px 12px;
+    border-radius: 999px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    border: 1px solid var(--ui-border-color, #334155);
+    color: var(--ui-text-muted, #64748b);
+}
+.batch-pill[data-status="pending"] { opacity: 0.6; }
+.batch-pill[data-status="running"] {
+    border-color: var(--ui-primary-color, #6366f1);
+    color: var(--ui-primary-color, #6366f1);
+    animation: batch-pill-pulse 1.4s ease-in-out infinite;
+}
+.batch-pill[data-status="success"] { border-color: var(--ui-success-color, #10b981); color: var(--ui-success-color, #10b981); }
+.batch-pill[data-status="error"] { border-color: var(--ui-danger-color, #ef4444); color: var(--ui-danger-color, #ef4444); }
+.batch-pill[data-status="stopped"],
+.batch-pill[data-status="skipped"] { border-style: dashed; opacity: 0.6; }
+
+@keyframes batch-pill-pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+}

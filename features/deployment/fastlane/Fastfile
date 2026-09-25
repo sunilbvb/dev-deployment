@@ -1,0 +1,71 @@
+default_platform(:ios)
+
+platform :android do
+  desc 'Upload AAB to Google Play Store'
+  lane :upload_android do |options|
+    aab_path = ENV['ANDROID_AAB_PATH']
+    package_name = ENV['ANDROID_PACKAGE_NAME']
+    json_key_input = ENV['SERVICE_ACCOUNT_JSON']
+    track = options[:track] || 'internal'
+    release_status = options[:release_status] || 'draft'
+
+    UI.user_error!('ANDROID_AAB_PATH is missing') if aab_path.to_s.empty?
+    UI.user_error!('ANDROID_PACKAGE_NAME is missing') if package_name.to_s.empty?
+    UI.user_error!('SERVICE_ACCOUNT_JSON is missing') if json_key_input.to_s.empty?
+
+    json_key = nil
+    json_key_data = nil
+
+    if File.exist?(json_key_input)
+      json_key = json_key_input
+    else
+      json_key_data = json_key_input
+    end
+
+    upload_to_play_store(
+      package_name: package_name,
+      track: track,
+      aab: aab_path,
+      json_key: json_key,
+      json_key_data: json_key_data,
+      skip_upload_metadata: true,
+      skip_upload_images: true,
+      skip_upload_screenshots: true,
+      release_status: release_status
+    )
+  end
+end
+
+platform :ios do
+  desc 'Upload IPA to TestFlight'
+  lane :testflight_build do
+    ipa_path = ENV['IOS_IPA_PATH']
+    key_id = ENV['APPLE_API_KEY']
+    issuer_id = ENV['APPLE_API_ISSUER']
+    workspace_root = ENV['MELOS_ROOT_PATH'] || Dir.pwd
+    default_key_path = File.join(workspace_root, 'private_keys', "AuthKey_#{key_id}.p8")
+    key_path = ENV['APPLE_API_KEY_PATH'] || default_key_path
+
+    UI.user_error!('IOS_IPA_PATH is missing') if ipa_path.to_s.empty?
+    UI.user_error!('APPLE_API_KEY is missing') if key_id.to_s.empty?
+    UI.user_error!('APPLE_API_ISSUER is missing') if issuer_id.to_s.empty?
+    UI.user_error!("APPLE_API_KEY file not found at #{key_path}") unless File.exist?(key_path)
+
+    key_content = File.read(key_path)
+    key_content_base64 = Base64.strict_encode64(key_content)
+
+    api_key = app_store_connect_api_key(
+      key_id: key_id,
+      issuer_id: issuer_id,
+      key_content: key_content_base64,
+      is_key_content_base64: true
+    )
+
+    upload_to_testflight(
+      api_key: api_key,
+      ipa: ipa_path,
+      skip_waiting_for_build_processing: true,
+      distribute_external: false
+    )
+  end
+end

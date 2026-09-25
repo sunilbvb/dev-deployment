@@ -1,0 +1,128 @@
+/* ==========================================================================
+   Developer Dashboard UI — Bundled Component Stylesheet
+   Version: 1.0.0
+   Namespace: .ui-*
+   ========================================================================== */
+
+/* --- Root Design Tokens --- */
+:root {
+  --ui-font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  
+  /* Primary Theme Colors */
+  --ui-primary-color: #6366f1;
+  --ui-primary-hover: #4f46e5;
+  --ui-primary-contrast: #ffffff;
+  --ui-primary-glow: rgba(99, 102, 241, 0.25);
+  
+  /* Secondary Theme Colors */
+  --ui-secondary-color: #f8fafc;
+  --ui-secondary-hover: #ffffff;
+  --ui-secondary-bg: #1e293b;
+  --ui-secondary-border: #334155;
+  --ui-secondary-contrast: #ffffff;
+  
+  /* Tertiary Theme Colors */
+  --ui-tertiary-color: #cbd5e1;
+  --ui-tertiary-hover: #ffffff;
+  --ui-tertiary-bg: #0f172a;
+  --ui-tertiary-border: #334155;
+  --ui-tertiary-contrast: #ffffff;
+
+  /* Semantic Colors */
+  --ui-success-color: #10b981;
+  --ui-success-hover: #059669;
+  --ui-success-contrast: #ffffff;
+  --ui-success-bg: rgba(16, 185, 129, 0.08);
+  --ui-success-border: rgba(16, 185, 129, 0.25);
+  --ui-success-glow: rgba(16, 185, 129, 0.25);
+
+  --ui-warning-color: #f59e0b;
+  --ui-warning-hover: #d97706;
+  --ui-warning-contrast: #ffffff;
+  --ui-warning-bg: rgba(245, 158, 11, 0.08);
+  --ui-warning-border: rgba(245, 158, 11, 0.25);
+  --ui-warning-glow: rgba(245, 158, 11, 0.25);
+
+  --ui-danger-color: #ef4444;
+  --ui-danger-hover: #dc2626;
+  --ui-danger-contrast: #ffffff;
+  --ui-danger-bg: rgba(239, 68, 68, 0.08);
+  --ui-danger-border: rgba(239, 68, 68, 0.25);
+  --ui-danger-glow: rgba(239, 68, 68, 0.25);
+
+  --ui-info-color: #6366f1;
+  --ui-info-hover: #4f46e5;
+  --ui-info-contrast: #ffffff;
+  --ui-info-bg: rgba(99, 102, 241, 0.08);
+  --ui-info-border: rgba(99, 102, 241, 0.25);
+
+  /* Layout / Surfaces — Default Dark Theme */
+  --ui-bg-canvas: #0b0f19;
+  --ui-bg-surface: #0f172a;
+  --ui-bg-muted: #1e293b;
+  --ui-border-color: #334155;
+  --ui-text-primary: #f8fafc;
+  --ui-text-secondary: #cbd5e1;
+  --ui-text-muted: #64748b;
+}
+
+:root[data-theme="dark"],
+[data-theme="dark"] {
+  /* Explicit Dark Mode Overrides */
+  --ui-secondary-bg: #1e293b;
+  --ui-secondary-color: #f8fafc;
+  --ui-secondary-border: #334155;
+  --ui-secondary-hover: #ffffff;
+  --ui-secondary-contrast: #ffffff;
+
+  --ui-tertiary-bg: #0f172a;
+  --ui-tertiary-color: #cbd5e1;
+  --ui-tertiary-border: #334155;
+  --ui-tertiary-hover: #ffffff;
+
+  --ui-success-bg: rgba(16, 185, 129, 0.12);
+  --ui-success-border: rgba(16, 185, 129, 0.35);
+  --ui-success-color: #6ee7b7;
+
+  --ui-warning-bg: rgba(245, 158, 11, 0.12);
+  --ui-warning-border: rgba(245, 158, 11, 0.35);
+  --ui-warning-color: #fcd34d;
+
+  --ui-danger-bg: rgba(239, 68, 68, 0.12);
+  --ui-danger-border: rgba(239, 68, 68, 0.35);
+  --ui-danger-color: #fca5a5;
+
+  --ui-info-bg: rgba(99, 102, 241, 0.12);
+  --ui-info-border: rgba(99, 102, 241, 0.35);
+  --ui-info-color: #a5b4fc;
+
+  --ui-bg-canvas: #0b0f19;
+  --ui-bg-surface: #0f172a;
+  --ui-bg-muted: #1e293b;
+  --ui-border-color: #334155;
+  --ui-text-primary: #f8fafc;
+  --ui-text-secondary: #cbd5e1;
+  --ui-text-muted: #64748b;
+}
+
+[data-theme="light"] {
+  /* Light Mode Overrides */
+  --ui-secondary-bg: #f1f5f9;
+  --ui-secondary-color: #334155;
+  --ui-secondary-border: #cbd5e1;
+  --ui-secondary-hover: #0f172a;
+  --ui-secondary-contrast: #0f172a;
+
+  --ui-tertiary-bg: #ffffff;
+  --ui-tertiary-color: #475569;
+  --ui-tertiary-border: #e2e8f0;
+  --ui-tertiary-hover: #1e293b;
+
+  --ui-bg-canvas: #f8fafc;
+  --ui-bg-surface: #ffffff;
+  --ui-bg-muted: #f1f5f9;
+  --ui-border-color: #cbd5e1;
+  --ui-text-primary: #0f172a;
+  --ui-text-secondary: #334155;
+  --ui-text-muted: #64748b;
+}

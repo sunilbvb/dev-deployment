@@ -1,0 +1,62 @@
+# Operating System Files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# IDE and Editor Files
+.idea/
+*.iml
+*.iws
+*.ipr
+.vscode/
+*.swp
+*.swo
+*~
+
+# Python Cache & Build Artifacts
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv/
+build/
+dist/
+*.egg-info/
+.pytest_cache/
+.coverage
+
+# Process & Log Files
+*.pid
+*.log
+features/deployment/deployment.pid
+deploy_cmd.*
+chat_resp.*
+
+# Secrets, Environment & Sensitive User Files
+.env
+.env.local
+.env.*.local
+*.pem
+*.key
+*.p12
+*.keystore
+*.jks
+workspace_assets/
+notes_backups/
+excel_uploads/
+docflow_uploads/
+notes_uploads/
+profile_config.json
+ngrok_config.json
+
+# Local Workspace Overrides & User Configs
+config/active_workspace.txt
+config/workspaces_list.json
+.dev-dashboard/

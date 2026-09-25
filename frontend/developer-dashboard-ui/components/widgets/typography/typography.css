@@ -1,0 +1,245 @@
+/* ==========================================================================
+   UI Component Library — Typography Component
+   Prefix: .ui-title, .ui-paragraph, .ui-lead, .ui-text, .ui-link, .ui-blockquote,
+           .ui-code, .ui-pre, .ui-caption, .ui-list, .ui-truncate, .ui-clamp
+   ========================================================================== */
+
+/* --- Titles / Headings --- */
+.ui-title {
+  font-family: var(--ui-font-family);
+  color: var(--ui-text-primary);
+  font-weight: 600;
+  line-height: 1.25;
+  margin-top: 0;
+  margin-bottom: 16px;
+}
+
+.ui-title[data-level="1"] {
+  font-size: 32px;
+  font-weight: 700;
+  letter-spacing: -0.5px;
+}
+
+.ui-title[data-level="2"] {
+  font-size: 24px;
+  font-weight: 600;
+  letter-spacing: -0.3px;
+}
+
+.ui-title[data-level="3"] {
+  font-size: 20px;
+}
+
+.ui-title[data-level="4"] {
+  font-size: 16px;
+}
+
+.ui-title[data-level="5"] {
+  font-size: 14px;
+}
+
+.ui-title[data-level="6"] {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--ui-text-secondary);
+}
+
+/* --- Body & Paragraphs --- */
+.ui-paragraph {
+  font-family: var(--ui-font-family);
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--ui-text-secondary);
+  margin-top: 0;
+  margin-bottom: 16px;
+}
+
+.ui-lead {
+  font-family: var(--ui-font-family);
+  font-size: 16px;
+  line-height: 1.6;
+  color: var(--ui-text-primary);
+  font-weight: 400;
+  margin-bottom: 20px;
+}
+
+/* --- Caption / Small Text --- */
+.ui-caption {
+  font-family: var(--ui-font-family);
+  font-size: 11px;
+  color: var(--ui-text-muted);
+  line-height: 1.4;
+}
+
+/* --- Text Variants --- */
+.ui-text {
+  font-family: var(--ui-font-family);
+  font-size: 14px;
+}
+
+.ui-text[data-variant="secondary"] {
+  color: var(--ui-text-secondary);
+}
+
+.ui-text[data-variant="muted"] {
+  color: var(--ui-text-muted);
+}
+
+.ui-text[data-variant="success"] {
+  color: var(--ui-success-color);
+}
+
+.ui-text[data-variant="warning"] {
+  color: var(--ui-warning-color);
+}
+
+.ui-text[data-variant="danger"] {
+  color: var(--ui-danger-color);
+}
+
+/* Font Weights */
+.ui-text[data-weight="regular"] { font-weight: 400; }
+.ui-text[data-weight="medium"] { font-weight: 500; }
+.ui-text[data-weight="bold"] { font-weight: 700; }
+
+/* Font Styles */
+.ui-text[data-style="italic"] { font-style: italic; }
+.ui-text[data-style="normal"] { font-style: normal; }
+
+/* Text Decorations */
+.ui-text[data-decoration="underline"] { text-decoration: underline; }
+.ui-text[data-decoration="line-through"] { text-decoration: line-through; }
+
+/* Line Heights */
+.ui-text[data-height="tight"] { line-height: 1.25; }
+.ui-text[data-height="normal"] { line-height: 1.5; }
+.ui-text[data-height="relaxed"] { line-height: 1.75; }
+
+/* Letter Spacings */
+.ui-text[data-tracking="tight"] { letter-spacing: -0.5px; }
+.ui-text[data-tracking="normal"] { letter-spacing: normal; }
+.ui-text[data-tracking="wide"] { letter-spacing: 0.5px; }
+
+/* Text Alignments */
+.ui-text[data-align="left"] { text-align: left; }
+.ui-text[data-align="center"] { text-align: center; }
+.ui-text[data-align="right"] { text-align: right; }
+.ui-text[data-align="justify"] { text-align: justify; }
+
+/* Text Transforms */
+.ui-text[data-transform="uppercase"] { text-transform: uppercase; }
+.ui-text[data-transform="lowercase"] { text-transform: lowercase; }
+.ui-text[data-transform="capitalize"] { text-transform: capitalize; }
+
+/* --- Links --- */
+.ui-link {
+  font-family: var(--ui-font-family);
+  color: var(--ui-primary-color);
+  text-decoration: none;
+  font-weight: 500;
+  transition: color 0.15s ease;
+}
+
+.ui-link:hover {
+  color: var(--ui-primary-hover);
+  text-decoration: underline;
+}
+
+.ui-link:visited {
+  color: var(--ui-primary-hover);
+}
+
+.ui-link:active {
+  color: var(--ui-primary-hover);
+  text-decoration: underline;
+}
+
+/* --- Blockquotes --- */
+.ui-blockquote {
+  font-family: var(--ui-font-family);
+  font-size: 14px;
+  font-style: italic;
+  line-height: 1.6;
+  color: var(--ui-text-secondary);
+  border-left: 4px solid var(--ui-primary-color);
+  padding: 8px 16px;
+  margin: 16px 0;
+  background-color: var(--ui-bg-muted);
+  border-radius: 0 6px 6px 0;
+}
+
+/* --- Lists --- */
+.ui-list {
+  font-family: var(--ui-font-family);
+  font-size: 14px;
+  color: var(--ui-text-secondary);
+  margin: 12px 0;
+  padding-left: 20px;
+}
+
+.ui-list[data-variant="unordered"] {
+  list-style-type: disc;
+}
+
+.ui-list[data-variant="ordered"] {
+  list-style-type: decimal;
+}
+
+.ui-list[data-variant="unstyled"] {
+  list-style-type: none;
+  padding-left: 0;
+}
+
+.ui-list[data-variant="inline"] {
+  list-style-type: none;
+  padding-left: 0;
+  display: flex;
+  gap: 16px;
+}
+
+.ui-list li {
+  margin-bottom: 6px;
+}
+
+/* --- Code & Preformatted Blocks --- */
+.ui-code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  font-size: 13px;
+  background-color: var(--ui-bg-muted);
+  color: var(--ui-danger-color);
+  padding: 2px 6px;
+  border-radius: 4px;
+  border: 1px solid var(--ui-border-color);
+}
+
+.ui-pre {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  font-size: 13px;
+  background-color: var(--ui-bg-muted);
+  color: var(--ui-text-primary);
+  padding: 16px;
+  border-radius: 8px;
+  border: 1px solid var(--ui-border-color);
+  overflow-x: auto;
+  margin: 16px 0;
+  line-height: 1.5;
+}
+
+/* --- Truncation & Clamping --- */
+.ui-truncate {
+  display: block;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ui-clamp {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+}
+
+.ui-clamp[data-lines="3"] { -webkit-line-clamp: 3; }
+.ui-clamp[data-lines="4"] { -webkit-line-clamp: 4; }

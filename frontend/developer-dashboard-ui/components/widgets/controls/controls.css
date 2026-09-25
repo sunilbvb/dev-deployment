@@ -1,0 +1,147 @@
+/* ==========================================================================
+   UI Component Library — Checkbox, Radio, and Toggle Components
+   Prefix: .ui-control, .ui-checkbox, .ui-radio, .ui-toggle
+   ========================================================================== */
+
+.ui-control {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--ui-font-family);
+  font-size: 13px;
+  color: var(--ui-text-primary);
+  cursor: pointer;
+  user-select: none;
+  margin-bottom: 8px;
+}
+
+/* --- Custom Checkbox --- */
+.ui-checkbox {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 16px;
+  height: 16px;
+  border: 1px solid var(--ui-border-color);
+  border-radius: 4px;
+  background-color: var(--ui-bg-surface);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  transition: all 0.15s ease;
+  outline: none;
+  margin: 0;
+  box-sizing: border-box;
+}
+
+.ui-checkbox:checked {
+  background-color: var(--ui-primary-color);
+  border-color: var(--ui-primary-color);
+}
+
+.ui-checkbox:checked::after {
+  content: "";
+  display: block;
+  width: 4px;
+  height: 8px;
+  border: solid #ffffff;
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg) translate(0px, -1px);
+}
+
+.ui-checkbox:focus-visible {
+  box-shadow: 0 0 0 2px var(--ui-bg-surface), 0 0 0 4px var(--ui-primary-color);
+}
+
+/* --- Custom Radio --- */
+.ui-radio {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 16px;
+  height: 16px;
+  border: 1px solid var(--ui-border-color);
+  border-radius: 50%;
+  background-color: var(--ui-bg-surface);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  transition: all 0.15s ease;
+  outline: none;
+  margin: 0;
+  box-sizing: border-box;
+}
+
+.ui-radio:checked {
+  border-color: var(--ui-primary-color);
+}
+
+.ui-radio:checked::after {
+  content: "";
+  display: block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background-color: var(--ui-primary-color);
+}
+
+.ui-radio:focus-visible {
+  box-shadow: 0 0 0 2px var(--ui-bg-surface), 0 0 0 4px var(--ui-primary-color);
+}
+
+/* --- Custom Toggle Switch --- */
+.ui-toggle {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 36px;
+  height: 20px;
+  border-radius: 99px;
+  background-color: var(--ui-secondary-bg);
+  border: 1px solid var(--ui-border-color);
+  cursor: pointer;
+  position: relative;
+  transition: background-color 0.2s ease, border-color 0.2s ease;
+  outline: none;
+  display: inline-block;
+  margin: 0;
+  box-sizing: border-box;
+  vertical-align: middle;
+}
+
+.ui-toggle::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background-color: #ffffff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
+  transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.ui-toggle:checked {
+  background-color: var(--ui-primary-color);
+  border-color: var(--ui-primary-color);
+}
+
+.ui-toggle:checked::after {
+  transform: translateX(16px);
+}
+
+.ui-toggle:focus-visible {
+  box-shadow: 0 0 0 2px var(--ui-bg-surface), 0 0 0 4px var(--ui-primary-color);
+}
+
+/* --- Disabled State --- */
+.ui-checkbox:disabled,
+.ui-radio:disabled,
+.ui-toggle:disabled {
+  background-color: var(--ui-bg-muted) !important;
+  border-color: var(--ui-border-color) !important;
+  cursor: not-allowed !important;
+  opacity: 0.6;
+}

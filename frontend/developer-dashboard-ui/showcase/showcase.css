@@ -1,0 +1,308 @@
+/* ==========================================================================
+   Showcase Documentation Stylesheet
+   Inspired by IBM Carbon Design System & Component.gallery
+   ========================================================================== */
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+  background-color: #f8fafc;
+  color: #0f172a;
+  display: flex;
+  height: 100vh;
+  overflow: hidden;
+}
+
+[data-theme="dark"] body {
+  background-color: #0b0f19;
+  color: #f8fafc;
+}
+
+/* --- Layout --- */
+.showcase-sidebar {
+  width: 260px;
+  background-color: #ffffff;
+  border-right: 1px solid #e2e8f0;
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+}
+
+[data-theme="dark"] .showcase-sidebar {
+  background-color: #0f172a;
+  border-color: #1e293b;
+}
+
+.showcase-brand {
+  padding: 20px 24px;
+  font-size: 16px;
+  font-weight: 700;
+  color: #0f172a;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border-bottom: 1px solid #f1f5f9;
+}
+
+[data-theme="dark"] .showcase-brand {
+  color: #f8fafc;
+  border-color: #1e293b;
+}
+
+.showcase-brand-tag {
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background-color: rgba(99, 102, 241, 0.12);
+  color: #6366f1;
+}
+
+.showcase-nav {
+  flex: 1;
+  padding: 16px 12px;
+  overflow-y: auto;
+}
+
+.showcase-nav-section {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: #94a3b8;
+  padding: 10px 12px 6px 12px;
+}
+
+.showcase-nav-link {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 9px 12px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  color: #475569;
+  text-decoration: none;
+  transition: all 0.15s ease;
+  margin-bottom: 2px;
+}
+
+.showcase-nav-link:hover {
+  background-color: #f1f5f9;
+  color: #0f172a;
+}
+
+.showcase-nav-link.active {
+  background-color: #6366f1;
+  color: #ffffff;
+  font-weight: 600;
+}
+
+[data-theme="dark"] .showcase-nav-link {
+  color: #94a3b8;
+}
+
+[data-theme="dark"] .showcase-nav-link:hover {
+  background-color: #1e293b;
+  color: #f8fafc;
+}
+
+[data-theme="dark"] .showcase-nav-link.active {
+  background-color: #6366f1;
+  color: #ffffff;
+}
+
+.showcase-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 36px 48px 80px 48px;
+}
+
+/* --- Header & Toolbar --- */
+.showcase-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 32px;
+  padding-bottom: 20px;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+[data-theme="dark"] .showcase-header {
+  border-color: #1e293b;
+}
+
+.showcase-title {
+  font-size: 26px;
+  font-weight: 700;
+  margin: 0 0 6px 0;
+  letter-spacing: -0.3px;
+}
+
+.showcase-subtitle {
+  font-size: 14px;
+  color: #64748b;
+  margin: 0;
+}
+
+.theme-toggle-btn {
+  background: #ffffff;
+  border: 1px solid #cbd5e1;
+  color: #334155;
+  padding: 8px 14px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  transition: all 0.15s;
+}
+
+[data-theme="dark"] .theme-toggle-btn {
+  background: #1e293b;
+  border-color: #334155;
+  color: #f1f5f9;
+}
+
+/* --- Component Section Cards --- */
+.component-section {
+  margin-bottom: 48px;
+  scroll-margin-top: 40px;
+}
+
+.component-title {
+  font-size: 20px;
+  font-weight: 700;
+  margin: 0 0 8px 0;
+  color: #0f172a;
+}
+
+[data-theme="dark"] .component-title {
+  color: #f8fafc;
+}
+
+.component-description {
+  font-size: 14px;
+  color: #64748b;
+  margin: 0 0 20px 0;
+}
+
+.preview-card {
+  background-color: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  overflow: hidden;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+}
+
+[data-theme="dark"] .preview-card {
+  background-color: #0f172a;
+  border-color: #1e293b;
+}
+
+.preview-canvas {
+  padding: 32px;
+  background-color: #fafafa;
+  border-bottom: 1px solid #e2e8f0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 16px;
+}
+
+[data-theme="dark"] .preview-canvas {
+  background-color: #0b0f19;
+  border-color: #1e293b;
+}
+
+.snippet-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 16px;
+  background-color: #0f172a;
+  color: #94a3b8;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.copy-btn {
+  background: rgba(255, 255, 255, 0.1);
+  border: none;
+  color: #f8fafc;
+  padding: 4px 10px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.copy-btn:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.code-block {
+  margin: 0;
+  padding: 16px 20px;
+  background-color: #020617;
+  color: #e2e8f0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.6;
+  overflow-x: auto;
+}
+
+.props-table-wrapper {
+  margin-top: 20px;
+}
+
+.props-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.props-table th {
+  text-align: left;
+  padding: 10px 14px;
+  background-color: #f1f5f9;
+  color: #475569;
+  font-weight: 600;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.props-table td {
+  padding: 10px 14px;
+  border-bottom: 1px solid #f1f5f9;
+  color: #334155;
+}
+
+[data-theme="dark"] .props-table th {
+  background-color: #1e293b;
+  color: #cbd5e1;
+  border-color: #334155;
+}
+
+[data-theme="dark"] .props-table td {
+  border-color: #1e293b;
+  color: #94a3b8;
+}
+
+code {
+  background-color: rgba(99, 102, 241, 0.1);
+  color: #6366f1;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-family: ui-monospace, monospace;
+  font-size: 12px;
+}

@@ -1,0 +1,76 @@
+/* ==========================================================================
+   UI Component Library — Interactive Step Cards Component
+   Prefix: .ui-step-card, .ui-steps-row, .ui-step-number, .ui-step-content
+   ========================================================================== */
+
+.ui-steps-row {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 100%;
+  font-family: var(--ui-font-family);
+  box-sizing: border-box;
+}
+
+.ui-step-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  border-radius: 8px;
+  border: 1px solid var(--ui-border-color);
+  background-color: var(--ui-bg-surface);
+  transition: all 0.15s ease;
+  box-sizing: border-box;
+}
+
+.ui-step-card:hover {
+  border-color: var(--ui-text-muted);
+}
+
+.ui-step-number {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background-color: var(--ui-bg-muted);
+  color: var(--ui-text-secondary);
+  font-size: 12px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.ui-step-card[data-status="passed"] .ui-step-number {
+  background-color: var(--ui-success-color);
+  color: #ffffff;
+}
+
+.ui-step-card[data-status="failed"] .ui-step-number {
+  background-color: var(--ui-danger-color);
+  color: #ffffff;
+}
+
+.ui-step-card[data-status="pending"] .ui-step-number {
+  background-color: var(--ui-warning-color);
+  color: #ffffff;
+}
+
+.ui-step-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.ui-step-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ui-text-primary);
+}
+
+.ui-step-desc {
+  font-size: 11px;
+  color: var(--ui-text-muted);
+}

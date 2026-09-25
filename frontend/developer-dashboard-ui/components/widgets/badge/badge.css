@@ -1,0 +1,112 @@
+/* ==========================================================================
+   UI Component Library — Badge Component
+   Prefix: .ui-badge
+   ========================================================================== */
+
+.ui-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
+  padding: 3px 8px;
+  border-radius: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  user-select: none;
+  border: 1px solid transparent;
+  white-space: nowrap;
+}
+
+/* --- Dot Indicator --- */
+.ui-badge::before {
+  content: "";
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background-color: currentColor;
+}
+
+/* --- Variants --- */
+.ui-badge,
+.ui-badge[data-variant="primary"] {
+  background-color: var(--ui-info-bg);
+  color: var(--ui-info-color);
+  border-color: var(--ui-info-border);
+}
+
+.ui-badge[data-variant="secondary"] {
+  background-color: var(--ui-secondary-bg);
+  color: var(--ui-secondary-color);
+  border-color: var(--ui-secondary-border);
+}
+
+.ui-badge[data-variant="tertiary"],
+.ui-badge[data-variant="neutral"] {
+  background-color: var(--ui-tertiary-bg);
+  color: var(--ui-tertiary-color);
+  border-color: var(--ui-tertiary-border);
+}
+
+.ui-badge[data-variant="success"] {
+  background-color: var(--ui-success-bg);
+  color: var(--ui-success-color);
+  border-color: var(--ui-success-border);
+}
+
+.ui-badge[data-variant="warning"] {
+  background-color: var(--ui-warning-bg);
+  color: var(--ui-warning-color);
+  border-color: var(--ui-warning-border);
+}
+
+.ui-badge[data-variant="danger"] {
+  background-color: var(--ui-danger-bg);
+  color: var(--ui-danger-color);
+  border-color: var(--ui-danger-border);
+}
+
+/* --- Tag Component --- */
+.ui-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--ui-font-family);
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1;
+  padding: 4px 8px;
+  border-radius: 6px;
+  background-color: var(--ui-secondary-bg);
+  color: var(--ui-text-primary);
+  border: 1px solid var(--ui-secondary-border);
+  white-space: nowrap;
+  user-select: none;
+}
+
+.ui-tag-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 12px;
+  height: 12px;
+  font-size: 10px;
+  line-height: 1;
+  border: none;
+  background: transparent;
+  color: var(--ui-text-muted);
+  cursor: pointer;
+  padding: 0;
+  border-radius: 50%;
+  transition: all 0.15s ease;
+}
+
+.ui-tag-close:hover {
+  background-color: var(--ui-tertiary-bg);
+  color: var(--ui-text-primary);
+}
+
+

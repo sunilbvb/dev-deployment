@@ -1,0 +1,104 @@
+/* ==========================================================================
+   UI Component Library — Terminal Log Viewer Component
+   Prefix: .ui-terminal, .ui-terminal-header, .ui-terminal-body, .ui-terminal-line
+   ========================================================================== */
+
+.ui-terminal,
+.ui-console {
+  display: flex;
+  flex-direction: column;
+  background-color: #0f172a;
+  border: 1px solid #1e293b;
+  border-radius: 8px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25);
+  overflow: hidden;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  box-sizing: border-box;
+}
+
+.ui-terminal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  background-color: #1e293b;
+  border-bottom: 1px solid #334155;
+  user-select: none;
+  position: relative;
+}
+
+.ui-terminal-actions {
+  display: flex;
+  gap: 6px;
+  z-index: 2;
+}
+
+.ui-terminal-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.ui-terminal-dot[data-action="close"] { background-color: #ef4444; }
+.ui-terminal-dot[data-action="minimize"] { background-color: #f59e0b; }
+.ui-terminal-dot[data-action="maximize"] { background-color: #10b981; }
+
+.ui-terminal-title {
+  position: absolute;
+  left: 0;
+  right: 0;
+  text-align: center;
+  font-size: 11px;
+  color: #94a3b8;
+  font-weight: 500;
+  pointer-events: none;
+}
+
+.ui-terminal-timer {
+  font-size: 11px;
+  color: #94a3b8;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  margin-left: auto;
+  z-index: 2;
+}
+
+.ui-terminal-body {
+  padding: 16px;
+  height: 240px;
+  overflow-y: auto;
+  color: #f8fafc;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.ui-terminal-line {
+  margin-bottom: 4px;
+  white-space: pre-wrap;
+}
+
+.ui-terminal-line:last-child {
+  margin-bottom: 0;
+}
+
+/* --- Logging states --- */
+.ui-terminal-line[data-log="info"] {
+  color: #cbd5e1;
+}
+
+.ui-terminal-line[data-log="success"] {
+  color: #34d399;
+}
+
+.ui-terminal-line[data-log="warning"] {
+  color: #fbbf24;
+}
+
+.ui-terminal-line[data-log="error"] {
+  color: #f87171;
+}
+
+.ui-terminal-line[data-log="command"]::before {
+  content: "$ ";
+  color: #6366f1;
+}

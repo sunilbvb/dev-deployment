@@ -1,0 +1,95 @@
+/* ==========================================================================
+   UI Component Library — Layout Shell & Grid Component
+   Prefix: .ui-page, .ui-page-body, .ui-grid, .ui-panel-group, .ui-panel
+   ========================================================================== */
+
+/* --- Standard Universal Page Outer Shell --- */
+html, body {
+  min-height: 100%;
+  height: auto !important;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  box-sizing: border-box;
+}
+
+.ui-page,
+.ui-page-shell,
+.ui-page-container {
+  display: flex;
+  flex-direction: column;
+  padding: 24px 24px 100px 24px !important; /* Constant padding with bottom clearance for floating widgets/terminal */
+  background-color: var(--ui-bg-surface, #0f172a);
+  border: 1px solid var(--ui-border-color, #334155);
+  border-radius: 16px;
+  min-height: 100%;
+  width: 100%;
+  box-sizing: border-box;
+  font-family: var(--ui-font-family);
+  margin: 0 !important;
+}
+
+.ui-page-body {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+/* --- Grids --- */
+.ui-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 16px;
+  width: 100%;
+  box-sizing: border-box;
+  margin-bottom: 20px;
+}
+
+.ui-grid[data-columns="1"] { grid-template-columns: 1fr; }
+.ui-grid[data-columns="2"] { grid-template-columns: repeat(2, 1fr); }
+.ui-grid[data-columns="3"] { grid-template-columns: repeat(3, 1fr); }
+.ui-grid[data-columns="4"] { grid-template-columns: repeat(4, 1fr); }
+
+.ui-grid[data-gap="sm"] { gap: 8px; }
+.ui-grid[data-gap="md"] { gap: 16px; }
+.ui-grid[data-gap="lg"] { gap: 24px; }
+
+/* --- Split Panel Groups --- */
+.ui-panel-group {
+  display: flex;
+  gap: 20px;
+  width: 100%;
+  flex: 1;
+  box-sizing: border-box;
+}
+
+.ui-panel-group[data-layout="split-2"] {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+}
+
+.ui-panel-group[data-layout="sidebar-left"] {
+  display: grid;
+  grid-template-columns: 300px 1fr;
+}
+
+.ui-panel-group[data-layout="sidebar-right"] {
+  display: grid;
+  grid-template-columns: 1fr 320px;
+}
+
+.ui-panel-group[data-layout="3-column"] {
+  display: grid;
+  grid-template-columns: 280px 1fr 300px;
+}
+
+.ui-panel {
+  display: flex;
+  flex-direction: column;
+  background-color: var(--ui-bg-surface);
+  border: 1px solid var(--ui-border-color);
+  border-radius: 8px;
+  padding: 18px;
+  box-sizing: border-box;
+}

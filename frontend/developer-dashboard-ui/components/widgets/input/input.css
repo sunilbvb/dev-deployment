@@ -1,0 +1,123 @@
+/* ==========================================================================
+   UI Component Library — Input & Form Components
+   Prefix: .ui-input, .ui-select, .ui-textarea, .ui-field, .ui-label, .ui-input-group
+   ========================================================================== */
+
+.ui-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 16px;
+}
+
+.ui-label {
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ui-text-secondary);
+}
+
+.ui-input,
+.ui-select,
+.ui-textarea {
+  font-family: inherit;
+  font-size: 13px;
+  color: var(--ui-text-primary);
+  background-color: var(--ui-bg-surface);
+  border: 1px solid var(--ui-border-color);
+  border-radius: 6px;
+  padding: 8px 12px;
+  outline: none;
+  transition: all 0.15s ease-in-out;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.ui-input:focus,
+.ui-select:focus,
+.ui-textarea:focus {
+  border-color: var(--ui-primary-color);
+  box-shadow: 0 0 0 3px var(--ui-primary-glow);
+}
+
+.ui-input::placeholder,
+.ui-textarea::placeholder {
+  color: var(--ui-text-muted);
+}
+
+.ui-textarea {
+  min-height: 80px;
+  resize: vertical;
+}
+
+/* --- Variants --- */
+.ui-input[data-variant="error"],
+.ui-select[data-variant="error"],
+.ui-textarea[data-variant="error"] {
+  border-color: var(--ui-danger-color);
+}
+
+.ui-input[data-variant="error"]:focus,
+.ui-select[data-variant="error"]:focus,
+.ui-textarea[data-variant="error"]:focus {
+  border-color: var(--ui-danger-color);
+  box-shadow: 0 0 0 3px var(--ui-danger-glow);
+}
+
+.ui-input[data-variant="success"],
+.ui-select[data-variant="success"],
+.ui-textarea[data-variant="success"] {
+  border-color: var(--ui-success-color);
+}
+
+.ui-input[data-variant="success"]:focus,
+.ui-select[data-variant="success"]:focus,
+.ui-textarea[data-variant="success"]:focus {
+  border-color: var(--ui-success-color);
+  box-shadow: 0 0 0 3px var(--ui-success-glow);
+}
+
+/* --- Helper/Validation Text --- */
+.ui-help-text {
+  font-size: 11px;
+  color: var(--ui-text-muted);
+  margin-top: 2px;
+}
+
+.ui-help-text[data-variant="error"] {
+  color: var(--ui-danger-color);
+}
+
+.ui-help-text[data-variant="success"] {
+  color: var(--ui-success-color);
+}
+
+/* --- Disabled State --- */
+.ui-input:disabled,
+.ui-select:disabled,
+.ui-textarea:disabled {
+  background-color: var(--ui-bg-muted) !important;
+  color: var(--ui-text-muted) !important;
+  border-color: var(--ui-border-color) !important;
+  cursor: not-allowed !important;
+}
+
+/* --- Input Groups --- */
+.ui-input-group {
+  display: flex;
+  align-items: stretch;
+  width: 100%;
+}
+
+.ui-input-group > .ui-input {
+  flex: 1;
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+}
+
+.ui-input-group > .ui-button {
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+  border-left: none;
+  padding: 8px 16px;
+}

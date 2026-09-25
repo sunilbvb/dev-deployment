@@ -1,0 +1,125 @@
+/* ==========================================================================
+   UI Component Library — App Selector Card Component
+   Prefix: .ui-app-card, .ui-app-icon, .ui-app-info, .ui-app-name, .ui-app-version
+   ========================================================================== */
+
+.ui-app-card,
+.compact-app-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  border-radius: 12px;
+  border: 1px solid var(--ui-border-color, #334155);
+  background-color: var(--ui-bg-muted, #1e293b);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-family: var(--ui-font-family);
+  position: relative;
+  box-sizing: border-box;
+  min-height: 56px;
+  width: 100%;
+}
+
+.ui-app-card:hover,
+.compact-app-card:hover {
+  background-color: rgba(255, 255, 255, 0.04);
+  border-color: var(--ui-text-muted, #64748b);
+  transform: translateY(-1px);
+}
+
+.ui-app-card.active,
+.compact-app-card.active,
+.ui-app-card[data-state="active"],
+.compact-app-card[data-state="active"],
+.ui-app-card[aria-selected="true"],
+.compact-app-card[aria-selected="true"] {
+  background-color: rgba(99, 102, 241, 0.15);
+  border-color: var(--ui-primary-color, #6366f1);
+  box-shadow: 0 0 0 1px var(--ui-primary-color, #6366f1);
+}
+
+.ui-app-icon,
+.compact-app-card-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  background-color: rgba(255, 255, 255, 0.04);
+  flex-shrink: 0;
+}
+
+.ui-app-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.ui-app-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ui-text-primary);
+  margin-bottom: 2px;
+}
+
+.ui-app-version {
+  font-size: 11px;
+  color: var(--ui-text-muted);
+}
+
+/* --- App Card Selection Badge --- */
+.compact-app-card .app-card-badge,
+.ui-app-card .app-card-badge {
+    position: absolute;
+    top: -4px;
+    right: -4px;
+    width: 18px;
+    height: 18px;
+    background: var(--ui-primary-color, #3b82f6);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    transform: scale(0.5);
+    transition: all 0.2s ease;
+    z-index: 2;
+}
+
+.compact-app-card.active .app-card-badge,
+.compact-app-card[data-state="active"] .app-card-badge,
+.ui-app-card.active .app-card-badge,
+.ui-app-card[data-state="active"] .app-card-badge {
+    opacity: 1;
+    transform: scale(1);
+}
+
+.compact-app-card .app-card-badge i,
+.compact-app-card .app-card-badge svg,
+.ui-app-card .app-card-badge i,
+.ui-app-card .app-card-badge svg {
+    width: 10px;
+    height: 10px;
+    color: #ffffff;
+}
+
+.ui-app-status-indicator {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background-color: var(--ui-text-muted);
+}
+
+.ui-app-card[data-status="online"] .ui-app-status-indicator {
+  background-color: var(--ui-success-color);
+}
+
+.ui-app-card[data-status="offline"] .ui-app-status-indicator {
+  background-color: var(--ui-danger-color);
+}
+
+.ui-app-card[data-status="warning"] .ui-app-status-indicator {
+  background-color: var(--ui-warning-color);
+}

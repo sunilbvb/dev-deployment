@@ -1,0 +1,71 @@
+/* ==========================================================================
+   UI Component Library — Image Lightbox Overlay Component
+   Prefix: .ui-lightbox, .ui-lightbox-close, .ui-lightbox-container, .ui-lightbox-caption
+   ========================================================================== */
+
+.ui-lightbox {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.85);
+  backdrop-filter: blur(4px);
+  z-index: 2000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  padding: 24px;
+  box-sizing: border-box;
+}
+
+.ui-lightbox.ui-active {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.ui-lightbox-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  max-width: 90vw;
+  max-height: 90vh;
+}
+
+.ui-lightbox-image {
+  max-width: 100%;
+  max-height: 80vh;
+  border-radius: 8px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
+  object-fit: contain;
+}
+
+.ui-lightbox-caption {
+  margin-top: 12px;
+  color: #f8fafc;
+  font-family: var(--ui-font-family);
+  font-size: 13px;
+  font-weight: 500;
+  text-align: center;
+}
+
+.ui-lightbox-close {
+  position: absolute;
+  top: 20px;
+  right: 24px;
+  background: transparent;
+  border: none;
+  color: #f8fafc;
+  font-size: 32px;
+  cursor: pointer;
+  line-height: 1;
+  opacity: 0.8;
+  transition: opacity 0.15s ease;
+}
+
+.ui-lightbox-close:hover {
+  opacity: 1;
+}

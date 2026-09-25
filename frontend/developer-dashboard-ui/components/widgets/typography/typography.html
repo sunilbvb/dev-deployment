@@ -1,0 +1,59 @@
+<!-- Headings -->
+<h1 class="ui-title" data-level="1">Display Heading 1</h1>
+<h2 class="ui-title" data-level="2">Section Heading 2</h2>
+<h3 class="ui-title" data-level="3">Sub-section Heading 3</h3>
+<h4 class="ui-title" data-level="4">Minor Heading 4</h4>
+<h5 class="ui-title" data-level="5">Detail Heading 5</h5>
+<h6 class="ui-title" data-level="6">Category Heading 6</h6>
+
+<!-- Lead & Paragraph -->
+<p class="ui-lead">This is lead text. Use it for introduction or hero sections.</p>
+<p class="ui-paragraph">This is a standard body paragraph. It uses standard font sizes and comfortable line height designed for readable text blocks. You can highlight text using <code class="ui-code">inline code snippets</code> or include a link to <a href="#" class="ui-link">external resources</a>.</p>
+
+<!-- Caption / Labels -->
+<span class="ui-caption">This is a small caption or form label helper text.</span>
+
+<!-- Blockquote -->
+<blockquote class="ui-blockquote">
+  "This is a blockquote element. It helps highlight key quotes, testimonials, or notes in the dashboard layout."
+</blockquote>
+
+<!-- Font styles / Weights / Spacing Utilities -->
+<div style="margin: 16px 0; display: flex; flex-direction: column; gap: 8px;">
+  <span class="ui-text" data-weight="bold">This text is bold (700)</span>
+  <span class="ui-text" data-weight="medium">This text is medium (500)</span>
+  <span class="ui-text" data-style="italic">This text is italicized</span>
+  <span class="ui-text" data-transform="uppercase" data-tracking="wide">uppercase tracking wide</span>
+  <span class="ui-text" data-align="center" style="display:block;">Centered text alignment</span>
+</div>
+
+<!-- Lists -->
+<ul class="ui-list" data-variant="unordered">
+  <li>Unordered bullet list item 1</li>
+  <li>Unordered bullet list item 2</li>
+</ul>
+
+<ol class="ui-list" data-variant="ordered">
+  <li>Ordered item 1</li>
+  <li>Ordered item 2</li>
+</ol>
+
+<ul class="ui-list" data-variant="inline">
+  <li><a href="#" class="ui-link">Home</a></li>
+  <li><a href="#" class="ui-link">Dashboard</a></li>
+  <li><a href="#" class="ui-link">Settings</a></li>
+</ul>
+
+<!-- Code Blocks -->
+<pre class="ui-pre"><code>// Preformatted code block example
+function greetUser(name) {
+  console.log(`Hello, ${name}!`);
+}</code></pre>
+
+<!-- Truncation & Clamping -->
+<div style="max-width: 250px; border: 1px solid var(--ui-border-color); padding: 12px; border-radius: 6px; background: var(--ui-bg-muted);">
+  <span class="ui-text ui-truncate" style="font-weight: 500;">Truncation: SuperLongFileNameThatShouldBeEllipsized.json</span>
+  <p class="ui-text ui-clamp" data-lines="2" style="font-size: 12px; margin-top: 8px; color: var(--ui-text-secondary);">
+    Clamping: This text is very long and will wrap but it is clamped to exactly two lines of height before fading or truncating with an ellipsis.
+  </p>
+</div>

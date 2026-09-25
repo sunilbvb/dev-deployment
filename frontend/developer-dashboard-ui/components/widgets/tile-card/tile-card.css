@@ -1,0 +1,85 @@
+/* ==========================================================================
+   UI Component Library — Unified Tile Card Component
+   Prefix: .ui-tile-card, .ui-tile-header, .ui-tile-icon, .ui-tile-badge,
+           .ui-tile-body, .ui-tile-title, .ui-tile-meta, .ui-tile-branch, .ui-tile-stats
+   ========================================================================== */
+
+.ui-tile-card {
+  display: flex;
+  flex-direction: column;
+  padding: 14px 16px;
+  border-radius: 8px;
+  border: 1px solid var(--ui-border-color);
+  background-color: var(--ui-bg-surface);
+  transition: all 0.2s ease;
+  font-family: var(--ui-font-family);
+  box-sizing: border-box;
+  position: relative;
+}
+
+.ui-tile-card[data-variant="interactive"]:hover,
+.ui-tile-card:hover {
+  border-color: var(--ui-text-muted);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+}
+
+.ui-tile-card[data-state="active"] {
+  border-color: var(--ui-primary-color);
+  box-shadow: 0 0 0 1px var(--ui-primary-color);
+}
+
+.ui-tile-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.ui-tile-icon {
+  font-size: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 6px;
+  background-color: var(--ui-bg-muted);
+  border: 1px solid var(--ui-border-color);
+  color: var(--ui-primary-color);
+}
+
+.ui-tile-badge {
+  display: flex;
+  align-items: center;
+}
+
+.ui-tile-body {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.ui-tile-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ui-text-primary);
+  margin: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ui-tile-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 11px;
+  color: var(--ui-text-muted);
+  margin-top: 4px;
+}
+
+.ui-tile-branch {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, monospace;
+  color: var(--ui-text-secondary);
+}

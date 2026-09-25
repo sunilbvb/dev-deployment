@@ -1,0 +1,88 @@
+/* ==========================================================================
+   UI Component Library — Table Component
+   Prefix: .ui-table
+   ========================================================================== */
+
+.ui-table-container {
+  width: 100%;
+  overflow-x: auto;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  background-color: #ffffff;
+}
+
+.ui-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: inherit;
+  font-size: 13px;
+  text-align: left;
+}
+
+.ui-table th {
+  background-color: #f8fafc;
+  color: #475569;
+  font-weight: 600;
+  padding: 12px 16px;
+  border-bottom: 1px solid #e2e8f0;
+  user-select: none;
+  white-space: nowrap;
+}
+
+.ui-table td {
+  padding: 12px 16px;
+  border-bottom: 1px solid #f1f5f9;
+  color: #334155;
+  vertical-align: middle;
+}
+
+.ui-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+/* --- Variants --- */
+.ui-table[data-variant="hover"] tbody tr:hover,
+.ui-table tbody tr:hover {
+  background-color: #f8fafc;
+}
+
+.ui-table[data-variant="striped"] tbody tr:nth-child(even) {
+  background-color: #f8fafc;
+}
+
+.ui-table[data-variant="compact"] th,
+.ui-table[data-variant="compact"] td {
+  padding: 8px 12px;
+  font-size: 12px;
+}
+
+.ui-table[data-variant="bordered"] th,
+.ui-table[data-variant="bordered"] td {
+  border: 1px solid #e2e8f0;
+}
+
+/* Dark mode compatibility */
+[data-theme="dark"] .ui-table-container {
+  background-color: #0f172a;
+  border-color: #1e293b;
+}
+
+[data-theme="dark"] .ui-table th {
+  background-color: #1e293b;
+  color: #cbd5e1;
+  border-color: #334155;
+}
+
+[data-theme="dark"] .ui-table td {
+  color: #94a3b8;
+  border-color: #1e293b;
+}
+
+[data-theme="dark"] .ui-table[data-variant="hover"] tbody tr:hover,
+[data-theme="dark"] .ui-table tbody tr:hover {
+  background-color: #1e293b;
+}
+
+[data-theme="dark"] .ui-table[data-variant="striped"] tbody tr:nth-child(even) {
+  background-color: #1e293b;
+}

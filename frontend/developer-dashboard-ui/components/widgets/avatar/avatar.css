@@ -1,0 +1,90 @@
+/* ==========================================================================
+   UI Component Library — Avatar & Avatar Group Components
+   Prefix: .ui-avatar, .ui-avatar-group
+   ========================================================================== */
+
+.ui-avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  font-family: var(--ui-font-family);
+  font-size: 13px;
+  font-weight: 600;
+  border: 2px solid var(--ui-bg-surface);
+  box-sizing: border-box;
+  background-color: var(--ui-secondary-bg);
+  color: var(--ui-text-primary);
+  user-select: none;
+}
+
+/* --- Sizes --- */
+.ui-avatar[data-size="sm"] {
+  width: 28px;
+  height: 28px;
+  font-size: 11px;
+}
+
+.ui-avatar[data-size="lg"] {
+  width: 48px;
+  height: 48px;
+  font-size: 16px;
+}
+
+/* --- Color Variants --- */
+.ui-avatar[data-variant="blue"] {
+  background-color: rgba(99, 102, 241, 0.2);
+  color: #4f46e5;
+}
+
+.ui-avatar[data-variant="purple"] {
+  background-color: rgba(139, 92, 246, 0.2);
+  color: #7c3aed;
+}
+
+.ui-avatar[data-variant="orange"] {
+  background-color: rgba(245, 158, 11, 0.2);
+  color: #b45309;
+}
+
+.ui-avatar[data-variant="green"] {
+  background-color: rgba(16, 185, 129, 0.2);
+  color: #059669;
+}
+
+.ui-avatar[data-variant="red"] {
+  background-color: rgba(239, 68, 68, 0.2);
+  color: #dc2626;
+}
+
+/* --- Dark Mode Overrides --- */
+[data-theme="dark"] .ui-avatar[data-variant="blue"] {
+  background-color: rgba(99, 102, 241, 0.3);
+  color: #a5b4fc;
+}
+
+[data-theme="dark"] .ui-avatar[data-variant="purple"] {
+  background-color: rgba(139, 92, 246, 0.3);
+  color: #c7d2fe;
+}
+
+[data-theme="dark"] .ui-avatar[data-variant="orange"] {
+  background-color: rgba(245, 158, 11, 0.3);
+  color: #fcd34d;
+}
+
+/* --- Avatar Group --- */
+.ui-avatar-group {
+  display: inline-flex;
+  align-items: center;
+}
+
+.ui-avatar-group > .ui-avatar {
+  margin-left: -8px;
+}
+
+.ui-avatar-group > .ui-avatar:first-child {
+  margin-left: 0;
+}

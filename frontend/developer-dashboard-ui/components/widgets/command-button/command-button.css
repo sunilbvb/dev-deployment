@@ -1,0 +1,63 @@
+/* ==========================================================================
+   UI Component Library — Command Selector Button Component
+   Prefix: .ui-command-button, .ui-command-info, .ui-command-title,
+           .ui-command-meta, .ui-command-status, .ui-lock-badge
+   ========================================================================== */
+
+.ui-command-button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 10px 14px;
+  border-radius: 6px;
+  border: 1px solid var(--ui-border-color);
+  background-color: var(--ui-bg-surface);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  font-family: var(--ui-font-family);
+  box-sizing: border-box;
+  text-align: left;
+  margin-bottom: 8px;
+}
+
+.ui-command-button:hover {
+  background-color: var(--ui-bg-muted);
+  border-color: var(--ui-text-muted);
+}
+
+.ui-command-button[data-state="selected"] {
+  border-color: var(--ui-primary-color);
+  background-color: var(--ui-info-bg);
+}
+
+.ui-command-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.ui-command-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ui-text-primary);
+}
+
+.ui-command-meta {
+  font-size: 11px;
+  color: var(--ui-text-muted);
+}
+
+.ui-command-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.ui-lock-badge {
+  font-size: 12px;
+  color: var(--ui-text-muted);
+  display: inline-flex;
+  align-items: center;
+  user-select: none;
+}

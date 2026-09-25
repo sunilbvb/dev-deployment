@@ -1,0 +1,196 @@
+{
+  "ios": [
+    {
+      "id": "build_ipa",
+      "name": "Build IPA",
+      "description": "Build release IPA for {flavor} flavor",
+      "command_template": "flutter build ipa --release --flavor {flavor}",
+      "icon": "apple",
+      "color": "#64748b"
+    },
+    {
+      "id": "build_ipa_device",
+      "name": "Build IPA for Device",
+      "description": "Build {flavor} IPA for direct device install (development signing)",
+      "command_template": "flutter build ipa --release --flavor {flavor} --export-method development",
+      "icon": "smartphone",
+      "color": "#475569"
+    },
+    {
+      "id": "deploy_ipa",
+      "name": "Build & Upload IPA",
+      "description": "Build + upload IPA to TestFlight for {flavor}",
+      "command_template": "flutter build ipa --release --flavor {flavor} && ipatool upload --bundle-id {bundle_id} --apple-id {apple_id} --path build/ios/ipa/*.ipa",
+      "icon": "rocket",
+      "color": "#3b82f6"
+    },
+    {
+      "id": "upload_ipa",
+      "name": "Upload IPA only",
+      "description": "Upload already-built {flavor} IPA to TestFlight",
+      "command_template": "ipatool upload --bundle-id {bundle_id} --apple-id {apple_id} --path build/ios/ipa/*.ipa",
+      "icon": "upload-cloud",
+      "color": "#0284c7"
+    }
+  ],
+  "android": [
+    {
+      "id": "build_aab",
+      "name": "Build AAB",
+      "description": "Build release AAB for {flavor} flavor",
+      "command_template": "flutter build appbundle --release --flavor {flavor}",
+      "icon": "smartphone",
+      "color": "#22c55e"
+    },
+    {
+      "id": "deploy_aab",
+      "name": "Build & Upload AAB",
+      "description": "Build + publish {flavor} AAB to Play Store internal testing",
+      "command_template": "flutter build appbundle --release --flavor {flavor} && bundletool upload --aab build/app/outputs/bundle/{flavor}Release/app-{flavor}-release.aab",
+      "icon": "rocket",
+      "color": "#10b981"
+    },
+    {
+      "id": "upload_aab",
+      "name": "Upload AAB only",
+      "description": "Publish already-built {flavor} AAB to Play Store internal testing",
+      "command_template": "bundletool upload --aab build/app/outputs/bundle/{flavor}Release/app-{flavor}-release.aab",
+      "icon": "upload-cloud",
+      "color": "#059669"
+    },
+    {
+      "id": "build_apk",
+      "name": "Build APK",
+      "description": "Build release APK for {flavor} flavor",
+      "command_template": "flutter build apk --release --flavor {flavor}",
+      "icon": "play",
+      "color": "#16a34a"
+    }
+  ],
+  "combined": [
+    {
+      "id": "deploy_both",
+      "name": "Build & Deploy Both (iOS + Android)",
+      "description": "Build + upload BOTH iOS and Android for {flavor} in one run - version/build number is bumped once and shared by both platforms",
+      "command_template": "echo 'Combined deploy is dashboard-only - see features/deployment/scripts/json_utils.sh:deployBothPlatforms'",
+      "icon": "rocket",
+      "color": "#f97316"
+    }
+  ],
+  "release": [
+    {
+      "id": "release_preview",
+      "name": "1. Preview Changelog (Dry-run)",
+      "description": "Analyze {app_id} and dependent packages, print preview (zero files or git changes)",
+      "command_template": "dart tool/scripts/release_changelog_tagger.dart --app={app_id} --mode=preview",
+      "icon": "eye",
+      "color": "#a855f7"
+    },
+    {
+      "id": "release_changelog",
+      "name": "2. Update CHANGELOG.md Only",
+      "description": "Analyze and update CHANGELOG.md in {app_id} and packages (no git commit/tag)",
+      "command_template": "dart tool/scripts/release_changelog_tagger.dart --app={app_id} --mode=changelog",
+      "icon": "file-text",
+      "color": "#8b5cf6"
+    },
+    {
+      "id": "release_commit",
+      "name": "3. Update Changelog & Git Commit",
+      "description": "Update CHANGELOG.md and commit to local branch (no tag/push)",
+      "command_template": "dart tool/scripts/release_changelog_tagger.dart --app={app_id} --mode=commit",
+      "icon": "git-commit",
+      "color": "#7c3aed"
+    },
+    {
+      "id": "release_tag",
+      "name": "4. Changelog + Commit + Local Git Tag",
+      "description": "Update CHANGELOG.md, commit, and create local annotated Git tag (no remote push)",
+      "command_template": "dart tool/scripts/release_changelog_tagger.dart --app={app_id} --mode=tag",
+      "icon": "tag",
+      "color": "#6366f1"
+    },
+    {
+      "id": "release_push",
+      "name": "5. Full Release (Tag & Push to Remote)",
+      "description": "Update CHANGELOG.md, commit, create Git tag, and push commit & tag to remote repository",
+      "command_template": "dart tool/scripts/release_changelog_tagger.dart --app={app_id} --mode=push",
+      "icon": "send",
+      "color": "#4f46e5"
+    },
+    {
+      "id": "release_bump_patch",
+      "name": "6. Bump Patch (SemVer) & Release",
+      "description": "Auto-bump PATCH version (e.g. 1.0.5 -> 1.0.6), compile changelog, and create local tag",
+      "command_template": "dart tool/scripts/release_changelog_tagger.dart --app={app_id} --bump=patch --mode=tag",
+      "icon": "trending-up",
+      "color": "#06b6d4"
+    },
+    {
+      "id": "release_bump_minor",
+      "name": "7. Bump Minor (SemVer) & Release",
+      "description": "Auto-bump MINOR version (e.g. 1.0.5 -> 1.1.0), compile changelog, and create local tag",
+      "command_template": "dart tool/scripts/release_changelog_tagger.dart --app={app_id} --bump=minor --mode=tag",
+      "icon": "corner-right-up",
+      "color": "#0ea5e9"
+    },
+    {
+      "id": "release_bump_major",
+      "name": "8. Bump Major (SemVer) & Release",
+      "description": "Auto-bump MAJOR version (e.g. 1.0.5 -> 2.0.0), compile changelog, and create local tag",
+      "command_template": "dart tool/scripts/release_changelog_tagger.dart --app={app_id} --bump=major --mode=tag",
+      "icon": "zap",
+      "color": "#eab308"
+    },
+    {
+      "id": "release_store_notes",
+      "name": "9. Store 'What's New' Release Notes",
+      "description": "Generate clean, consumer-friendly release notes formatted for App Store & Google Play Console",
+      "command_template": "dart tool/scripts/release_changelog_tagger.dart --app={app_id} --store --mode=preview",
+      "icon": "smartphone",
+      "color": "#10b981"
+    },
+    {
+      "id": "release_verify",
+      "name": "10. Pre-Flight Verify & Full Release",
+      "description": "Run flutter analyze & test pre-flight check, compile changelog, create tag, and push to remote",
+      "command_template": "dart tool/scripts/release_changelog_tagger.dart --app={app_id} --verify --mode=push",
+      "icon": "shield-check",
+      "color": "#059669"
+    },
+    {
+      "id": "release_status",
+      "name": "11. Monorepo Unreleased Report",
+      "description": "Scan entire workspace and display all unreleased commits across all apps and packages",
+      "command_template": "dart tool/scripts/release_changelog_tagger.dart --status",
+      "icon": "activity",
+      "color": "#f59e0b"
+    },
+    {
+      "id": "release_undo",
+      "name": "12. Rollback / Delete Release Tag",
+      "description": "Delete accidental local Git release tag and provide rollback commands",
+      "command_template": "dart tool/scripts/release_changelog_tagger.dart --app={app_id} --undo",
+      "icon": "rotate-ccw",
+      "color": "#ef4444"
+    }
+  ],
+  "utility": [
+    {
+      "id": "clean",
+      "name": "Clean Project",
+      "description": "Clean build artifacts and caches",
+      "command_template": "flutter clean",
+      "icon": "trash-2",
+      "color": "#dc2626"
+    },
+    {
+      "id": "pub_get",
+      "name": "Pub Get",
+      "description": "Get Dart dependencies",
+      "command_template": "flutter pub get",
+      "icon": "download",
+      "color": "#7c3aed"
+    }
+  ]
+}

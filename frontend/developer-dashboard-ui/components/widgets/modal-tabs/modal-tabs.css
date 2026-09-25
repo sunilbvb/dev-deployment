@@ -1,0 +1,47 @@
+/* ==========================================================================
+   UI Component Library — Modal Sub-Tabs Navigation Component
+   Prefix: .ui-modal-tabs, .ui-modal-tab
+   ========================================================================== */
+
+.ui-modal-tabs {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  border-bottom: 1px solid var(--ui-border-color);
+  margin-bottom: 16px;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.ui-modal-tab {
+  font-family: var(--ui-font-family);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ui-text-muted);
+  padding: 8px 0;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  position: relative;
+  transition: color 0.15s ease;
+}
+
+.ui-modal-tab:hover {
+  color: var(--ui-text-primary);
+}
+
+.ui-modal-tab.ui-active {
+  color: var(--ui-primary-color);
+  font-weight: 600;
+}
+
+.ui-modal-tab.ui-active::after {
+  content: "";
+  position: absolute;
+  bottom: -1px;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background-color: var(--ui-primary-color);
+  border-radius: 2px 2px 0 0;
+}
