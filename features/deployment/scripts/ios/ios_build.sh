@@ -307,7 +307,27 @@ buildIPARaw() {
         apple_key="$(getValueByKey "APPLE_API_KEY" "env/$secret_file")"
         apple_issuer="$(getValueByKey "APPLE_API_ISSUER" "env/$secret_file")"
         if [ -n "$apple_key" ]; then
-            apple_key_path="$MELOS_ROOT_PATH/private_keys/AuthKey_${apple_key}.p8"
+            # Resolve key path: prefer industry-standard locations before legacy workspace path.
+            # Priority:
+            #   1. APPLE_API_KEY_BASE64 already set (in-memory — no file needed)
+            #   2. ~/.appstoreconnect/private_keys/  (Apple's own recommended location)
+            #   3. ~/.private_keys/                   (Apple secondary fallback)
+            #   4. <workspace>/private_keys/          (legacy — kept for backward compat)
+            local _std_kp1="$HOME/.appstoreconnect/private_keys/AuthKey_${apple_key}.p8"
+            local _std_kp2="$HOME/.private_keys/AuthKey_${apple_key}.p8"
+            local _legacy_kp="$MELOS_ROOT_PATH/private_keys/AuthKey_${apple_key}.p8"
+            if [ -n "${APPLE_API_KEY_BASE64:-}" ]; then
+                mkdir -p "$HOME/.appstoreconnect/private_keys"
+                echo "$APPLE_API_KEY_BASE64" | base64 -d > "$_std_kp1"
+                chmod 600 "$_std_kp1"
+                apple_key_path="$_std_kp1"
+            elif [ -f "$_std_kp1" ]; then
+                apple_key_path="$_std_kp1"
+            elif [ -f "$_std_kp2" ]; then
+                apple_key_path="$_std_kp2"
+            else
+                apple_key_path="$_legacy_kp"
+            fi
         fi
     fi
 

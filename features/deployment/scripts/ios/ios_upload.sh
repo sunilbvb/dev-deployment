@@ -44,6 +44,7 @@ runWithIosEnv() {
     BUNDLE_GEMFILE="$bundle_gemfile" \
     APPLE_API_KEY="$APPLE_API_KEY" \
     APPLE_API_ISSUER="$APPLE_API_ISSUER" \
+    APPLE_API_KEY_BASE64="${APPLE_API_KEY_BASE64:-}" \
     APPLE_API_KEY_PATH="${APPLE_API_KEY_PATH:-}" \
     IOS_IPA_PATH="${IOS_IPA_PATH:-}" \
     IPA_PATH="${IPA_PATH:-}" \
@@ -110,11 +111,23 @@ uploadIPARaw() {
         return 1
     fi
 
-    APPLE_API_KEY="$(getValueByKey "APPLE_API_KEY" "$env_file")"
-    export APPLE_API_KEY
-    APPLE_API_ISSUER="$(getValueByKey "APPLE_API_ISSUER" "$env_file")"
-    export APPLE_API_ISSUER
-    export APPLE_API_KEY_PATH="$MELOS_ROOT_PATH/private_keys/AuthKey_${APPLE_API_KEY}.p8"
+    if [ -z "${APPLE_API_KEY:-}" ]; then
+        APPLE_API_KEY="$(getValueByKey "APPLE_API_KEY" "$env_file")"
+        export APPLE_API_KEY
+    fi
+    if [ -z "${APPLE_API_ISSUER:-}" ]; then
+        APPLE_API_ISSUER="$(getValueByKey "APPLE_API_ISSUER" "$env_file")"
+        export APPLE_API_ISSUER
+    fi
+    if [ -z "${APPLE_API_KEY_PATH:-}" ]; then
+        if [ -n "${APPLE_API_KEY:-}" ] && [ -f "$HOME/.appstoreconnect/private_keys/AuthKey_${APPLE_API_KEY}.p8" ]; then
+            export APPLE_API_KEY_PATH="$HOME/.appstoreconnect/private_keys/AuthKey_${APPLE_API_KEY}.p8"
+        elif [ -n "${APPLE_API_KEY:-}" ] && [ -f "$HOME/.private_keys/AuthKey_${APPLE_API_KEY}.p8" ]; then
+            export APPLE_API_KEY_PATH="$HOME/.private_keys/AuthKey_${APPLE_API_KEY}.p8"
+        else
+            export APPLE_API_KEY_PATH="$MELOS_ROOT_PATH/private_keys/AuthKey_${APPLE_API_KEY}.p8"
+        fi
+    fi
     
     # Debug output
     print_apple_creds_debug "${APPLE_API_KEY:-}" "${APPLE_API_ISSUER:-}" "${APPLE_API_KEY_PATH}"

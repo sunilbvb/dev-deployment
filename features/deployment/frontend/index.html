@@ -30,7 +30,13 @@
 <body>
 <main class="ui-page-shell deployment-shell">
     <header class="ui-page-header">
-        <span class="ui-page-eyebrow" id="workspaceLabel">WORKSPACE</span>
+        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px;">
+            <span class="ui-page-eyebrow" id="workspaceLabel">WORKSPACE</span>
+            <button id="switchWorkspaceBtn" class="ui-button" data-variant="ghost" data-size="xs" type="button" style="padding: 2px 8px; font-size: 0.72rem; display: inline-flex; align-items: center; gap: 4px;" title="Switch or Add Workspace Directory">
+                <i data-lucide="folder-symlink" style="width: 14px; height: 14px;"></i>
+                <span>Switch / Add Project Folder</span>
+            </button>
+        </div>
         <div class="ui-page-title-row">
             <h1 class="ui-page-title">Deployment Console</h1>
             <div class="ui-page-actions">
@@ -243,6 +249,41 @@
     </div>
 </div>
 
+<!-- ═══════════════════════════ WORKSPACE SWITCH MODAL ═══════════════════════════ -->
+<div id="workspaceSwitchOverlay" class="ui-modal-backdrop" role="dialog" aria-modal="true" aria-label="Switch Project Folder">
+    <div class="ui-modal" data-size="sm" style="max-width: 520px;">
+        <div class="ui-modal-header">
+            <div>
+                <h3 class="ui-modal-title">Switch Project Folder</h3>
+                <p class="modal-subtitle" style="font-size: 0.8rem; color: var(--ui-muted, #9aa6b8); margin: 0;">Point the deployment console to any app or monorepo directory.</p>
+            </div>
+            <button id="closeWorkspaceModalBtn" class="ui-modal-close" type="button">&times;</button>
+        </div>
+        <div class="ui-modal-body" style="padding: 20px;">
+            <div class="ui-field" style="margin-bottom: 16px;">
+                <label class="ui-label">Recent Projects</label>
+                <select id="workspaceSelectDropdown" class="ui-input" style="width: 100%;">
+                    <option value="">-- Select a saved project --</option>
+                </select>
+            </div>
+            <div class="ui-field" style="margin-bottom: 16px;">
+                <label class="ui-label">Or Enter Full Directory Path</label>
+                <input id="workspacePathInput" class="ui-input" type="text" placeholder="/home/username/IdeaProjects/my-app" style="width: 100%;">
+                <span class="ui-help-text" style="display: block; font-size: 0.72rem; color: var(--ui-text-muted); margin-top: 4px;">Absolute path to single app folder or monorepo containing an apps/ directory.</span>
+            </div>
+        </div>
+        <div class="ui-modal-footer" style="display: flex; gap: 8px; justify-content: flex-end; padding: 16px;">
+            <button id="cancelWorkspaceBtn" type="button" class="ui-button" data-variant="ghost">
+                <span>Cancel</span>
+            </button>
+            <button id="confirmWorkspaceBtn" type="button" class="ui-button" data-variant="primary">
+                <i data-lucide="check"></i>
+                <span>Open Project</span>
+            </button>
+        </div>
+    </div>
+</div>
+
 <!-- ═══════════════════════════ DEPLOYMENT SETUP MODAL ═══════════════════════════ -->
 <div id="setupOverlay" class="ui-modal-backdrop" role="dialog" aria-modal="true" aria-label="Deployment Setup">
     <div class="ui-modal" data-size="lg" style="height: 90vh; max-width: 900px; display: flex; flex-direction: column;">
@@ -275,23 +316,30 @@
                 </div>
 
                 <!-- Add App Form -->
-                <form id="addAppForm" class="setup-form" style="display: none;" autocomplete="off">
-                    <h3 class="ui-title" data-level="3">Add Custom App</h3>
-                    <fieldset class="setup-fieldset" style="border: 1px solid var(--ui-border-color); padding: 16px; border-radius: 8px; margin-bottom: 16px;">
-                        <legend style="padding: 0 8px; font-weight: bold; color: var(--ui-text-muted);">App Metadata</legend>
-                        <div class="ui-field" style="margin-bottom: 12px;">
-                            <label class="ui-label">App ID (e.g. mobile_app, my_service)</label>
-                            <input id="newAppId" class="ui-input" type="text" placeholder="my_app" required>
+                <form id="addAppForm" class="setup-form hidden" autocomplete="off">
+                    <div style="margin-bottom: 20px;">
+                        <h3 class="ui-title" data-level="3" style="margin: 0;">Add Custom App</h3>
+                        <p class="ui-help-text" style="margin-top: 4px;">Manually register a new app identifier and metadata in this workspace.</p>
+                    </div>
+                    <div class="ui-card" style="margin-bottom: 16px;">
+                        <div class="ui-card-header">
+                            <h4 class="ui-card-title">App Metadata</h4>
                         </div>
-                        <div class="ui-field" style="margin-bottom: 12px;">
-                            <label class="ui-label">App Name (display title)</label>
-                            <input id="newAppName" class="ui-input" type="text" placeholder="My Mobile App" required>
+                        <div class="ui-card-body">
+                            <div class="ui-field">
+                                <label class="ui-label">App ID (e.g. mobile_app, my_service)</label>
+                                <input id="newAppId" class="ui-input" type="text" placeholder="my_app" required>
+                            </div>
+                            <div class="ui-field">
+                                <label class="ui-label">App Name (display title)</label>
+                                <input id="newAppName" class="ui-input" type="text" placeholder="My Mobile App" required>
+                            </div>
+                            <div class="ui-field" style="margin-bottom: 0;">
+                                <label class="ui-label">Version (optional)</label>
+                                <input id="newAppVersion" class="ui-input" type="text" placeholder="1.0.0 (1)">
+                            </div>
                         </div>
-                        <div class="ui-field" style="margin-bottom: 12px;">
-                            <label class="ui-label">Version (optional)</label>
-                            <input id="newAppVersion" class="ui-input" type="text" placeholder="1.0.0 (1)">
-                        </div>
-                    </fieldset>
+                    </div>
                     <div class="setup-actions" style="display: flex; gap: 8px;">
                         <button id="saveNewAppBtn" type="button" class="ui-button" data-variant="primary">
                             <i data-lucide="save"></i>
@@ -304,86 +352,139 @@
                 </form>
 
                 <!-- Configuration Form -->
-                <form id="setupForm" class="setup-form" style="display: none;" autocomplete="off">
-                    <h3 id="setupAppTitle" class="ui-title" data-level="3">App Name</h3>
+                <form id="setupForm" class="setup-form hidden" autocomplete="off">
+                    <div style="margin-bottom: 20px;">
+                        <span class="ui-page-eyebrow">APP CONFIGURATION</span>
+                        <h2 id="setupAppTitle" class="ui-page-title" style="font-size: 1.35rem; margin: 2px 0 0 0;">App Name</h2>
+                    </div>
 
-                    <fieldset class="setup-fieldset" style="border: 1px solid var(--ui-border-color); padding: 16px; border-radius: 8px; margin-bottom: 16px;">
-                        <legend style="padding: 0 8px; font-weight: bold; color: var(--ui-text-muted);">Flavor Configuration</legend>
-                        <div class="ui-field" style="margin-bottom: 12px;">
-                            <label class="ui-label">Flavors (comma-separated list)</label>
-                            <input id="cfgFlavors" class="ui-input" type="text" placeholder="dev, qa, prod">
-                            <span class="ui-help-text" style="display: block; font-size: 0.72rem; color: var(--ui-text-muted); margin-top: 4px;">Dynamic tabs and bundle/package fields will regenerate automatically for these flavors.</span>
+                    <!-- Flavor Configuration Card -->
+                    <div class="ui-card" style="margin-bottom: 16px;">
+                        <div class="ui-card-header">
+                            <h4 class="ui-card-title">Flavor Configuration</h4>
                         </div>
-                    </fieldset>
+                        <div class="ui-card-body">
+                            <div class="ui-field" style="margin-bottom: 0;">
+                                <label class="ui-label">Flavors (comma-separated list)</label>
+                                <input id="cfgFlavors" class="ui-input" type="text" placeholder="dev, qa, prod">
+                                <span class="ui-help-text">Dynamic tabs and bundle/package fields will regenerate automatically for these flavors.</span>
+                            </div>
+                        </div>
+                    </div>
 
-                    <fieldset class="setup-fieldset" style="border: 1px solid var(--ui-border-color); padding: 16px; border-radius: 8px; margin-bottom: 16px;">
-                        <legend style="padding: 0 8px; font-weight: bold; color: var(--ui-text-muted);">Release Automation</legend>
-                        <div class="ui-field" style="margin-bottom: 12px;">
-                            <label class="ui-label" style="display: flex; align-items: center; gap: 8px;">
-                                <input id="cfgAutoReleaseEnabled" type="checkbox">
-                                <span>Auto-run Release after successful Deploy/Upload</span>
-                            </label>
-                            <span class="ui-help-text" style="display: block; font-size: 0.72rem; color: var(--ui-text-muted); margin-top: 4px;">When a Deploy/Upload command for this app succeeds, automatically run the Release action below for the same flavor - no manual click needed.</span>
+                    <!-- Release Automation Card -->
+                    <div class="ui-card" style="margin-bottom: 16px;">
+                        <div class="ui-card-header">
+                            <h4 class="ui-card-title">Release Automation</h4>
                         </div>
-                        <div class="ui-field" style="margin-bottom: 12px;">
-                            <label class="ui-label">Release Action to run</label>
-                            <select id="cfgAutoReleaseAction" class="ui-input"></select>
+                        <div class="ui-card-body">
+                            <div class="ui-field">
+                                <label class="ui-control">
+                                    <input id="cfgAutoReleaseEnabled" type="checkbox" class="ui-checkbox">
+                                    <span style="font-weight: 500;">Auto-run Release after successful Deploy/Upload</span>
+                                </label>
+                                <span class="ui-help-text">When a Deploy/Upload command for this app succeeds, automatically run the Release action below for the same flavor - no manual click needed.</span>
+                            </div>
+                            <div class="ui-field">
+                                <label class="ui-label">Release Action to run</label>
+                                <select id="cfgAutoReleaseAction" class="ui-select"></select>
+                            </div>
+                            <div class="ui-field" style="margin-bottom: 0;">
+                                <label class="ui-label">Flavors that trigger it (comma-separated)</label>
+                                <input id="cfgAutoReleaseFlavors" class="ui-input" type="text" placeholder="prod">
+                            </div>
                         </div>
-                        <div class="ui-field" style="margin-bottom: 12px;">
-                            <label class="ui-label">Flavors that trigger it (comma-separated)</label>
-                            <input id="cfgAutoReleaseFlavors" class="ui-input" type="text" placeholder="prod">
-                        </div>
-                    </fieldset>
+                    </div>
 
-                    <fieldset class="setup-fieldset" style="border: 1px solid var(--ui-border-color); padding: 16px; border-radius: 8px; margin-bottom: 16px;">
-                        <legend style="padding: 0 8px; font-weight: bold; color: var(--ui-text-muted);">App Identifiers (Bundle IDs &amp; Package Names)</legend>
-                        <div class="setup-sub-section">
-                            <span class="sub-legend" style="font-weight: bold; color: var(--ui-text-primary);">iOS Bundle IDs</span>
-                            <div id="dynamicBundleIdsContainer" class="dynamic-inputs-grid"></div>
+                    <!-- App Identifiers Card -->
+                    <div class="ui-card" style="margin-bottom: 16px;">
+                        <div class="ui-card-header">
+                            <h4 class="ui-card-title">App Identifiers (Bundle IDs &amp; Package Names)</h4>
                         </div>
-                        <div class="setup-sub-section" style="margin-top: 16px;">
-                            <span class="sub-legend" style="font-weight: bold; color: var(--ui-text-primary);">Android Package Names (Application IDs)</span>
-                            <div id="dynamicPackageNamesContainer" class="dynamic-inputs-grid"></div>
+                        <div class="ui-card-body">
+                            <div class="setup-sub-section">
+                                <span class="ui-label" style="font-weight: 700; text-transform: uppercase; font-size: 0.72rem; letter-spacing: 0.05em; color: var(--ui-text-muted);">iOS Bundle IDs</span>
+                                <div id="dynamicBundleIdsContainer" class="dynamic-inputs-grid"></div>
+                            </div>
+                            <div class="setup-sub-section" style="margin-top: 20px;">
+                                <span class="ui-label" style="font-weight: 700; text-transform: uppercase; font-size: 0.72rem; letter-spacing: 0.05em; color: var(--ui-text-muted);">Android Package Names (Application IDs)</span>
+                                <div id="dynamicPackageNamesContainer" class="dynamic-inputs-grid"></div>
+                            </div>
                         </div>
-                    </fieldset>
+                    </div>
 
-                    <fieldset class="setup-fieldset" style="border: 1px solid var(--ui-border-color); padding: 16px; border-radius: 8px; margin-bottom: 16px;">
-                        <legend style="padding: 0 8px; font-weight: bold; color: var(--ui-text-muted);">iOS Certificates &amp; Credentials</legend>
-                        <div class="ui-field" style="margin-bottom: 12px;">
-                            <label class="ui-label">Apple ID (email)</label>
-                            <input id="cfgAppleId" class="ui-input" type="text" placeholder="developer@company.com">
-                            <span class="ui-help-text" style="display: block; font-size: 0.72rem; color: var(--ui-text-muted); margin-top: 4px;">Your Apple developer account email, used to authenticate with App Store Connect for TestFlight upload tasks.</span>
+                    <!-- iOS Certificates & Credentials Card -->
+                    <div class="ui-card" style="margin-bottom: 16px;">
+                        <div class="ui-card-header">
+                            <h4 class="ui-card-title">iOS Certificates &amp; Credentials</h4>
                         </div>
-                        <div class="ui-field" style="margin-bottom: 12px;">
-                            <label class="ui-label">APNs p8 Key Path</label>
-                            <input id="cfgP8Path" class="ui-input" type="text" placeholder="private_keys/APNs Keys/AuthKey.p8">
-                            <span class="ui-help-text" style="display: block; font-size: 0.72rem; color: var(--ui-text-muted); margin-top: 4px;">Apple Push Notification service token signing key (.p8) relative path to authorize notifications on iOS.</span>
+                        <div class="ui-card-body">
+                            <div class="ui-field">
+                                <label class="ui-label">Apple ID (email)</label>
+                                <input id="cfgAppleId" class="ui-input" type="text" placeholder="developer@company.com">
+                                <span class="ui-help-text">Your Apple developer account email, used to authenticate with App Store Connect for TestFlight upload tasks.</span>
+                            </div>
+                            <div class="ui-field">
+                                <label class="ui-label">App Store Connect Issuer ID</label>
+                                <input id="cfgIssuerId" class="ui-input" type="text" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx">
+                                <span class="ui-help-text">UUID from App Store Connect → Users &amp; Access → Integrations → Team ID. Saved per-app alongside the API key.</span>
+                            </div>
+                            <!-- App Store Connect API Key (.p8) Upload -->
+                            <div class="ui-field" style="margin-bottom: 0;">
+                                <label class="ui-label">App Store Connect API Key (.p8)</label>
+                                <span class="ui-help-text" style="display:block; margin-bottom: 10px;">
+                                    Upload your <strong>AuthKey_XXXXXXXXXX.p8</strong> file from App Store Connect → Users &amp; Access → Integrations.
+                                    The key is Base64-encoded, saved in deploy_config, and written to
+                                    <code>~/.appstoreconnect/private_keys/</code> (Apple industry-standard path) with <code>chmod 600</code>.
+                                    The filename must follow the <code>AuthKey_&lt;KeyID&gt;.p8</code> convention so the Key ID can be extracted automatically.
+                                </span>
+                                <div class="ui-dropzone" id="p8Dropzone">
+                                    <input type="file" id="p8FileInput" accept=".p8" style="display:none;">
+                                    <div class="ui-dropzone-icon">🔑</div>
+                                    <div class="ui-dropzone-title" id="p8DropzoneTitle">Drag &amp; drop AuthKey_XXXXXXXXXX.p8 or click to browse</div>
+                                    <div class="ui-dropzone-subtitle">Only .p8 files • Key ID extracted from filename automatically</div>
+                                </div>
+                                <!-- Status badge shown after upload -->
+                                <div id="p8UploadStatus" class="cert-status-box" data-status="unknown" style="display:none; margin-top: 8px;"></div>
+                                <!-- Current key info (if already uploaded) -->
+                                <div id="p8CurrentKeyInfo" style="display:none; margin-top: 8px; padding: 8px 12px; background: var(--ui-surface-2, #f5f5f5); border-radius: 6px; font-size: 0.82rem;">
+                                    <span style="color: var(--ui-text-muted);">Stored Key ID:</span>
+                                    <strong id="p8CurrentKeyId" style="margin-left: 4px; font-family: monospace;"></strong>
+                                    <span style="margin-left: 12px; color: var(--ui-text-muted);">Path:</span>
+                                    <code id="p8CurrentKeyPath" style="margin-left: 4px; font-size: 0.78rem;"></code>
+                                </div>
+                            </div>
+                            <div class="ui-field" style="margin-bottom: 0; margin-top: 20px;">
+                                <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom: 6px;">
+                                    <label class="ui-label" style="margin: 0;">Certificate / Provisioning Profile Status (Prod)</label>
+                                    <button id="iosCertRecheckBtn" type="button" class="ui-button" data-variant="ghost" data-size="xs">
+                                        <i data-lucide="refresh-cw"></i>
+                                        <span>Re-check</span>
+                                    </button>
+                                </div>
+                                <div id="iosCertStatus" class="cert-status-box" data-status="unknown">Select an app to check.</div>
+                            </div>
                         </div>
-                        <div class="ui-field" style="margin-bottom: 0;">
-                            <label class="ui-label" style="display:flex; align-items:center; justify-content:space-between;">
-                                <span>Certificate / Provisioning Profile Status (Prod)</span>
-                                <button id="iosCertRecheckBtn" type="button" class="ui-button" data-variant="ghost" data-size="sm">
-                                    <i data-lucide="refresh-cw"></i>
-                                    <span>Re-check</span>
-                                </button>
-                            </label>
-                            <div id="iosCertStatus" class="cert-status-box" data-status="unknown">Select an app to check.</div>
-                        </div>
-                    </fieldset>
+                    </div>
 
-                    <fieldset class="setup-fieldset" style="border: 1px solid var(--ui-border-color); padding: 16px; border-radius: 8px; margin-bottom: 16px;">
-                        <legend style="padding: 0 8px; font-weight: bold; color: var(--ui-text-muted);">Android Certificates &amp; Credentials</legend>
-                        <div class="ui-field" style="margin-bottom: 12px;">
-                            <label class="ui-label">Google Play Service Account JSON Path</label>
-                            <input id="cfgPlayService" class="ui-input" type="text" placeholder="private_keys/play-service-account.json">
-                            <span class="ui-help-text" style="display: block; font-size: 0.72rem; color: var(--ui-text-muted); margin-top: 4px;">Google Developer API Service Account credentials key in JSON format, required to upload Android App Bundles (AAB).</span>
+                    <!-- Android Certificates & Credentials Card -->
+                    <div class="ui-card" style="margin-bottom: 20px;">
+                        <div class="ui-card-header">
+                            <h4 class="ui-card-title">Android Certificates &amp; Credentials</h4>
                         </div>
-                        <div class="setup-sub-section">
-                            <span class="sub-legend" style="font-weight: bold; color: var(--ui-text-primary);">google-services.json Client Config Paths</span>
-                            <span class="ui-help-text" style="display: block; font-size: 0.72rem; color: var(--ui-text-muted); margin-bottom: 8px;">Firebase Client config files required for each respective Android environment/flavor.</span>
-                            <div id="dynamicGoogleServicesContainer" class="dynamic-inputs-grid"></div>
+                        <div class="ui-card-body">
+                            <div class="ui-field">
+                                <label class="ui-label">Google Play Service Account JSON Path</label>
+                                <input id="cfgPlayService" class="ui-input" type="text" placeholder="private_keys/play-service-account.json">
+                                <span class="ui-help-text">Google Developer API Service Account credentials key in JSON format, required to upload Android App Bundles (AAB).</span>
+                            </div>
+                            <div class="setup-sub-section">
+                                <span class="ui-label" style="font-weight: 700; text-transform: uppercase; font-size: 0.72rem; letter-spacing: 0.05em; color: var(--ui-text-muted);">google-services.json Client Config Paths</span>
+                                <span class="ui-help-text" style="display: block; margin-bottom: 8px;">Firebase Client config files required for each respective Android environment/flavor.</span>
+                                <div id="dynamicGoogleServicesContainer" class="dynamic-inputs-grid"></div>
+                            </div>
                         </div>
-                    </fieldset>
+                    </div>
 
                     <div class="setup-actions" style="display: flex; gap: 8px; flex-wrap: wrap; margin-top: 24px;">
                         <button id="autoScanBtn" type="button" class="ui-button" data-variant="warning">

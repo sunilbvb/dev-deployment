@@ -128,6 +128,74 @@ def save_deploy_config(data: dict[str, Any]) -> dict[str, Any]:
         return {"success": False, "error": str(exc)}
 
 
+def upload_p8_key(app_id: str, filename: str, content_bytes: bytes, issuer_id: str = "") -> dict[str, Any]:
+    """
+    Receive an uploaded .p8 file, base64-encode it, persist to deploy_config,
+    and write it to the Apple industry-standard key location with correct permissions.
+
+    Key ID is extracted from the filename: AuthKey_XXXXXXXXXX.p8 → XXXXXXXXXX.
+    If filename doesn't follow the convention the caller must supply key_id separately.
+    """
+    import base64
+    import re
+    import stat
+
+    # --- Extract Key ID from filename (AuthKey_XXXXXXXXXX.p8) ---
+    match = re.search(r"AuthKey[_-]([A-Z0-9]{10})", filename, re.IGNORECASE)
+    if not match:
+        return {
+            "success": False,
+            "error": (
+                f"Cannot extract Key ID from filename '{filename}'. "
+                "Expected format: AuthKey_XXXXXXXXXX.p8 (10-char uppercase key ID)."
+            ),
+        }
+    key_id = match.group(1).upper()
+
+    # --- Base64-encode the raw bytes ---
+    b64_content = base64.b64encode(content_bytes).decode("ascii")
+
+    # --- Persist to deploy_config.json ---
+    deploy_config = load_deploy_config()
+    if "apps" not in deploy_config:
+        deploy_config["apps"] = {}
+    if app_id not in deploy_config["apps"]:
+        deploy_config["apps"][app_id] = {}
+
+    deploy_config["apps"][app_id]["apple_key_id"] = key_id
+    deploy_config["apps"][app_id]["apple_p8_base64"] = b64_content
+    if issuer_id:
+        deploy_config["apps"][app_id]["apple_issuer_id"] = issuer_id
+
+    cfg_path = get_deploy_config_file()
+    try:
+        cfg_path.write_text(json.dumps(deploy_config, indent=2), encoding="utf-8")
+    except Exception as exc:
+        return {"success": False, "error": f"Failed to save deploy config: {exc}"}
+
+    # --- Write to Apple industry-standard path: ~/.appstoreconnect/private_keys/ ---
+    std_dir = Path.home() / ".appstoreconnect" / "private_keys"
+    std_dir.mkdir(parents=True, exist_ok=True)
+    std_key_path = std_dir / f"AuthKey_{key_id}.p8"
+    try:
+        std_key_path.write_bytes(content_bytes)
+        # chmod 600 — owner read/write only (required by altool / notarytool)
+        std_key_path.chmod(stat.S_IRUSR | stat.S_IWUSR)
+    except Exception as exc:
+        return {
+            "success": False,
+            "error": f"Key ID '{key_id}' stored in config, but could not write to {std_key_path}: {exc}",
+        }
+
+    return {
+        "success": True,
+        "key_id": key_id,
+        "stored_path": str(std_key_path),
+        "b64_stored": True,
+        "app_id": app_id,
+    }
+
+
 def _resolve_command(template: str, app_id: str, flavor: str, deploy_cfg: dict[str, Any]) -> str:
     """Substitute {placeholders} in a command template with real values."""
     app_cfg = deploy_cfg.get("apps", {}).get(app_id, {})
@@ -406,13 +474,13 @@ def discover_workspace_config():
         detected_root = _detect_app_in_dir(WORKSPACE_ROOT)
         if detected_root:
             discovered_apps.append(detected_root)
-        else:
-            # Fallback: Treat WORKSPACE_ROOT as a generic app so UI is never blank
+        elif WORKSPACE_ROOT != DASHBOARD_ROOT:
+            # Fallback: Treat WORKSPACE_ROOT as a generic app only if it is an external user project
             root_id = re.sub(r"[^a-zA-Z0-9_-]", "_", WORKSPACE_ROOT.name.lower()) or "app"
             discovered_apps.append({"id": root_id, "name": WORKSPACE_ROOT.name or "App", "stack": "generic"})
 
-    # Populate apps_config.json if empty
-    if not existing_apps:
+    # Populate apps_config.json if empty and apps were discovered
+    if not existing_apps and discovered_apps:
         new_apps = []
         colors = ["#8b5cf6", "#22c55e", "#f97316", "#ec4899", "#14b8a6", "#06b6d4", "#3b82f6"]
         icons = ["user", "package", "briefcase", "users", "leaf", "wallet", "building-2"]
@@ -495,6 +563,20 @@ def set_active_workspace(new_path: str) -> dict[str, Any]:
         active_ws_file.write_text(str(WORKSPACE_ROOT), encoding="utf-8")
     except Exception:
         pass
+
+    ws_file = DASHBOARD_ROOT / "config" / "workspaces_list.json"
+    workspaces = []
+    if ws_file.exists():
+        try:
+            workspaces = json.loads(ws_file.read_text(encoding="utf-8"))
+        except Exception:
+            pass
+    if not any(isinstance(w, dict) and w.get("path") == str(WORKSPACE_ROOT) for w in workspaces):
+        workspaces.append({"name": WORKSPACE_ROOT.name, "path": str(WORKSPACE_ROOT)})
+        try:
+            ws_file.write_text(json.dumps(workspaces, indent=2), encoding="utf-8")
+        except Exception:
+            pass
 
     discover_workspace_config()
     return {

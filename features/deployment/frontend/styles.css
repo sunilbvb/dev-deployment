@@ -271,25 +271,9 @@ body {
     flex: 1;
 }
 
-.setup-fieldset {
-    border: 1px solid var(--ui-border-color, #334155);
-    border-radius: 8px;
-    padding: 16px;
-    margin-bottom: 16px;
-}
-
-.setup-fieldset legend {
-    font-size: 0.72rem;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    color: var(--ui-text-muted, #64748b);
-    padding: 0 6px;
-}
-
 .dynamic-inputs-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
     gap: 12px;
     margin-top: 8px;
 }

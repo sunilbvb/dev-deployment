@@ -146,7 +146,30 @@ buildAndUploadIOS() {
     export APPLE_API_KEY
     APPLE_API_ISSUER="$(getValueByKey "APPLE_API_ISSUER" "env/$secret_file")"
     export APPLE_API_ISSUER
-    export APPLE_API_KEY_PATH="$MELOS_ROOT_PATH/private_keys/AuthKey_${APPLE_API_KEY}.p8"
+
+    # Resolve key path: prefer industry-standard locations before legacy workspace path.
+    # Priority:
+    #   1. APPLE_API_KEY_BASE64 already set (in-memory — no file needed; altool/notarytool reads it via APPLE_API_KEY_PATH env)
+    #   2. ~/.appstoreconnect/private_keys/  (Apple's own recommended location)
+    #   3. ~/.private_keys/                   (Apple secondary fallback)
+    #   4. <workspace>/private_keys/          (legacy — kept for backward compat)
+    local _std_key_path_1="$HOME/.appstoreconnect/private_keys/AuthKey_${APPLE_API_KEY}.p8"
+    local _std_key_path_2="$HOME/.private_keys/AuthKey_${APPLE_API_KEY}.p8"
+    local _legacy_key_path="$MELOS_ROOT_PATH/private_keys/AuthKey_${APPLE_API_KEY}.p8"
+
+    if [ -n "${APPLE_API_KEY_BASE64:-}" ]; then
+        # In-memory path: write key to standard location so altool/notarytool can find it
+        mkdir -p "$HOME/.appstoreconnect/private_keys"
+        echo "$APPLE_API_KEY_BASE64" | base64 -d > "$_std_key_path_1"
+        chmod 600 "$_std_key_path_1"
+        export APPLE_API_KEY_PATH="$_std_key_path_1"
+    elif [ -f "$_std_key_path_1" ]; then
+        export APPLE_API_KEY_PATH="$_std_key_path_1"
+    elif [ -f "$_std_key_path_2" ]; then
+        export APPLE_API_KEY_PATH="$_std_key_path_2"
+    else
+        export APPLE_API_KEY_PATH="$_legacy_key_path"
+    fi
     
     # Debug output
     print_apple_creds_debug "${APPLE_API_KEY:-}" "${APPLE_API_ISSUER:-}" "${APPLE_API_KEY_PATH}"

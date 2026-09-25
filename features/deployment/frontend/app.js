@@ -143,6 +143,18 @@ async function loadApps() {
 }
 
 function renderApps() {
+    if (!state.apps.length) {
+        els.appGrid.innerHTML = `
+            <div class="empty-state" style="padding: 24px; text-align: center; border: 1px dashed var(--ui-border-color); border-radius: 8px;">
+                <p style="margin: 0 0 6px 0; font-weight: 600; color: var(--ui-text-secondary); font-size: 0.85rem;">No apps detected in this workspace</p>
+                <p style="margin: 0; font-size: 0.78rem; color: var(--ui-text-muted);">Click <strong>Switch / Add Project Folder</strong> above or <strong>Configure (⚙️)</strong>.</p>
+            </div>
+        `;
+        if (els.commandList) {
+            els.commandList.innerHTML = `<div class="empty-state" style="padding: 24px; text-align: center; color: var(--ui-text-muted); font-size: 0.85rem;">Select an app to view commands.</div>`;
+        }
+        return;
+    }
     els.appGrid.innerHTML = state.apps.map(app => {
         const isActive = app.id === state.selectedApp;
         const activeState = isActive ? 'active' : '';
@@ -801,6 +813,8 @@ els.batchTemplateSelect.addEventListener('change', () => {
 els.batchStartBtn.addEventListener('click', startBatchDeploy);
 els.batchStopBtn.addEventListener('click', stopBatchDeploy);
 
+let currentWorkspacesList = [];
+
 async function loadWorkspaceInfo() {
     try {
         const res = await fetch(api('/api/deployment/workspaces'));
@@ -810,7 +824,93 @@ async function loadWorkspaceInfo() {
             label.textContent = `WORKSPACE: ${data.activeName.toUpperCase()}`;
             label.title = data.active || '';
         }
+        currentWorkspacesList = data.workspaces || [];
+        const dropdown = document.getElementById('workspaceSelectDropdown');
+        if (dropdown) {
+            dropdown.innerHTML = '<option value="">-- Select a saved project --</option>' +
+                currentWorkspacesList.map(w => `<option value="${escapeHtml(w.path)}" ${w.path === data.active ? 'selected' : ''}>${escapeHtml(w.name || w.path)} (${escapeHtml(w.path)})</option>`).join('');
+        }
+        const pathInput = document.getElementById('workspacePathInput');
+        if (pathInput && !pathInput.value) {
+            pathInput.value = data.active || '';
+        }
     } catch (_) {}
+}
+
+const wsModalEls = {
+    overlay: document.getElementById('workspaceSwitchOverlay'),
+    openBtn: document.getElementById('switchWorkspaceBtn'),
+    closeBtn: document.getElementById('closeWorkspaceModalBtn'),
+    cancelBtn: document.getElementById('cancelWorkspaceBtn'),
+    confirmBtn: document.getElementById('confirmWorkspaceBtn'),
+    dropdown: document.getElementById('workspaceSelectDropdown'),
+    pathInput: document.getElementById('workspacePathInput'),
+};
+
+function openWorkspaceModal() {
+    if (!wsModalEls.overlay) return;
+    wsModalEls.overlay.classList.add('ui-active');
+    loadWorkspaceInfo();
+    if (window.lucide && typeof lucide.createIcons === 'function') {
+        lucide.createIcons();
+    }
+}
+
+function closeWorkspaceModal() {
+    if (!wsModalEls.overlay) return;
+    wsModalEls.overlay.classList.remove('ui-active');
+}
+
+if (wsModalEls.openBtn) wsModalEls.openBtn.addEventListener('click', openWorkspaceModal);
+if (wsModalEls.closeBtn) wsModalEls.closeBtn.addEventListener('click', closeWorkspaceModal);
+if (wsModalEls.cancelBtn) wsModalEls.cancelBtn.addEventListener('click', closeWorkspaceModal);
+if (wsModalEls.overlay) {
+    wsModalEls.overlay.addEventListener('click', e => {
+        if (e.target === wsModalEls.overlay) closeWorkspaceModal();
+    });
+}
+
+if (wsModalEls.dropdown) {
+    wsModalEls.dropdown.addEventListener('change', () => {
+        if (wsModalEls.dropdown.value) {
+            wsModalEls.pathInput.value = wsModalEls.dropdown.value;
+        }
+    });
+}
+
+if (wsModalEls.confirmBtn) {
+    wsModalEls.confirmBtn.addEventListener('click', async () => {
+        const path = (wsModalEls.pathInput?.value || '').trim();
+        if (!path) {
+            showToast('Please enter or select a project directory path');
+            return;
+        }
+        wsModalEls.confirmBtn.disabled = true;
+        try {
+            const res = await fetch(api('/api/deployment/workspace/select'), {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ path }),
+            }).then(r => r.json());
+
+            if (!res.success) {
+                showToast('Failed to switch workspace: ' + (res.error || 'Unknown error'));
+                return;
+            }
+
+            showToast(`Switched workspace to: ${res.activeName || path}`);
+            closeWorkspaceModal();
+            await loadWorkspaceInfo();
+            await loadApps();
+            if (typeof loadSetupData === 'function' && document.getElementById('setupOverlay')?.classList.contains('ui-active')) {
+                await loadSetupData();
+            }
+        } catch (err) {
+            showToast('Error switching workspace: ' + err.message);
+        } finally {
+            wsModalEls.confirmBtn.disabled = false;
+        }
+    });
 }
 
 loadWorkspaceInfo();
@@ -818,3 +918,4 @@ loadApps().catch(error => {
     els.appGrid.innerHTML = `<div class="empty-state">Failed to load apps: ${escapeHtml(error.message)}</div>`;
 });
 refreshIcons();
+

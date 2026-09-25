@@ -41,23 +41,32 @@ platform :ios do
   lane :testflight_build do
     ipa_path = ENV['IOS_IPA_PATH']
     key_id = ENV['APPLE_API_KEY']
-    issuer_id = ENV['APPLE_API_ISSUER']
-    workspace_root = ENV['MELOS_ROOT_PATH'] || Dir.pwd
-    default_key_path = File.join(workspace_root, 'private_keys', "AuthKey_#{key_id}.p8")
-    key_path = ENV['APPLE_API_KEY_PATH'] || default_key_path
+    key_base64 = ENV['APPLE_API_KEY_BASE64']
 
     UI.user_error!('IOS_IPA_PATH is missing') if ipa_path.to_s.empty?
     UI.user_error!('APPLE_API_KEY is missing') if key_id.to_s.empty?
     UI.user_error!('APPLE_API_ISSUER is missing') if issuer_id.to_s.empty?
-    UI.user_error!("APPLE_API_KEY file not found at #{key_path}") unless File.exist?(key_path)
 
-    key_content = File.read(key_path)
-    key_content_base64 = Base64.strict_encode64(key_content)
+    if key_base64.to_s.strip.empty?
+      workspace_root = ENV['MELOS_ROOT_PATH'] || Dir.pwd
+      candidates = [
+        ENV['APPLE_API_KEY_PATH'],
+        File.expand_path("~/.appstoreconnect/private_keys/AuthKey_#{key_id}.p8"),
+        File.expand_path("~/.private_keys/AuthKey_#{key_id}.p8"),
+        File.join(workspace_root, 'private_keys', "AuthKey_#{key_id}.p8")
+      ].compact
+
+      resolved_key_path = candidates.find { |p| File.exist?(p) }
+      UI.user_error!("APPLE_API_KEY file not found for key '#{key_id}'. Checked ~/.appstoreconnect/private_keys/ and workspace.") unless resolved_key_path
+
+      key_content = File.read(resolved_key_path)
+      key_base64 = Base64.strict_encode64(key_content)
+    end
 
     api_key = app_store_connect_api_key(
       key_id: key_id,
       issuer_id: issuer_id,
-      key_content: key_content_base64,
+      key_content: key_base64,
       is_key_content_base64: true
     )
 

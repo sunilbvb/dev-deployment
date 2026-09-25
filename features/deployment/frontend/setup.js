@@ -19,7 +19,7 @@ const setupEls = {
     form: document.getElementById('setupForm'),
     appTitle: document.getElementById('setupAppTitle'),
     appleId: document.getElementById('cfgAppleId'),
-    p8Path: document.getElementById('cfgP8Path'),
+    issuerId: document.getElementById('cfgIssuerId'),
     playService: document.getElementById('cfgPlayService'),
     flavors: document.getElementById('cfgFlavors'),
     autoReleaseEnabled: document.getElementById('cfgAutoReleaseEnabled'),
@@ -31,6 +31,14 @@ const setupEls = {
     injectBtn: document.getElementById('injectMelosBtn'),
     regenerateBtn: document.getElementById('regenerateBtn'),
     scanBtn: document.getElementById('autoScanBtn'),
+    // p8 upload elements
+    p8Dropzone: document.getElementById('p8Dropzone'),
+    p8FileInput: document.getElementById('p8FileInput'),
+    p8DropzoneTitle: document.getElementById('p8DropzoneTitle'),
+    p8UploadStatus: document.getElementById('p8UploadStatus'),
+    p8CurrentKeyInfo: document.getElementById('p8CurrentKeyInfo'),
+    p8CurrentKeyId: document.getElementById('p8CurrentKeyId'),
+    p8CurrentKeyPath: document.getElementById('p8CurrentKeyPath'),
 };
 
 // Add App Elements
@@ -59,6 +67,16 @@ async function loadSetupData() {
     setupState.deployConfig = configRes.config || { apps: {} };
     renderReleaseActionOptions((templatesRes.templates || {}).release || []);
     renderSetupAppNav();
+    if (setupState.apps.length > 0) {
+        selectSetupApp(setupState.selectedAppId || setupState.apps[0].id);
+    } else {
+        setupEls.form.classList.add('hidden');
+        setupEls.noApp.classList.remove('hidden');
+        setupState.selectedAppId = null;
+    }
+    if (window.lucide && typeof lucide.createIcons === 'function') {
+        lucide.createIcons();
+    }
 }
 
 function renderReleaseActionOptions(releaseTemplates) {
@@ -138,6 +156,10 @@ setupEls.iosCertRecheckBtn.addEventListener('click', () => fetchAndRenderCertSta
 function renderSetupAppNav() {
     const setupAppList = document.getElementById('setupAppList');
     setupAppList.innerHTML = '';
+    if (!setupState.apps.length) {
+        setupAppList.innerHTML = '<div style="padding: 10px 8px; font-size: 0.75rem; color: var(--ui-text-muted); line-height: 1.4;">No apps configured yet. Click below to add an app.</div>';
+        return;
+    }
     setupState.apps.forEach(app => {
         const btn = document.createElement('button');
         btn.type = 'button';
@@ -169,37 +191,64 @@ function renderDynamicFields(flavors, cfg) {
 
     flavors.forEach(flavor => {
         // iOS Bundle ID Input
+        const bundleField = document.createElement('div');
+        bundleField.className = 'ui-field';
+        bundleField.style.marginBottom = '0';
+
         const bundleLabel = document.createElement('label');
+        bundleLabel.className = 'ui-label';
         bundleLabel.textContent = `${flavor.toUpperCase()} Bundle ID`;
+
         const bundleInput = document.createElement('input');
         bundleInput.type = 'text';
+        bundleInput.className = 'ui-input';
         bundleInput.id = `cfgBundle_${flavor}`;
         bundleInput.placeholder = `com.example.app.${flavor}`;
         bundleInput.value = cfg[`bundle_id_${flavor}`] || '';
-        bundleLabel.appendChild(bundleInput);
-        bundleContainer.appendChild(bundleLabel);
+
+        bundleField.appendChild(bundleLabel);
+        bundleField.appendChild(bundleInput);
+        bundleContainer.appendChild(bundleField);
 
         // Android Package ID Input
+        const packageField = document.createElement('div');
+        packageField.className = 'ui-field';
+        packageField.style.marginBottom = '0';
+
         const packageLabel = document.createElement('label');
+        packageLabel.className = 'ui-label';
         packageLabel.textContent = `${flavor.toUpperCase()} Package Name`;
+
         const packageInput = document.createElement('input');
         packageInput.type = 'text';
+        packageInput.className = 'ui-input';
         packageInput.id = `cfgAndroidPackage_${flavor}`;
         packageInput.placeholder = `com.example.app.${flavor}`;
         packageInput.value = cfg[`android_package_${flavor}`] || '';
-        packageLabel.appendChild(packageInput);
-        packageContainer.appendChild(packageLabel);
+
+        packageField.appendChild(packageLabel);
+        packageField.appendChild(packageInput);
+        packageContainer.appendChild(packageField);
 
         // Firebase google-services.json Path Input
+        const servicesField = document.createElement('div');
+        servicesField.className = 'ui-field';
+        servicesField.style.marginBottom = '0';
+
         const servicesLabel = document.createElement('label');
+        servicesLabel.className = 'ui-label';
         servicesLabel.textContent = `${flavor.toUpperCase()} google-services.json Path`;
+
         const servicesInput = document.createElement('input');
         servicesInput.type = 'text';
+        servicesInput.className = 'ui-input';
         servicesInput.id = `cfgGoogleServices_${flavor}`;
         servicesInput.placeholder = `private_keys/Firebase/${flavor}/google-services.json`;
         servicesInput.value = cfg[`google_services_json_${flavor}`] || '';
-        servicesLabel.appendChild(servicesInput);
-        servicesContainer.appendChild(servicesLabel);
+
+        servicesField.appendChild(servicesLabel);
+        servicesField.appendChild(servicesInput);
+        servicesContainer.appendChild(servicesField);
     });
 }
 
@@ -219,17 +268,47 @@ function selectSetupApp(appId) {
     renderDynamicFields(activeFlavors, cfg);
 
     setupEls.appleId.value = cfg.apple_id || '';
-    setupEls.p8Path.value = cfg.p8_key_path || '';
+    setupEls.issuerId.value = cfg.apple_issuer_id || '';
     setupEls.playService.value = cfg.play_service_account_path || '';
 
     setupEls.autoReleaseEnabled.checked = !!cfg.auto_release_on_success;
     setupEls.autoReleaseAction.value = cfg.auto_release_action || 'release_push';
     setupEls.autoReleaseFlavors.value = (cfg.auto_release_flavors || ['prod']).join(', ');
 
+    // Show stored Key ID info in the dropzone area
+    renderP8KeyInfo(cfg);
+
     fetchAndRenderCertStatus(appId);
 
     setupEls.noApp.classList.add('hidden');
     setupEls.form.classList.remove('hidden');
+    if (window.lucide && typeof lucide.createIcons === 'function') {
+        lucide.createIcons();
+    }
+}
+
+/** Render stored .p8 key metadata beneath the dropzone. */
+function renderP8KeyInfo(cfg) {
+    const keyId = cfg.apple_key_id || '';
+    const hasKey = !!cfg.apple_p8_base64;
+
+    // Reset dropzone title
+    setupEls.p8DropzoneTitle.textContent =
+        hasKey
+            ? `✅ Key uploaded — drop a new file to replace`
+            : 'Drag & drop AuthKey_XXXXXXXXXX.p8 or click to browse';
+
+    if (keyId) {
+        setupEls.p8CurrentKeyInfo.style.display = 'block';
+        setupEls.p8CurrentKeyId.textContent = keyId;
+        setupEls.p8CurrentKeyPath.textContent =
+            `~/.appstoreconnect/private_keys/AuthKey_${keyId}.p8`;
+    } else {
+        setupEls.p8CurrentKeyInfo.style.display = 'none';
+    }
+
+    // Hide the upload status from any previous operation
+    setupEls.p8UploadStatus.style.display = 'none';
 }
 
 // Listen to flavor inputs changes to dynamically redraw fields
@@ -240,10 +319,16 @@ setupEls.flavors.addEventListener('input', () => {
 
 function readFormValues() {
     const flavors = getActiveFlavors();
+    // Preserve any already-uploaded p8 fields — those are written by the /p8/upload
+    // endpoint and should NOT be overwritten when the user clicks "Save Config".
+    const existingCfg = setupState.deployConfig.apps?.[setupState.selectedAppId] || {};
     const values = {
         flavors: flavors,
         apple_id: setupEls.appleId.value.trim(),
-        p8_key_path: setupEls.p8Path.value.trim(),
+        apple_issuer_id: setupEls.issuerId.value.trim(),
+        // Preserve Base64 + key ID written by /api/deployment/p8/upload
+        apple_key_id: existingCfg.apple_key_id || '',
+        apple_p8_base64: existingCfg.apple_p8_base64 || '',
         play_service_account_path: setupEls.playService.value.trim(),
         auto_release_on_success: setupEls.autoReleaseEnabled.checked,
         auto_release_action: setupEls.autoReleaseAction.value || 'release_push',
@@ -375,6 +460,9 @@ addCustomAppBtn.addEventListener('click', () => {
     setupEls.form.classList.add('hidden');
     setupEls.noApp.classList.add('hidden');
     addAppForm.classList.remove('hidden');
+    if (window.lucide && typeof lucide.createIcons === 'function') {
+        lucide.createIcons();
+    }
 });
 
 cancelAddAppBtn.addEventListener('click', () => {
@@ -430,8 +518,119 @@ document.addEventListener('keydown', e => {
     if (e.key === 'Escape') { closeSetupModal(); }
 });
 
+// ─────────────────────────────────────────────────────────────────────────────
+// App Store Connect API Key (.p8) Dropzone
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Upload a .p8 file to the backend via multipart/form-data.
+ * The backend extracts the Key ID from the filename, base64-encodes the content,
+ * saves it to deploy_config.json, and writes the file to the Apple-standard path
+ * ~/.appstoreconnect/private_keys/AuthKey_<KeyID>.p8 with chmod 600.
+ */
+async function uploadP8File(file) {
+    if (!setupState.selectedAppId) {
+        showToast('Please select an app first.');
+        return;
+    }
+    if (!file || !file.name.toLowerCase().endsWith('.p8')) {
+        showToast('Please select a valid .p8 file.');
+        return;
+    }
+
+    // Show uploading state
+    setupEls.p8DropzoneTitle.textContent = `⏳ Uploading ${file.name}…`;
+    setupEls.p8UploadStatus.style.display = 'none';
+    setupEls.p8Dropzone.classList.add('ui-dropzone--active');
+
+    const formData = new FormData();
+    formData.append('app_id', setupState.selectedAppId);
+    formData.append('issuer_id', setupEls.issuerId.value.trim());
+    formData.append('file', file, file.name);
+
+    let res;
+    try {
+        res = await fetch('/api/deployment/p8/upload', {
+            method: 'POST',
+            body: formData,
+            // Do NOT set Content-Type — browser sets it automatically with boundary
+        }).then(r => r.json());
+    } catch (err) {
+        setupEls.p8Dropzone.classList.remove('ui-dropzone--active');
+        setupEls.p8DropzoneTitle.textContent = '❌ Upload failed — network error';
+        showToast('Upload failed: ' + err.message);
+        return;
+    }
+
+    setupEls.p8Dropzone.classList.remove('ui-dropzone--active');
+
+    if (res.success) {
+        // Update in-memory config so Save Config preserves the new key
+        if (!setupState.deployConfig.apps) { setupState.deployConfig.apps = {}; }
+        if (!setupState.deployConfig.apps[setupState.selectedAppId]) {
+            setupState.deployConfig.apps[setupState.selectedAppId] = {};
+        }
+        // The backend already persisted these; sync them locally so readFormValues picks them up
+        setupState.deployConfig.apps[setupState.selectedAppId].apple_key_id = res.key_id;
+        // We don't get b64 back (too large), but the backend saved it — mark as present
+        setupState.deployConfig.apps[setupState.selectedAppId].apple_p8_base64 = '__uploaded__';
+
+        setupEls.p8DropzoneTitle.textContent = `✅ Key uploaded — drop a new file to replace`;
+
+        // Show status badge
+        setupEls.p8UploadStatus.dataset.status = 'valid';
+        setupEls.p8UploadStatus.textContent =
+            `✅ Key ID: ${res.key_id}  •  Stored at: ${res.stored_path}`;
+        setupEls.p8UploadStatus.style.display = 'block';
+
+        // Show persistent key info line
+        setupEls.p8CurrentKeyInfo.style.display = 'block';
+        setupEls.p8CurrentKeyId.textContent = res.key_id;
+        setupEls.p8CurrentKeyPath.textContent = res.stored_path;
+
+        showToast(`✅ Key ID ${res.key_id} uploaded and stored.`);
+    } else {
+        setupEls.p8DropzoneTitle.textContent = '❌ Upload failed — try again';
+        setupEls.p8UploadStatus.dataset.status = 'error';
+        setupEls.p8UploadStatus.textContent = `❌ ${res.error || 'Unknown error'}`;
+        setupEls.p8UploadStatus.style.display = 'block';
+        showToast('Upload error: ' + (res.error || 'Unknown'));
+    }
+}
+
+// ── Click-to-browse ───────────────────────────────────────────────────────────
+setupEls.p8Dropzone.addEventListener('click', () => {
+    setupEls.p8FileInput.value = '';   // reset so same file can be re-selected
+    setupEls.p8FileInput.click();
+});
+
+setupEls.p8FileInput.addEventListener('change', () => {
+    const file = setupEls.p8FileInput.files?.[0];
+    if (file) { uploadP8File(file); }
+});
+
+// ── Drag-and-drop ─────────────────────────────────────────────────────────────
+setupEls.p8Dropzone.addEventListener('dragover', e => {
+    e.preventDefault();
+    setupEls.p8Dropzone.classList.add('ui-dropzone--active');
+});
+
+setupEls.p8Dropzone.addEventListener('dragleave', () => {
+    setupEls.p8Dropzone.classList.remove('ui-dropzone--active');
+});
+
+setupEls.p8Dropzone.addEventListener('drop', e => {
+    e.preventDefault();
+    setupEls.p8Dropzone.classList.remove('ui-dropzone--active');
+    const file = e.dataTransfer?.files?.[0];
+    if (file) { uploadP8File(file); }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Utilities
+// ─────────────────────────────────────────────────────────────────────────────
+
 function escapeHtml(str) {
     if (!str) return '';
     return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
-

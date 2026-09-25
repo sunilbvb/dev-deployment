@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 import argparse
 import http.server
+import io
 import json
 import sys
+from email.parser import BytesFeedParser
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
@@ -126,7 +128,59 @@ class DeploymentHandler(http.server.SimpleHTTPRequestHandler):
 
     def do_POST(self) -> None:
         parsed = urlparse(self.path)
-        data = self.read_json()
+        content_type_header = self.headers.get("Content-Type", "")
+
+        # Read raw body bytes once (stream can only be consumed once)
+        try:
+            length = int(self.headers.get("Content-Length", 0))
+            raw_body = self.rfile.read(length) if length else b""
+        except Exception:
+            raw_body = b""
+
+        # --- Multipart upload routes (must branch before JSON parsing) ---
+        if parsed.path == "/api/deployment/p8/upload" and content_type_header.startswith("multipart/form-data"):
+            # Parse multipart/form-data using email.parser (cgi module removed in Python 3.13+)
+            # Reconstruct a full MIME message so BytesFeedParser can parse parts.
+            mime_header = f"Content-Type: {content_type_header}\r\n\r\n".encode()
+            parser = BytesFeedParser()
+            parser.feed(mime_header)
+            parser.feed(raw_body)
+            msg = parser.close()
+
+            fields: dict[str, str] = {}
+            file_content: bytes | None = None
+            file_name: str = "AuthKey.p8"
+
+            for part in msg.get_payload():
+                disposition = part.get("Content-Disposition", "")
+                # Extract 'name' from Content-Disposition header
+                name = ""
+                for seg in disposition.split(";"):
+                    seg = seg.strip()
+                    if seg.startswith("name="):
+                        name = seg[5:].strip().strip('"')
+                    elif seg.startswith("filename="):
+                        file_name = seg[9:].strip().strip('"')
+                payload = part.get_payload(decode=True) or b""
+                if name == "file":
+                    file_content = payload
+                else:
+                    fields[name] = payload.decode("utf-8", errors="replace")
+
+            app_id = fields.get("app_id", "")
+            issuer_id = fields.get("issuer_id", "")
+            if not file_content or not app_id:
+                self.write_json({"success": False, "error": "Missing 'app_id' or 'file' field."}, status=400)
+                return
+            self.write_json(router.upload_p8_key(app_id, file_name, file_content, issuer_id))
+            return
+
+        # Parse JSON body for all other routes
+        try:
+            data = json.loads(raw_body.decode("utf-8")) if raw_body else {}
+        except Exception:
+            data = {}
+
         if parsed.path == "/api/deployment/execute":
             self.write_json(router.execute_command(
                 str(data.get("app") or ""),
@@ -155,6 +209,23 @@ class DeploymentHandler(http.server.SimpleHTTPRequestHandler):
             return
         if parsed.path == "/api/deployment/workspace/select":
             self.write_json(router.set_active_workspace(str(data.get("path") or "")))
+            return
+        if parsed.path == "/api/deployment/p8/upload":
+            # JSON body fallback (multipart case is handled above before read_json)
+            import base64 as _b64
+            filename = str(data.get("filename") or "AuthKey.p8")
+            app_id = str(data.get("app_id") or "")
+            issuer_id = str(data.get("issuer_id") or "")
+            b64 = str(data.get("content_base64") or "")
+            if not app_id or not b64:
+                self.write_json({"success": False, "error": "Missing 'app_id' or 'content_base64'."}, status=400)
+                return
+            try:
+                content_bytes = _b64.b64decode(b64)
+            except Exception as exc:
+                self.write_json({"success": False, "error": f"Invalid base64: {exc}"}, status=400)
+                return
+            self.write_json(router.upload_p8_key(app_id, filename, content_bytes, issuer_id))
             return
         if parsed.path == "/api/deployment/webhook":
             app_id = str(data.get("app") or "")
