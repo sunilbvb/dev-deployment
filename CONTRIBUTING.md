@@ -45,12 +45,27 @@ We have identified several high-value features and improvements that would make 
 - [x] **Folder Picker Button:** Browse directories visually using `<input type="file" webkitdirectory>`.
 - [x] **Live Workspace Inspector (`/api/deployment/inspect-path`):** Inspect any folder path before switching — auto-detects app count, monorepo state, and tech stacks (Flutter, Node, Android, iOS).
 
-### 📦 2. Enhanced Melos & Flutter Monorepo Support
-- [ ] **Package Filtering:** Currently, `discover_workspace_config()` scans `packages/` and adds every Dart package as an app tile. We need logic to filter out pure library packages (e.g., packages without `android/`/`ios/` directories or with `publish_to: none`).
-- [ ] **Melos `melos.yaml` Flavor Parsing:** Parse `melos.yaml` or custom package scripts to automatically extract dynamic flavor lists (`dev`, `staging`, `qa`, `prod`) rather than relying on defaults.
-- [ ] **Bulk Workspace Auto-Scan:** The "Auto-Scan Workspace" button currently scans the selected app. Add a **"Scan All Apps"** button to scan and save configuration for all 10+ apps in a monorepo in a single click.
+### 🧠 2. Workspace & Melos Intelligence Roadmap (Help Needed!)
 
-### 📱 2. Smarter iOS & Android Credential Scanning
+We aim to make Dev Deployment Console intelligent enough to seamlessly handle any project layout without manual configuration:
+
+| Scenario / Capability | Current Status | What Needs to be Done (Wishlist Item) |
+|---|---|---|
+| **1. Single Flutter Project** | ✅ Fully Supported | Auto-detects `pubspec.yaml` in root and scans xcconfig / gradle. |
+| **2. Multi-App Workspace (No Melos)** | ⚠️ Basic Support | Scans `apps/` subfolders, but treats all subfolders equally without distinguishing libraries. |
+| **3. Monorepo (Apps + Packages)** | ⚠️ Needs Package Filter | Scans `apps/` and `packages/`. **Need logic** to separate deployable apps (`apps/*`) from internal library packages (`packages/*` with `publish_to: none` or no `android/`/`ios/` dirs). |
+| **4. Auto-Root & Package Hierarchy** | 🟡 Basic | **Need Melos manifest parser** to read `melos.yaml` or `pubspec.yaml` (`melos:` key) to automatically resolve custom package location glob patterns (`packages: ["modules/*", "features/*"]`). |
+| **5. Multiple Workspaces & Monorepos** | ✅ Fully Supported | `set_active_workspace()` handles dynamic switching between single apps and monorepos via UI/API without server restart. |
+| **6. Melos Detection (`melos.yaml` vs `pubspec.yaml`)** | 🟡 Command engine checked; Discovery engine missing | `get_commands()` checks `melos.yaml` and `pubspec.yaml` (`melos:` key). **Need `discover_workspace_config()`** to use Melos config to drive app & package discovery. |
+
+#### Detailed Tasks to Implement:
+
+- [ ] **Task 2.1 — Smart Package Filter:** Update `_detect_app_in_dir()` to check if a Dart project is a pure library (e.g. has `publish_to: none`, lacks `android/` and `ios/` folders, or is under `packages/`). Group internal packages under a separate "Packages" tab in the UI instead of rendering them as deployable app cards.
+- [ ] **Task 2.2 — Deep Melos Config Parser:** Add a `_parse_melos_config()` helper in `router.py` that reads `melos.yaml` or the `melos:` section inside `pubspec.yaml`. Extract the configured `packages:` glob paths (e.g. `apps/*`, `packages/*`, `services/*`) dynamically instead of hardcoding folder names.
+- [ ] **Task 2.3 — Bulk Workspace Auto-Scan ("Scan All"):** Add a backend endpoint `POST /api/deployment/scan-all` and a UI button **"Scan All Apps"** to auto-discover and save Bundle IDs, Android Package names, and Firebase configs for all apps in a workspace at once.
+- [ ] **Task 2.4 — Custom Flavor Auto-Detection:** Update `_scan_xcconfig_bundle_ids()` and `_scan_android_app_ids()` to read custom flavor names defined in `melos.yaml` scripts or Gradle `productFlavors { ... }` blocks (e.g. `staging`, `uat`, `sandbox`).
+
+### 📱 3. Smarter iOS & Android Credential Scanning
 - [ ] **iOS `GoogleService-Info.plist` Detection:** Auto-scan `ios/**/GoogleService-Info.plist` per flavor directory (`/dev/`, `/qa/`, `/prod/`) and auto-populate paths.
 - [ ] **Support Staging / Custom Flavors in Scanner:** Expand `_scan_xcconfig_bundle_ids()` and `_scan_android_app_ids()` flavor maps to recognize `staging`, `uat`, `sandbox`, and `beta`.
 - [ ] **Native Gradle `productFlavors` Parser:** Improve `build.gradle` parsing to read nested `productFlavors { ... }` blocks and extract exact per-flavor `applicationId` strings.
