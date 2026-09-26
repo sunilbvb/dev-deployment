@@ -39,15 +39,21 @@ features/deployment/deployment.pid
 deploy_cmd.*
 chat_resp.*
 
-# Secrets, Environment & Sensitive User Files
+# Secrets, Environment & Sensitive Key Files
 .env
 .env.local
 .env.*.local
 *.pem
 *.key
+*.p8
 *.p12
+*.cer
+*.crt
 *.keystore
 *.jks
+*.mobileprovision
+DistributionSummary.plist
+private_keys/
 workspace_assets/
 notes_backups/
 excel_uploads/
@@ -56,8 +62,29 @@ notes_uploads/
 profile_config.json
 ngrok_config.json
 
+# Fastlane & Tool Reports
+report.xml
+fastlane/report.xml
+fastlane/Preview.html
+fastlane/README.md
+
+# Node & Package Managers
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Dart / Flutter Artifacts
+.dart_tool/
+.packages
+.flutter-plugins
+.flutter-plugins-dependencies
+
 # Local Workspace Overrides & User Configs
 config/active_workspace.txt
 config/workspaces_list.json
 .dev-dashboard/
 graphify-out/
+tmp/
+.tmp/
