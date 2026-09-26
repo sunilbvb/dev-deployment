@@ -34,8 +34,9 @@ Open `http://localhost:18112` in your browser, pick your app, choose an environm
 19. [REST API Reference](#-rest-api-reference)
 20. [Configuration Files Reference](#-configuration-files-reference)
 21. [Project Structure Overview](#-project-structure-overview)
-22. [FAQ](#-frequently-asked-questions)
-23. [License](#-license)
+22. [Contributing & Roadmap](#-contributing--roadmap)
+23. [FAQ](#-frequently-asked-questions)
+24. [License](#-license)
 
 ---
 
@@ -700,6 +701,17 @@ dev-deployment/
 ├── .env.example                     # Environment template
 └── .gitignore                       # Excludes keys, secrets, logs, pid files
 ```
+
+---
+
+## 🤝 Contributing & Roadmap
+
+We love open-source contributions! Want to help make Dev Deployment Console better?
+
+Check out our **[CONTRIBUTING.md](CONTRIBUTING.md)** for:
+- 🚀 **Feature Wishlist & Ideas** (Melos monorepo scanning improvements, bulk workspace auto-scan, Slack/Discord webhooks, etc.)
+- 🛠️ **Dev Setup & PR Guidelines**
+- 🎨 **Code Standards**
 
 ---
 
