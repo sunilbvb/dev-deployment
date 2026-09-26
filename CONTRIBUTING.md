@@ -41,7 +41,11 @@ Dev Deployment Console is designed to be lightweight, zero-dependency (uses Pyth
 
 We have identified several high-value features and improvements that would make great open-source contributions. Feel free to pick any item below!
 
-### 📦 1. Enhanced Melos & Flutter Monorepo Support
+### 📂 1. Open Project Folder Picker & Monorepo Inspection (Completed ✅)
+- [x] **Folder Picker Button:** Browse directories visually using `<input type="file" webkitdirectory>`.
+- [x] **Live Workspace Inspector (`/api/deployment/inspect-path`):** Inspect any folder path before switching — auto-detects app count, monorepo state, and tech stacks (Flutter, Node, Android, iOS).
+
+### 📦 2. Enhanced Melos & Flutter Monorepo Support
 - [ ] **Package Filtering:** Currently, `discover_workspace_config()` scans `packages/` and adds every Dart package as an app tile. We need logic to filter out pure library packages (e.g., packages without `android/`/`ios/` directories or with `publish_to: none`).
 - [ ] **Melos `melos.yaml` Flavor Parsing:** Parse `melos.yaml` or custom package scripts to automatically extract dynamic flavor lists (`dev`, `staging`, `qa`, `prod`) rather than relying on defaults.
 - [ ] **Bulk Workspace Auto-Scan:** The "Auto-Scan Workspace" button currently scans the selected app. Add a **"Scan All Apps"** button to scan and save configuration for all 10+ apps in a monorepo in a single click.

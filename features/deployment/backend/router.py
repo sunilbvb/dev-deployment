@@ -586,6 +586,49 @@ def set_active_workspace(new_path: str) -> dict[str, Any]:
     }
 
 
+def inspect_workspace_path(path_str: str) -> dict[str, Any]:
+    """Inspect a candidate directory path and return detected apps and tech stacks."""
+    if not path_str or not path_str.strip():
+        return {"success": False, "error": "No path provided"}
+
+    candidate = Path(path_str.strip()).resolve()
+    if not candidate.exists():
+        return {"success": False, "error": "Directory does not exist", "exists": False}
+    if not candidate.is_dir():
+        return {"success": False, "error": "Path is not a directory", "exists": False}
+
+    discovered_apps = []
+    is_monorepo = False
+
+    for folder_name in ("apps", "packages", "modules", "projects"):
+        sub_dir = candidate / folder_name
+        if sub_dir.is_dir():
+            is_monorepo = True
+            for child in sorted(sub_dir.iterdir()):
+                if child.is_dir() and not child.name.startswith("."):
+                    detected = _detect_app_in_dir(child)
+                    if detected and not any(a["id"] == detected["id"] for a in discovered_apps):
+                        discovered_apps.append(detected)
+
+    if not discovered_apps:
+        detected_root = _detect_app_in_dir(candidate)
+        if detected_root:
+            discovered_apps.append(detected_root)
+
+    stacks = list(set(a.get("stack", "generic") for a in discovered_apps))
+
+    return {
+        "success": True,
+        "exists": True,
+        "path": str(candidate),
+        "name": candidate.name or "Root",
+        "appCount": len(discovered_apps),
+        "apps": discovered_apps,
+        "stacks": stacks,
+        "isMonorepo": is_monorepo,
+    }
+
+
 
 
 

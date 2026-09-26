@@ -874,8 +874,84 @@ if (wsModalEls.dropdown) {
     wsModalEls.dropdown.addEventListener('change', () => {
         if (wsModalEls.dropdown.value) {
             wsModalEls.pathInput.value = wsModalEls.dropdown.value;
+            inspectWorkspacePath(wsModalEls.dropdown.value);
         }
     });
+}
+
+let inspectDebounceTimer = null;
+const folderPickerInput = document.getElementById('folderPickerInput');
+const inspectionBox = document.getElementById('workspaceInspectionBox');
+const inspectTitle = document.getElementById('inspectTitle');
+const inspectMonorepoBadge = document.getElementById('inspectMonorepoBadge');
+const inspectBadges = document.getElementById('inspectBadges');
+
+if (wsModalEls.pathInput) {
+    wsModalEls.pathInput.addEventListener('input', () => {
+        clearTimeout(inspectDebounceTimer);
+        inspectDebounceTimer = setTimeout(() => {
+            inspectWorkspacePath(wsModalEls.pathInput.value.trim());
+        }, 300);
+    });
+}
+
+if (folderPickerInput) {
+    folderPickerInput.addEventListener('change', (e) => {
+        const files = e.target.files;
+        if (!files || files.length === 0) return;
+        
+        // Extract root directory path if available
+        let firstFile = files[0];
+        let relativePath = firstFile.webkitRelativePath || '';
+        let rootFolderName = relativePath.split('/')[0] || '';
+        
+        if (firstFile.path) {
+            // Electron or Chromium desktop environment providing absolute path
+            let fullPath = firstFile.path;
+            let dirPath = fullPath.substring(0, fullPath.indexOf(relativePath));
+            let resolvedRoot = dirPath + rootFolderName;
+            wsModalEls.pathInput.value = resolvedRoot;
+            inspectWorkspacePath(resolvedRoot);
+        } else if (rootFolderName) {
+            showToast(`Selected folder: ${rootFolderName}. Ensure full path is entered if needed.`);
+        }
+    });
+}
+
+async function inspectWorkspacePath(pathStr) {
+    if (!pathStr || !inspectionBox) return;
+    try {
+        const res = await fetch(api(`/api/deployment/inspect-path?path=${encodeURIComponent(pathStr)}`));
+        const data = await res.json();
+        if (data.success && data.exists) {
+            inspectionBox.classList.remove('hidden');
+            inspectTitle.textContent = `Detected ${data.appCount} App(s) in "${data.name}"`;
+            
+            if (data.isMonorepo) {
+                inspectMonorepoBadge.classList.remove('hidden');
+            } else {
+                inspectMonorepoBadge.classList.add('hidden');
+            }
+
+            inspectBadges.innerHTML = '';
+            (data.apps || []).forEach(app => {
+                const badge = document.createElement('span');
+                badge.className = 'ui-badge';
+                badge.setAttribute('data-variant', 'secondary');
+                badge.style.fontSize = '0.75rem';
+                badge.style.padding = '2px 8px';
+                badge.textContent = `${app.name} (${app.stack || 'generic'})`;
+                inspectBadges.appendChild(badge);
+            });
+            if (window.lucide && typeof lucide.createIcons === 'function') {
+                lucide.createIcons();
+            }
+        } else {
+            inspectionBox.classList.add('hidden');
+        }
+    } catch (_) {
+        if (inspectionBox) inspectionBox.classList.add('hidden');
+    }
 }
 
 if (wsModalEls.confirmBtn) {
