@@ -31,6 +31,7 @@ const setupEls = {
     injectBtn: document.getElementById('injectMelosBtn'),
     regenerateBtn: document.getElementById('regenerateBtn'),
     scanBtn: document.getElementById('autoScanBtn'),
+    scanAllBtn: document.getElementById('scanAllBtn'),
     // p8 upload elements
     p8Dropzone: document.getElementById('p8Dropzone'),
     p8FileInput: document.getElementById('p8FileInput'),
@@ -451,8 +452,35 @@ async function autoScanConfig() {
         }
     } finally {
         setupEls.scanBtn.disabled = false;
-        setupEls.scanBtn.querySelector('span').textContent = 'Auto-Scan Workspace';
+        setupEls.scanBtn.querySelector('span').textContent = 'Auto-Scan App';
     }
+}
+
+async function autoScanAllConfig() {
+    if (!setupEls.scanAllBtn) return;
+    setupEls.scanAllBtn.disabled = true;
+    setupEls.scanAllBtn.querySelector('span').textContent = 'Scanning All...';
+
+    try {
+        const res = await fetch('/api/deployment/scan-all', { method: 'POST' }).then(r => r.json());
+        if (res.success) {
+            showToast(`Scanned and saved configuration for ${res.count} of ${res.total} app(s)!`);
+            if (setupState.selectedAppId) {
+                selectSetupApp(setupState.selectedAppId);
+            }
+        } else {
+            showToast('Bulk scan failed: ' + (res.error || 'unknown'));
+        }
+    } catch (_) {
+        showToast('Bulk scan failed — check network');
+    } finally {
+        setupEls.scanAllBtn.disabled = false;
+        setupEls.scanAllBtn.querySelector('span').textContent = 'Scan All Apps';
+    }
+}
+
+if (setupEls.scanAllBtn) {
+    setupEls.scanAllBtn.addEventListener('click', autoScanAllConfig);
 }
 
 // Register App Actions
