@@ -622,6 +622,8 @@ Every completed job is recorded to `<WORKSPACE_ROOT>/.dev-dashboard/deployment_h
 | `POST` | `/api/deployment/inject-melos` | Injects deployment commands into `pubspec.yaml` |
 | `POST` | `/api/deployment/regenerate-commands` | Rebuilds cached command cards for all apps |
 | `GET` | `/api/deployment/scan-config` | Auto-scans and returns detected config (`?app=`) |
+| `POST` | `/api/deployment/scan-all` | Bulk scans all apps in workspace and merges discovered Bundle IDs & package names |
+| `GET` | `/api/deployment/inspect-path` | Inspects candidate directory path before opening (`?path=`) — returns app counts, tech stacks, monorepo state |
 | `GET` | `/api/deployment/ios-cert-check` | Checks iOS cert/profile expiry (`?app=`, `?flavor=`) |
 | `POST` | `/api/deployment/webhook` | Triggers a build from CI/CD |
 
