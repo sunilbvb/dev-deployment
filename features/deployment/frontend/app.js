@@ -165,11 +165,12 @@ function renderApps() {
         const icon = canRenderImage
             ? `<img src="${escapeHtml(resolvedIconUrl)}" alt="" data-fallback-icon="${fallbackIcon}" onerror="this.outerHTML='<i data-lucide=&quot;${fallbackIcon}&quot;></i>'; refreshIcons();" style="width:24px;height:24px;object-fit:cover;border-radius:6px;">`
             : `<i data-lucide="${fallbackIcon}"></i>`;
+        const packageBadge = app.is_package ? `<span class="ui-badge" data-variant="secondary" style="font-size: 0.62rem; padding: 0 4px; margin-left: 4px; opacity: 0.8;">PKG</span>` : '';
         return `
             <div class="compact-app-card ${activeState}" data-state="${activeState}" data-app="${escapeHtml(app.id)}" style="--app-color:${escapeHtml(app.color || '#6366f1')}">
                 <div class="app-card-badge"><i data-lucide="check"></i></div>
                 <div class="compact-app-card-icon" style="width:32px !important;height:32px !important;margin:0 !important;background:transparent !important;border:none !important;">${icon}</div>
-                <h3 style="font-size: 12px; font-weight: 600;" title="${escapeHtml(app.name || app.id)}">${escapeHtml(app.name || app.id)}</h3>
+                <h3 style="font-size: 12px; font-weight: 600;" title="${escapeHtml(app.name || app.id)}">${escapeHtml(app.name || app.id)}${packageBadge}</h3>
             </div>
         `;
     }).join('');
