@@ -445,6 +445,48 @@ def _detect_app_in_dir(d: Path) -> Optional[dict[str, Any]]:
     return None
 
 
+def _parse_melos_config(root_dir: Path) -> list[str]:
+    """Parse melos.yaml or pubspec.yaml melos: section to extract configured package folder names."""
+    folder_names: list[str] = ["apps", "packages", "modules", "projects"]
+
+    # 1. Try melos.yaml
+    melos_file = root_dir / "melos.yaml"
+    content = ""
+    if melos_file.exists():
+        try:
+            content = melos_file.read_text(encoding="utf-8")
+        except Exception:
+            pass
+    elif (root_dir / "pubspec.yaml").exists():
+        try:
+            pub_text = (root_dir / "pubspec.yaml").read_text(encoding="utf-8")
+            if "melos:" in pub_text:
+                content = pub_text
+        except Exception:
+            pass
+
+    if content:
+        # Extract glob paths under packages: (e.g. - apps/*, - features/*)
+        in_packages = False
+        for line in content.splitlines():
+            line_str = line.strip()
+            if line_str.startswith("packages:"):
+                in_packages = True
+                continue
+            if in_packages:
+                if line_str.startswith("-") or line_str.startswith("*"):
+                    item = line_str.lstrip("-* ").strip("'\"")
+                    # Extract top folder name before / or *
+                    parts = item.split("/")
+                    if parts and parts[0] and not parts[0].startswith("*"):
+                        if parts[0] not in folder_names:
+                            folder_names.append(parts[0])
+                elif line_str and not line_str.startswith("#") and not line_str.startswith(" "):
+                    in_packages = False
+
+    return folder_names
+
+
 def discover_workspace_config():
     apps_file = get_apps_config_file()
     cmds_file = get_commands_config_file()
@@ -469,9 +511,10 @@ def discover_workspace_config():
     if existing_apps and existing_cmds:
         return
 
-    # Discover apps across monorepo folders or root
+    # Discover apps across monorepo folders or root dynamically via Melos config if present
     discovered_apps = []
-    for folder_name in ("apps", "packages", "modules", "projects"):
+    search_folders = _parse_melos_config(WORKSPACE_ROOT)
+    for folder_name in search_folders:
         sub_dir = WORKSPACE_ROOT / folder_name
         if sub_dir.is_dir():
             for child in sorted(sub_dir.iterdir()):
@@ -612,7 +655,11 @@ def inspect_workspace_path(path_str: str) -> dict[str, Any]:
     discovered_apps = []
     is_monorepo = False
 
-    for folder_name in ("apps", "packages", "modules", "projects"):
+    has_melos = (candidate / "melos.yaml").exists() or (
+        (candidate / "pubspec.yaml").exists() and "melos:" in (candidate / "pubspec.yaml").read_text(encoding="utf-8", errors="replace")
+    )
+
+    for folder_name in _parse_melos_config(candidate):
         sub_dir = candidate / folder_name
         if sub_dir.is_dir():
             is_monorepo = True
@@ -638,6 +685,7 @@ def inspect_workspace_path(path_str: str) -> dict[str, Any]:
         "apps": discovered_apps,
         "stacks": stacks,
         "isMonorepo": is_monorepo,
+        "hasMelos": has_melos,
     }
 
 

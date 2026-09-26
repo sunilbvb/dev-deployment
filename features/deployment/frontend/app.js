@@ -930,6 +930,7 @@ async function inspectWorkspacePath(pathStr) {
             
             if (data.isMonorepo) {
                 inspectMonorepoBadge.classList.remove('hidden');
+                inspectMonorepoBadge.textContent = data.hasMelos ? 'Monorepo (Melos)' : 'Monorepo';
             } else {
                 inspectMonorepoBadge.classList.add('hidden');
             }
