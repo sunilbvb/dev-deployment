@@ -57,6 +57,7 @@ We aim to make Dev Deployment Console intelligent enough to seamlessly handle an
 | **4. Auto-Root & Package Hierarchy** | 🟡 Basic | **Need Melos manifest parser** to read `melos.yaml` or `pubspec.yaml` (`melos:` key) to automatically resolve custom package location glob patterns (`packages: ["modules/*", "features/*"]`). |
 | **5. Multiple Workspaces & Monorepos** | ✅ Fully Supported | `set_active_workspace()` handles dynamic switching between single apps and monorepos via UI/API without server restart. |
 | **6. Melos Detection (`melos.yaml` vs `pubspec.yaml`)** | 🟡 Command engine checked; Discovery engine missing | `get_commands()` checks `melos.yaml` and `pubspec.yaml` (`melos:` key). **Need `discover_workspace_config()`** to use Melos config to drive app & package discovery. |
+| **7. Multi-App Workspace (With Melos)** | 🟡 Partially Supported | Commands & scripts use Melos. **Need Task 2.2** to read custom Melos package patterns and Task 2.3 for bulk auto-scanning all Melos apps at once. |
 
 #### Detailed Tasks to Implement:
 
