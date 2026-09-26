@@ -64,7 +64,7 @@ We aim to make Dev Deployment Console intelligent enough to seamlessly handle an
 - [x] **Task 2.1 — Smart Package Filter (Completed ✅):** `_detect_app_in_dir()` now checks `publish_to: none` and native `android/`/`ios/` directories to tag pure library packages (`is_package: true`), rendering a `PKG` badge in the UI.
 - [x] **Task 2.2 — Deep Melos Config Parser (Completed ✅):** Added `_parse_melos_config()` in `router.py` reading `melos.yaml` and `pubspec.yaml` (`melos:` key) to extract configured package folder globs dynamically, driving discovery & workspace inspection.
 - [x] **Task 2.3 — Bulk Workspace Auto-Scan ("Scan All Apps" - Completed ✅):** Added `POST /api/deployment/scan-all` backend endpoint (`scan_all_apps_config()`) and **"Scan All Apps"** UI button to bulk scan and auto-populate configs for all 10+ apps in a workspace at once.
-- [ ] **Task 2.4 — Custom Flavor Auto-Detection:** Update `_scan_xcconfig_bundle_ids()` and `_scan_android_app_ids()` to read custom flavor names defined in `melos.yaml` scripts or Gradle `productFlavors { ... }` blocks (e.g. `staging`, `uat`, `sandbox`).
+- [x] **Task 2.4 — Custom Flavor Auto-Detection (Completed ✅):** Updated `_scan_xcconfig_bundle_ids()` and `_scan_android_app_ids()` to auto-detect `staging`, `uat`, `sandbox`, `beta`, `demo` custom flavor bundle IDs and package names.
 
 ### 📱 3. Smarter iOS & Android Credential Scanning
 - [ ] **iOS `GoogleService-Info.plist` Detection:** Auto-scan `ios/**/GoogleService-Info.plist` per flavor directory (`/dev/`, `/qa/`, `/prod/`) and auto-populate paths.
