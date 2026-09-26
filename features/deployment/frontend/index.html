@@ -250,26 +250,43 @@
 </div>
 
 <!-- ═══════════════════════════ WORKSPACE SWITCH MODAL ═══════════════════════════ -->
-<div id="workspaceSwitchOverlay" class="ui-modal-backdrop" role="dialog" aria-modal="true" aria-label="Switch Project Folder">
-    <div class="ui-modal" data-size="sm" style="max-width: 520px;">
+<div id="workspaceSwitchOverlay" class="ui-modal-backdrop" role="dialog" aria-modal="true" aria-label="Open Project Folder">
+    <div class="ui-modal" data-size="sm" style="max-width: 540px;">
         <div class="ui-modal-header">
             <div>
-                <h3 class="ui-modal-title">Switch Project Folder</h3>
-                <p class="modal-subtitle" style="font-size: 0.8rem; color: var(--ui-muted, #9aa6b8); margin: 0;">Point the deployment console to any app or monorepo directory.</p>
+                <h3 class="ui-modal-title">Open Project Folder</h3>
+                <p class="modal-subtitle" style="font-size: 0.8rem; color: var(--ui-muted, #9aa6b8); margin: 0;">Point the deployment console to any app directory or monorepo workspace.</p>
             </div>
             <button id="closeWorkspaceModalBtn" class="ui-modal-close" type="button">&times;</button>
         </div>
         <div class="ui-modal-body" style="padding: 20px;">
             <div class="ui-field" style="margin-bottom: 16px;">
-                <label class="ui-label">Recent Projects</label>
+                <label class="ui-label">Recent Workspaces</label>
                 <select id="workspaceSelectDropdown" class="ui-input" style="width: 100%;">
                     <option value="">-- Select a saved project --</option>
                 </select>
             </div>
             <div class="ui-field" style="margin-bottom: 16px;">
-                <label class="ui-label">Or Enter Full Directory Path</label>
-                <input id="workspacePathInput" class="ui-input" type="text" placeholder="/home/username/IdeaProjects/my-app" style="width: 100%;">
-                <span class="ui-help-text" style="display: block; font-size: 0.72rem; color: var(--ui-text-muted); margin-top: 4px;">Absolute path to single app folder or monorepo containing an apps/ directory.</span>
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                    <label class="ui-label" style="margin-bottom: 0;">Directory Path</label>
+                    <label for="folderPickerInput" class="ui-button" data-variant="ghost" data-size="sm" style="cursor: pointer; padding: 2px 8px; font-size: 0.75rem;">
+                        <i data-lucide="folder-open"></i>
+                        <span>Browse Folder</span>
+                    </label>
+                    <input id="folderPickerInput" type="file" webkitdirectory directory style="display: none;">
+                </div>
+                <input id="workspacePathInput" class="ui-input" type="text" placeholder="/home/username/projects/my-app" style="width: 100%;">
+                <span class="ui-help-text" style="display: block; font-size: 0.72rem; color: var(--ui-text-muted); margin-top: 4px;">Absolute path to single app folder or monorepo workspace.</span>
+            </div>
+
+            <!-- Project Inspection Preview Card -->
+            <div id="workspaceInspectionBox" class="ui-card hidden" style="background: rgba(255,255,255,0.03); border: 1px dashed var(--ui-border-color); padding: 12px 16px; margin-top: 12px; border-radius: 8px;">
+                <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px;">
+                    <i data-lucide="search-check" style="width: 16px; height: 16px; color: var(--ui-primary, #3b82f6);"></i>
+                    <span id="inspectTitle" style="font-weight: 600; font-size: 0.85rem;">Detected 0 Apps</span>
+                    <span id="inspectMonorepoBadge" class="ui-badge hidden" data-variant="info" style="font-size: 0.7rem; padding: 1px 6px;">Monorepo</span>
+                </div>
+                <div id="inspectBadges" style="display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px;"></div>
             </div>
         </div>
         <div class="ui-modal-footer" style="display: flex; gap: 8px; justify-content: flex-end; padding: 16px;">
