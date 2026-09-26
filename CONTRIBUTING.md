@@ -62,7 +62,7 @@ We aim to make Dev Deployment Console intelligent enough to seamlessly handle an
 #### Detailed Tasks to Implement:
 
 - [x] **Task 2.1 — Smart Package Filter (Completed ✅):** `_detect_app_in_dir()` now checks `publish_to: none` and native `android/`/`ios/` directories to tag pure library packages (`is_package: true`), rendering a `PKG` badge in the UI.
-- [ ] **Task 2.2 — Deep Melos Config Parser:** Add a `_parse_melos_config()` helper in `router.py` that reads `melos.yaml` or the `melos:` section inside `pubspec.yaml`. Extract the configured `packages:` glob paths (e.g. `apps/*`, `packages/*`, `services/*`) dynamically instead of hardcoding folder names.
+- [x] **Task 2.2 — Deep Melos Config Parser (Completed ✅):** Added `_parse_melos_config()` in `router.py` reading `melos.yaml` and `pubspec.yaml` (`melos:` key) to extract configured package folder globs dynamically, driving discovery & workspace inspection.
 - [ ] **Task 2.3 — Bulk Workspace Auto-Scan ("Scan All"):** Add a backend endpoint `POST /api/deployment/scan-all` and a UI button **"Scan All Apps"** to auto-discover and save Bundle IDs, Android Package names, and Firebase configs for all apps in a workspace at once.
 - [ ] **Task 2.4 — Custom Flavor Auto-Detection:** Update `_scan_xcconfig_bundle_ids()` and `_scan_android_app_ids()` to read custom flavor names defined in `melos.yaml` scripts or Gradle `productFlavors { ... }` blocks (e.g. `staging`, `uat`, `sandbox`).
 
