@@ -824,6 +824,38 @@ def scan_app_config(app_id: str) -> dict[str, Any]:
     return {"success": True, "discovered": discovered, "app_id": app_id}
 
 
+def scan_all_apps_config() -> dict[str, Any]:
+    """Bulk scan all configured apps in the workspace and merge their configuration."""
+    apps_file = get_apps_config_file()
+    if not apps_file.exists():
+        return {"success": False, "error": "No apps configured yet"}
+
+    try:
+        apps = json.loads(apps_file.read_text(encoding="utf-8"))
+    except Exception:
+        return {"success": False, "error": "Failed to read apps configuration"}
+
+    deploy_cfg = load_deploy_config()
+    existing_apps_cfg = deploy_cfg.get("apps", {})
+    scanned_count = 0
+
+    for app in apps:
+        app_id = app["id"]
+        res = scan_app_config(app_id)
+        if res.get("success") and res.get("discovered"):
+            disc = res["discovered"]
+            app_entry = existing_apps_cfg.get(app_id, {})
+            # Merge discovered values into existing config without overwriting existing user edits
+            for k, v in disc.items():
+                if not app_entry.get(k):
+                    app_entry[k] = v
+            existing_apps_cfg[app_id] = app_entry
+            scanned_count += 1
+
+    save_deploy_config({"apps": existing_apps_cfg})
+    return {"success": True, "count": scanned_count, "total": len(apps)}
+
+
 # =============================================================================
 # Pre-flight iOS certificate / provisioning-profile expiry check
 # =============================================================================

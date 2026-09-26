@@ -208,6 +208,9 @@ class DeploymentHandler(http.server.SimpleHTTPRequestHandler):
         if parsed.path == "/api/deployment/regenerate-commands":
             self.write_json(router.regenerate_commands())
             return
+        if parsed.path == "/api/deployment/scan-all":
+            self.write_json(router.scan_all_apps_config())
+            return
         if parsed.path in ("/api/deployment/apps/save", "/api/deployment/apps"):
             self.write_json(router.add_app(data))
             return
