@@ -61,6 +61,7 @@ It is **zero-intrusion** — it lives completely separately from your apps. No r
 
 ## ✨ Key Features
 
+- **Standardized UI System** — Frontend strictly uses the [`developer-dashboard-ui`](https://github.com/sunilbvb/developer-dashboard-ui) design system via jsDelivr CDN (`.ui-card`, `.ui-field`, `.ui-button`, `.ui-dropzone`, `.ui-badge`). No custom or fragmented CSS.
 - **No Heavy Dependencies** — Built using Python's standard library. No databases, Redis, or heavy frameworks needed.
 - **Universal & Stack-Agnostic** — Works with Flutter, React Native, iOS Native, Android Native, Node.js, or any custom Bash script.
 - **Real-Time Live Logs** — Stdout and stderr stream live into the embedded browser terminal.

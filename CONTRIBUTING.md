@@ -116,5 +116,21 @@ We aim to make Dev Deployment Console intelligent enough to seamlessly handle an
 
 ---
 
-## 📄 License
-By contributing to Dev Deployment Console, you agree that your contributions will be licensed under the project's [MIT License](LICENSE).
+## 🎨 Code Style & Standards
+
+### UI Component Standard (Mandatory)
+All frontend components and layouts **must strictly use the [`developer-dashboard-ui`](https://github.com/sunilbvb/developer-dashboard-ui) design system**. Custom CSS or ad-hoc component styles are strictly prohibited.
+
+- **CDN Reference:** All pages load `https://cdn.jsdelivr.net/gh/sunilbvb/developer-dashboard-ui@main/dist/ui.css` (with local fallback).
+- **Component Classes:** Use official design system classes:
+  - Cards: `.ui-card`, `.ui-card-header`, `.ui-card-body`, `.ui-card-title`
+  - Fields & Inputs: `.ui-field`, `.ui-label`, `.ui-input`, `.ui-select`, `.ui-checkbox`
+  - Buttons: `.ui-button` with `data-variant="primary|secondary|danger|warning|ghost"`
+  - File Dropzones: `.ui-dropzone`, `.ui-dropzone-icon`, `.ui-dropzone-title`, `.ui-dropzone-subtitle` (drag-over active state: `ui-dropzone--active`)
+  - Badges & Modals: `.ui-badge`, `.ui-modal-backdrop`, `.ui-modal`, `.ui-segmented-control`
+- **CSS Variables:** Always use system theme variables (`var(--ui-bg-surface)`, `var(--ui-text-primary)`, `var(--ui-border-color)`, `var(--ui-primary)`).
+
+### Python Backend Standards
+- Use Python standard library modules only (`http.server`, `email.parser`, `subprocess`, `json`, `pathlib`).
+- Do not introduce external PyPI dependencies (`requests`, `flask`, `fastapi`).
+- Keep handlers non-blocking and safe for async subprocess streaming.
