@@ -60,3 +60,4 @@ ngrok_config.json
 config/active_workspace.txt
 config/workspaces_list.json
 .dev-dashboard/
+graphify-out/
