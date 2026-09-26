@@ -399,14 +399,25 @@ def _detect_app_in_dir(d: Path) -> Optional[dict[str, Any]]:
     pub = d / "pubspec.yaml"
     if pub.exists():
         app_name = app_id.capitalize()
+        is_package = False
         try:
-            for line in pub.read_text(encoding="utf-8").splitlines():
+            pub_content = pub.read_text(encoding="utf-8")
+            for line in pub_content.splitlines():
                 if line.startswith("name:"):
                     app_name = line.split(":", 1)[1].strip()
-                    break
+                elif line.startswith("publish_to:"):
+                    # Common indicator of internal library packages
+                    val = line.split(":", 1)[1].strip()
+                    if val == "none" and not (d / "android").is_dir() and not (d / "ios").is_dir():
+                        is_package = True
         except Exception:
             pass
-        return {"id": app_id, "name": app_name, "stack": "flutter"}
+
+        # If project is located under packages/ folder and lacks native app runners (android/ios), treat as package
+        if "packages" in d.parts and not (d / "android").is_dir() and not (d / "ios").is_dir():
+            is_package = True
+
+        return {"id": app_id, "name": app_name, "stack": "flutter", "is_package": is_package}
 
     # 2. Node / React Native (package.json)
     pkg = d / "package.json"
@@ -491,7 +502,8 @@ def discover_workspace_config():
                 "color": colors[idx % len(colors)],
                 "icon": icons[idx % len(icons)],
                 "version": "1.0.0 (1)",
-                "stack": app.get("stack", "generic")
+                "stack": app.get("stack", "generic"),
+                "is_package": app.get("is_package", False),
             })
         apps_file.write_text(json.dumps(new_apps, indent=2), encoding="utf-8")
         existing_apps = new_apps
