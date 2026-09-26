@@ -51,6 +51,10 @@ class DeploymentHandler(http.server.SimpleHTTPRequestHandler):
         if parsed.path == "/api/deployment/workspaces":
             self.write_json(router.get_workspaces_list())
             return
+        if parsed.path == "/api/deployment/inspect-path":
+            query = parse_qs(parsed.query)
+            self.write_json(router.inspect_workspace_path(query.get("path", [""])[0]))
+            return
         if parsed.path == "/api/deployment/apps":
             self.write_json(router.get_apps())
             return
