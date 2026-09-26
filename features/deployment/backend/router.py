@@ -712,16 +712,19 @@ def _is_flavor_configured(app_id: str, flavor: str) -> bool:
 def _scan_xcconfig_bundle_ids(app_dir: Path) -> dict[str, str]:
     """Scan iOS Flutter xcconfig files to extract per-flavor PRODUCT_BUNDLE_IDENTIFIER."""
     result: dict[str, str] = {}
-    flavor_map = {"dev": "dev", "qa": "qa", "test": "qa", "prod": "prod", "production": "prod"}
+    flavor_map = {
+        "dev": "dev", "qa": "qa", "test": "qa", "prod": "prod", "production": "prod",
+        "staging": "staging", "uat": "uat", "sandbox": "sandbox", "beta": "beta", "demo": "demo"
+    }
     xcconfig_dir = app_dir / "ios" / "Flutter"
     if not xcconfig_dir.exists():
         return result
     for xcconfig in xcconfig_dir.glob("*.xcconfig"):
         name_lower = xcconfig.stem.lower()
-        # only process flavor-specific files e.g. Flavor-Dev.xcconfig
+        # process flavor-specific files e.g. Flavor-Dev.xcconfig or Staging.xcconfig
         matched_flavor = None
         for keyword, canon in flavor_map.items():
-            if keyword in name_lower and "flavor" in name_lower:
+            if keyword in name_lower:
                 matched_flavor = canon
                 break
         if not matched_flavor:
@@ -747,6 +750,12 @@ def _scan_xcconfig_bundle_ids(app_dir: Path) -> dict[str, str]:
 def _scan_android_app_ids(app_dir: Path) -> dict[str, str]:
     """Scan Android local.properties, gradle.properties, and build.gradle to find per-flavor applicationIds."""
     result: dict[str, str] = {}
+    prop_mappings = [
+        ("APP_ID_DEV", "android_id_dev"), ("APP_ID_TEST", "android_id_qa"), ("APP_ID_QA", "android_id_qa"),
+        ("APP_ID_STAGING", "android_id_staging"), ("APP_ID_UAT", "android_id_uat"),
+        ("APP_ID_SANDBOX", "android_id_sandbox"), ("APP_ID_BETA", "android_id_beta"),
+        ("APP_ID_PROD", "android_id_prod")
+    ]
     
     # Try gradle.properties
     gradle_props = app_dir / "android" / "gradle.properties"
@@ -754,7 +763,7 @@ def _scan_android_app_ids(app_dir: Path) -> dict[str, str]:
         try:
             for line in gradle_props.read_text(encoding="utf-8").splitlines():
                 line = line.strip()
-                for prop, key in [("APP_ID_DEV", "android_id_dev"), ("APP_ID_TEST", "android_id_qa"), ("APP_ID_QA", "android_id_qa"), ("APP_ID_PROD", "android_id_prod")]:
+                for prop, key in prop_mappings:
                     if line.startswith(f"{prop}="):
                         result[key] = line.split("=", 1)[1].strip()
         except Exception:
@@ -766,27 +775,33 @@ def _scan_android_app_ids(app_dir: Path) -> dict[str, str]:
         try:
             for line in local_props.read_text(encoding="utf-8").splitlines():
                 line = line.strip()
-                for prop, key in [("APP_ID_DEV", "android_id_dev"), ("APP_ID_TEST", "android_id_qa"), ("APP_ID_QA", "android_id_qa"), ("APP_ID_PROD", "android_id_prod")]:
+                for prop, key in prop_mappings:
                     if line.startswith(f"{prop}="):
                         result[key] = line.split("=", 1)[1].strip()
         except Exception:
             pass
 
-    # Try build.gradle inline applicationId values
-    build_gradle = app_dir / "android" / "app" / "build.gradle"
-    if build_gradle.exists() and not result:
-        try:
-            content = build_gradle.read_text(encoding="utf-8")
-            for match in re.finditer(r'applicationId\s+["\']([^"\'\']+)["\']', content):
-                app_id_val = match.group(1)
-                if "dev" in app_id_val.lower():
-                    result["android_id_dev"] = app_id_val
-                elif "qa" in app_id_val.lower() or "test" in app_id_val.lower():
-                    result["android_id_qa"] = app_id_val
-                elif not result.get("android_id_prod"):
-                    result["android_id_prod"] = app_id_val
-        except Exception:
-            pass
+    # Try build.gradle / build.gradle.kts inline applicationId values
+    for gradle_name in ("app/build.gradle", "app/build.gradle.kts", "build.gradle"):
+        build_gradle = app_dir / "android" / gradle_name
+        if build_gradle.exists():
+            try:
+                content = build_gradle.read_text(encoding="utf-8")
+                for match in re.finditer(r'applicationId\s+["\']([^"\'\']+)["\']', content):
+                    app_id_val = match.group(1)
+                    val_lower = app_id_val.lower()
+                    if "dev" in val_lower:
+                        result["android_id_dev"] = app_id_val
+                    elif "staging" in val_lower:
+                        result["android_id_staging"] = app_id_val
+                    elif "uat" in val_lower:
+                        result["android_id_uat"] = app_id_val
+                    elif "qa" in val_lower or "test" in val_lower:
+                        result["android_id_qa"] = app_id_val
+                    elif not result.get("android_id_prod"):
+                        result["android_id_prod"] = app_id_val
+            except Exception:
+                pass
     return result
 
 
