@@ -5,6 +5,7 @@ from typing import Any
 
 from config import (
     add_app as config_add_app,
+    check_system_health as config_check_system_health,
     discover_workspace_config,
     get_apps as config_get_apps,
     get_apps_config_file,
@@ -54,3 +55,5 @@ scan_all_apps_config = config_scan_all_apps_config
 add_app = config_add_app
 set_active_workspace = config_set_active_workspace
 upload_p8_key = p8_upload_p8_key
+check_system_health = config_check_system_health
+

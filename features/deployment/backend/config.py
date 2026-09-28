@@ -570,3 +570,41 @@ def discover_workspace_config() -> None:
             if scan_res.get("success"):
                 scanned_apps[app_id] = scan_res["discovered"]
         save_deploy_config({"apps": scanned_apps})
+
+
+def check_system_health() -> dict[str, Any]:
+    """Check CLI tools and environment dependencies for pre-flight diagnostics."""
+    import shutil
+    import subprocess
+
+    def _check_tool(cmd: str, flag: str = "--version") -> dict[str, Any]:
+        path = shutil.which(cmd)
+        if not path:
+            return {"available": False, "path": None, "version": None}
+        try:
+            res = subprocess.run([cmd, flag], capture_output=True, text=True, timeout=3)
+            out = (res.stdout or res.stderr or "").strip().splitlines()
+            ver = out[0] if out else "available"
+            return {"available": True, "path": path, "version": ver}
+        except Exception:
+            return {"available": True, "path": path, "version": "available"}
+
+    tools = {
+        "python": _check_tool("python3"),
+        "git": _check_tool("git"),
+        "bash": _check_tool("bash"),
+        "flutter": _check_tool("flutter"),
+        "xcodebuild": _check_tool("xcodebuild", "-version"),
+        "gradle": _check_tool("gradle"),
+        "melos": _check_tool("melos"),
+    }
+
+    healthy = tools["python"]["available"] and tools["git"]["available"] and tools["bash"]["available"]
+
+    return {
+        "success": True,
+        "healthy": healthy,
+        "workspaceRoot": str(WORKSPACE_ROOT),
+        "tools": tools,
+    }
+

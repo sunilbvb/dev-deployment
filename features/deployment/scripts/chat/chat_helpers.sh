@@ -464,4 +464,43 @@ $BODY"
     return 3
   fi
   rm -f "$response_body_file" >/dev/null 2>&1 || true
+
+  # Also dispatch to Slack, Teams, and Discord if webhooks are configured
+  send_slack_notification "$TITLE" "$BODY" || true
+  send_teams_notification "$TITLE" "$BODY" || true
+  send_discord_notification "$TITLE" "$BODY" || true
 }
+
+send_slack_notification() {
+  local title="$1"
+  local body="$2"
+  if [ -z "${SLACK_WEBHOOK_URL:-}" ]; then return 0; fi
+  local escaped_title escaped_body payload
+  escaped_title="$(json_escape "$title")"
+  escaped_body="$(json_escape "$body")"
+  payload="{\"text\": \"*${escaped_title}*\n${escaped_body}\"}"
+  curl -sS -X POST -H "Content-Type: application/json" --data "$payload" "$SLACK_WEBHOOK_URL" >/dev/null 2>&1 || true
+}
+
+send_teams_notification() {
+  local title="$1"
+  local body="$2"
+  if [ -z "${TEAMS_WEBHOOK_URL:-}" ]; then return 0; fi
+  local escaped_title escaped_body payload
+  escaped_title="$(json_escape "$title")"
+  escaped_body="$(json_escape "$body")"
+  payload="{\"@type\": \"MessageCard\", \"summary\": \"${escaped_title}\", \"text\": \"### ${escaped_title}\n\n${escaped_body}\"}"
+  curl -sS -X POST -H "Content-Type: application/json" --data "$payload" "$TEAMS_WEBHOOK_URL" >/dev/null 2>&1 || true
+}
+
+send_discord_notification() {
+  local title="$1"
+  local body="$2"
+  if [ -z "${DISCORD_WEBHOOK_URL:-}" ]; then return 0; fi
+  local escaped_title escaped_body payload
+  escaped_title="$(json_escape "$title")"
+  escaped_body="$(json_escape "$body")"
+  payload="{\"content\": \"**${escaped_title}**\n${escaped_body}\"}"
+  curl -sS -X POST -H "Content-Type: application/json" --data "$payload" "$DISCORD_WEBHOOK_URL" >/dev/null 2>&1 || true
+}
+
