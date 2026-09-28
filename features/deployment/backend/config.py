@@ -104,9 +104,13 @@ def save_deploy_config(data: dict[str, Any]) -> dict[str, Any]:
             if val is None or val == "":
                 continue
             if isinstance(val, str):
-                if key.startswith(("bundle_id_", "android_id_", "android_package_")) or key in (
-                    "apple_id", "apple_key_id", "apple_issuer_id"
-                ):
+                is_id_field = (
+                    any(key == prefix or key.startswith(f"{prefix}_") for prefix in (
+                        "bundle_id", "android_id", "android_package", "ios_bundle_id", "android_bundle_id"
+                    ))
+                    or key in ("apple_id", "apple_key_id", "apple_issuer_id", "team_id")
+                )
+                if is_id_field and not (key.startswith("google_services_") or key.startswith("google_service_")):
                     if not SAFE_ID_PATTERN.match(val):
                         return {
                             "success": False,
@@ -119,6 +123,13 @@ def save_deploy_config(data: dict[str, Any]) -> dict[str, Any]:
                             return {
                                 "success": False,
                                 "error": f"Invalid flavor '{f}' in app '{app_id}'. Must match ^[A-Za-z0-9._-]+$",
+                            }
+                elif key == "auto_release_flavors":
+                    for f in val:
+                        if not isinstance(f, str) or not SAFE_ID_PATTERN.match(f):
+                            return {
+                                "success": False,
+                                "error": f"Invalid item '{f}' in list '{key}' for app '{app_id}'. Must match ^[A-Za-z0-9._-]+$",
                             }
 
     cfg = get_deploy_config_file()
@@ -150,6 +161,7 @@ def _detect_app_in_dir(path: Path) -> Optional[dict[str, Any]]:
 
     stack = "generic"
     app_name = path.name
+    version = "1.0.0 (1)"
     is_package = False
 
     if pubspec.exists():
@@ -159,12 +171,28 @@ def _detect_app_in_dir(path: Path) -> Optional[dict[str, Any]]:
             name_match = re.search(r"^name:\s*(.+)$", content, re.MULTILINE)
             if name_match:
                 app_name = name_match.group(1).strip().strip("'\"")
+            ver_match = re.search(r"^version:\s*(.+)$", content, re.MULTILINE)
+            if ver_match:
+                raw_ver = ver_match.group(1).strip().strip("'\"")
+                if "+" in raw_ver:
+                    v_parts = raw_ver.split("+", 1)
+                    version = f"{v_parts[0]} ({v_parts[1]})"
+                else:
+                    version = raw_ver
             if "executables:" not in content and "flutter:" not in content:
                 is_package = True
         except Exception:
             pass
     elif package_json.exists():
         stack = "react-native" if (path / "ios").exists() or (path / "android").exists() else "node"
+        try:
+            p_data = json.loads(package_json.read_text(encoding="utf-8"))
+            if p_data.get("name"):
+                app_name = p_data["name"]
+            if p_data.get("version"):
+                version = p_data["version"]
+        except Exception:
+            pass
     elif build_gradle.exists() or build_gradle_kts.exists() or xcodeproj:
         stack = "native"
 
@@ -173,6 +201,7 @@ def _detect_app_in_dir(path: Path) -> Optional[dict[str, Any]]:
         "id": app_id,
         "name": app_name,
         "path": str(path),
+        "version": version,
         "stack": stack,
         "is_package": is_package,
     }
@@ -209,15 +238,84 @@ def _parse_melos_config(root_dir: Path) -> list[str]:
         return ["apps"]
 
 
+def _resolve_app_dir(app_id: str) -> Path:
+    ws_root = get_workspace_root()
+
+    # 1. Check apps_config.json for explicit path
+    cfg_file = get_apps_config_file()
+    if cfg_file.exists():
+        try:
+            apps = json.loads(cfg_file.read_text(encoding="utf-8"))
+            if isinstance(apps, list):
+                for a in apps:
+                    if isinstance(a, dict) and a.get("id") == app_id:
+                        raw_p = a.get("path")
+                        if raw_p:
+                            p = Path(raw_p)
+                            if not p.is_absolute():
+                                p = ws_root / p
+                            if p.is_dir():
+                                return p.resolve()
+        except Exception:
+            pass
+
+    # 2. Check standard monorepo folders
+    candidates = [
+        ws_root / "apps" / app_id,
+        ws_root / "packages" / app_id,
+        ws_root / app_id,
+    ]
+    for c in candidates:
+        if c.is_dir():
+            return c.resolve()
+
+    # 3. Check if workspace root is the app itself
+    if (ws_root / "pubspec.yaml").exists() or (ws_root / "package.json").exists() or (ws_root / "android").exists():
+        return ws_root.resolve()
+
+    return ws_root.resolve()
+
+
+def _detect_app_flavors_from_dir(app_dir: Path) -> list[str]:
+    flavors = set()
+    standard_android_dirs = {"main", "debug", "profile", "release", "test", "androidtest", "common"}
+
+    # 1. Android src folders
+    android_src = app_dir / "android" / "app" / "src"
+    if android_src.is_dir():
+        for item in android_src.iterdir():
+            if item.is_dir() and item.name.lower() not in standard_android_dirs:
+                flavors.add(item.name.lower())
+
+    # 2. iOS xcconfig / scheme files
+    xcconfig_dir = app_dir / "ios" / "Flutter"
+    if xcconfig_dir.is_dir():
+        known_flavors = ["dev", "qa", "prod", "staging", "uat", "beta", "sandbox"]
+        for f in xcconfig_dir.glob("*.xcconfig"):
+            stem = f.stem.lower()
+            if stem not in ("debug", "release", "generated"):
+                for kf in known_flavors:
+                    if kf in stem:
+                        flavors.add(kf)
+
+    if flavors:
+        ordered = ["dev", "qa", "staging", "uat", "sandbox", "beta", "prod"]
+        res = [f for f in ordered if f in flavors]
+        for f in sorted(flavors):
+            if f not in res:
+                res.append(f)
+        return res
+
+    return []
+
+
 def _detect_app_flavors(app_id: str) -> list[str]:
     deploy_cfg = load_deploy_config()
     app_cfg = deploy_cfg.get("apps", {}).get(app_id, {})
 
     custom_flavors = app_cfg.get("flavors")
-    if isinstance(custom_flavors, list) and custom_flavors:
-        valid = [str(f).strip().lower() for f in custom_flavors if str(f).strip()]
-        if valid:
-            return valid
+    if isinstance(custom_flavors, list):
+        return [str(f).strip().lower() for f in custom_flavors if str(f).strip()]
 
     found = set()
     for k in app_cfg.keys():
@@ -234,7 +332,8 @@ def _detect_app_flavors(app_id: str) -> list[str]:
                 res.append(f)
         return res
 
-    return ["dev", "qa", "prod"]
+    app_dir = _resolve_app_dir(app_id)
+    return _detect_app_flavors_from_dir(app_dir)
 
 
 def get_apps() -> dict[str, Any]:
@@ -265,34 +364,105 @@ def add_app(app_data: dict[str, Any]) -> dict[str, Any]:
         apps = []
 
     raw_id = app_data.get("id")
-    if not raw_id:
-        return {"success": False, "error": "App ID is required"}
+    raw_path = str(app_data.get("path", "")).strip()
 
-    app_id = re.sub(r"[^a-zA-Z0-9_-]", "_", str(raw_id).strip())
+    # Path traversal validation if path is provided
+    detected_info = None
+    if raw_path:
+        cand = Path(raw_path)
+        if not cand.is_absolute():
+            cand = (get_workspace_root() / cand).resolve()
+        else:
+            cand = cand.resolve()
+
+        root_res = get_workspace_root().resolve()
+        allowed_roots = _get_allowed_workspace_roots()
+        is_safe = (cand == root_res or root_res in cand.parents) or any(
+            cand == allowed or allowed in cand.parents for allowed in allowed_roots
+        )
+        if not is_safe:
+            return {
+                "success": False,
+                "error": "Path traversal restriction: App directory must be within workspace root or authorized folders",
+            }
+
+        if cand.is_dir():
+            detected_info = _detect_app_in_dir(cand)
+
+    if not raw_id:
+        if detected_info and detected_info.get("id"):
+            raw_id = detected_info["id"]
+        elif raw_path:
+            raw_id = Path(raw_path).name
+        else:
+            return {"success": False, "error": "App ID is required"}
+
+    app_id = re.sub(r"[^a-zA-Z0-9_-]", "_", str(raw_id).strip())[:64]
+    if not app_id:
+        return {"success": False, "error": "Invalid app ID"}
 
     apps = [a for a in apps if isinstance(a, dict) and a.get("id") != app_id]
 
     colors = ["#8b5cf6", "#22c55e", "#f97316", "#ec4899", "#14b8a6", "#06b6d4", "#3b82f6"]
     icons = ["user", "package", "briefcase", "users", "leaf", "wallet", "building-2"]
 
+    resolved_name = app_data.get("name") or (detected_info.get("name") if detected_info else None) or app_id.capitalize()
+    resolved_version = app_data.get("version") or (detected_info.get("version") if detected_info else None) or "1.0.0 (1)"
+    resolved_stack = app_data.get("stack") or (detected_info.get("stack") if detected_info else None) or "generic"
+
+    clean_name = re.sub(r"[<>&\"']", "", str(resolved_name).strip())[:100]
+    clean_version = re.sub(r"[<>&\"']", "", str(resolved_version).strip())[:50]
+
+    color_val = str(app_data.get("color", "")).strip()
+    if not re.match(r"^#(?:[0-9a-fA-F]{3}){1,2}$", color_val):
+        color_val = colors[len(apps) % len(colors)]
+
+    icon_val = str(app_data.get("icon", "")).strip()
+    if not re.match(r"^[a-zA-Z0-9_-]+$", icon_val) or len(icon_val) > 32:
+        icon_val = icons[len(apps) % len(icons)]
+
+    stack_val = str(resolved_stack).strip().lower()
+    if not re.match(r"^[a-zA-Z0-9_-]+$", stack_val) or len(stack_val) > 32:
+        stack_val = "generic"
+
     new_entry = {
         "id": app_id,
-        "name": app_data.get("name", app_id.capitalize()),
-        "color": app_data.get("color", colors[len(apps) % len(colors)]),
-        "icon": app_data.get("icon", icons[len(apps) % len(icons)]),
-        "version": app_data.get("version", "1.0.0 (1)"),
+        "name": clean_name or app_id,
+        "color": color_val,
+        "icon": icon_val,
+        "version": clean_version or "1.0.0 (1)",
+        "stack": stack_val,
+        "is_package": detected_info.get("is_package", False) if detected_info else False,
     }
+    if raw_path:
+        new_entry["path"] = raw_path
+
     apps.append(new_entry)
     cfg_file.write_text(json.dumps(apps, indent=2), encoding="utf-8")
 
+    # Run auto-scan on this newly registered app
+    scan_res = scan_app_config(app_id)
     deploy_cfg = load_deploy_config()
     if "apps" not in deploy_cfg:
         deploy_cfg["apps"] = {}
-    if app_id not in deploy_cfg["apps"]:
-        deploy_cfg["apps"][app_id] = {"flavors": ["dev", "qa", "prod"]}
-        save_deploy_config(deploy_cfg)
 
-    return {"success": True, "app": new_entry}
+    app_entry = deploy_cfg["apps"].get(app_id, {})
+    if scan_res.get("success") and scan_res.get("discovered"):
+        disc = scan_res["discovered"]
+        detected_flavors = disc.get("flavors", [])
+        if "flavors" not in app_entry:
+            app_entry["flavors"] = detected_flavors
+        for k, v in disc.items():
+            if k != "flavors" and not app_entry.get(k):
+                app_entry[k] = v
+    else:
+        if "flavors" not in app_entry:
+            app_entry["flavors"] = []
+
+    deploy_cfg["apps"][app_id] = app_entry
+    save_deploy_config(deploy_cfg)
+
+    return {"success": True, "app": new_entry, "discovered": scan_res.get("discovered", {})}
 
 
 def get_workspaces_list() -> dict[str, Any]:
@@ -367,11 +537,16 @@ def inspect_workspace_path(path_str: str) -> dict[str, Any]:
     if not path_str or not path_str.strip():
         return {"success": False, "error": "No path provided"}
 
-    candidate = Path(path_str.strip()).resolve()
+    candidate = Path(path_str.strip())
+    if not candidate.is_absolute():
+        candidate = (get_workspace_root() / candidate).resolve()
+    else:
+        candidate = candidate.resolve()
+
     if not candidate.exists():
-        return {"success": False, "error": "Directory does not exist", "exists": False}
+        return {"success": False, "error": f"Directory does not exist: {candidate}", "exists": False}
     if not candidate.is_dir():
-        return {"success": False, "error": "Path is not a directory", "exists": False}
+        return {"success": False, "error": f"Path is not a directory: {candidate}", "exists": False}
 
     # Path traversal protection check
     root_res = get_workspace_root().resolve()
@@ -382,12 +557,12 @@ def inspect_workspace_path(path_str: str) -> dict[str, Any]:
     if not is_safe:
         return {
             "success": False,
-            "error": "Path traversal restriction: Candidate directory must be within workspace root",
+            "error": "Path traversal restriction: Candidate directory must be within workspace root or authorized folders",
             "exists": True,
             "restricted": True,
         }
 
-
+    detected_app = _detect_app_in_dir(candidate)
     discovered_apps = []
     is_monorepo = False
 
@@ -407,9 +582,14 @@ def inspect_workspace_path(path_str: str) -> dict[str, Any]:
                         discovered_apps.append(detected)
 
     if not discovered_apps:
-        detected_root = _detect_app_in_dir(candidate)
-        if detected_root:
-            discovered_apps.append(detected_root)
+        if detected_app:
+            discovered_apps.append(detected_app)
+        else:
+            for child in sorted(candidate.iterdir()):
+                if child.is_dir() and not child.name.startswith("."):
+                    det = _detect_app_in_dir(child)
+                    if det and not any(a["id"] == det["id"] for a in discovered_apps):
+                        discovered_apps.append(det)
 
     stacks = list(set(a.get("stack", "generic") for a in discovered_apps))
 
@@ -420,6 +600,7 @@ def inspect_workspace_path(path_str: str) -> dict[str, Any]:
         "name": candidate.name or "Root",
         "appCount": len(discovered_apps),
         "apps": discovered_apps,
+        "detectedApp": detected_app,
         "stacks": stacks,
         "isMonorepo": is_monorepo,
         "hasMelos": has_melos,
@@ -432,29 +613,75 @@ def _scan_xcconfig_bundle_ids(app_dir: Path) -> dict[str, str]:
         "dev": "dev", "qa": "qa", "test": "qa", "prod": "prod", "production": "prod",
         "staging": "staging", "uat": "uat", "sandbox": "sandbox", "beta": "beta", "demo": "demo"
     }
+
+    # 1. Scan ios/Flutter/*.xcconfig
     xcconfig_dir = app_dir / "ios" / "Flutter"
-    if not xcconfig_dir.exists():
-        return result
-    for xcconfig in xcconfig_dir.glob("*.xcconfig"):
-        name_lower = xcconfig.stem.lower()
-        matched_flavor = None
-        for key, val in flavor_map.items():
-            if key in name_lower:
-                matched_flavor = val
-                break
-        if not matched_flavor:
-            continue
+    if xcconfig_dir.exists():
+        for xcconfig in xcconfig_dir.glob("*.xcconfig"):
+            name_lower = xcconfig.stem.lower()
+            matched_flavor = None
+            for key, val in flavor_map.items():
+                if key in name_lower:
+                    matched_flavor = val
+                    break
+            try:
+                for line in xcconfig.read_text(encoding="utf-8").splitlines():
+                    line = line.strip()
+                    if line.startswith("PRODUCT_BUNDLE_IDENTIFIER"):
+                        parts = line.split("=", 1)
+                        if len(parts) == 2:
+                            bundle_id = parts[1].strip().strip(";").strip("'\"")
+                            if matched_flavor:
+                                result[f"bundle_id_{matched_flavor}"] = bundle_id
+                            elif not result.get("bundle_id"):
+                                result["bundle_id"] = bundle_id
+                                result["bundle_id_prod"] = bundle_id
+                            break
+            except Exception:
+                pass
+
+    # 2. Scan ios/Runner.xcodeproj/project.pbxproj
+    pbx_files = list(app_dir.glob("ios/*.xcodeproj/project.pbxproj")) or list(app_dir.glob("*.xcodeproj/project.pbxproj"))
+    for pbx in pbx_files:
+        if pbx.exists():
+            try:
+                content = pbx.read_text(encoding="utf-8")
+                matches = re.findall(r'PRODUCT_BUNDLE_IDENTIFIER\s*=\s*([^;]+);', content)
+                for raw_bid in matches:
+                    bid = raw_bid.strip().strip("'\"")
+                    if not bid or "RunnerTests" in bid or bid.startswith("$"):
+                        continue
+                    bid_lower = bid.lower()
+                    matched_flv = None
+                    for key, val in flavor_map.items():
+                        if f".{key}" in bid_lower or f"-{key}" in bid_lower:
+                            matched_flv = val
+                            break
+                    if matched_flv:
+                        result[f"bundle_id_{matched_flv}"] = bid
+                    elif not result.get("bundle_id"):
+                        result["bundle_id"] = bid
+                        result["bundle_id_prod"] = bid
+            except Exception:
+                pass
+
+    # 3. Scan ios/Runner/Info.plist
+    info_plist = app_dir / "ios" / "Runner" / "Info.plist"
+    if info_plist.exists() and not result.get("bundle_id"):
         try:
-            for line in xcconfig.read_text(encoding="utf-8").splitlines():
-                line = line.strip()
-                if line.startswith("PRODUCT_BUNDLE_IDENTIFIER"):
-                    parts = line.split("=", 1)
-                    if len(parts) == 2:
-                        bundle_id = parts[1].strip()
-                        result[f"bundle_id_{matched_flavor}"] = bundle_id
-                        break
+            content = info_plist.read_text(encoding="utf-8")
+            match = re.search(r'<key>CFBundleIdentifier</key>\s*<string>([^<$]+)</string>', content)
+            if match:
+                val = match.group(1).strip()
+                if val and not val.startswith("$"):
+                    result["bundle_id"] = val
+                    result["bundle_id_prod"] = val
         except Exception:
             pass
+
+    if result.get("bundle_id") and not result.get("bundle_id_prod"):
+        result["bundle_id_prod"] = result["bundle_id"]
+
     return result
 
 
@@ -489,61 +716,179 @@ def _scan_android_app_ids(app_dir: Path) -> dict[str, str]:
         except Exception:
             pass
 
-    for gradle_name in ("app/build.gradle", "app/build.gradle.kts", "build.gradle"):
-        build_gradle = app_dir / "android" / gradle_name
+    # Scan build.gradle / build.gradle.kts files
+    gradle_files = [
+        app_dir / "android" / "app" / "build.gradle.kts",
+        app_dir / "android" / "app" / "build.gradle",
+        app_dir / "android" / "build.gradle.kts",
+        app_dir / "android" / "build.gradle",
+    ]
+    for build_gradle in gradle_files:
         if build_gradle.exists():
             try:
                 content = build_gradle.read_text(encoding="utf-8")
-                for match in re.finditer(r'applicationId\s+["\']([^"\'\']+)["\']', content):
-                    app_id_val = match.group(1)
+                # 1. Look for applicationId (both Groovy and Kotlin DSL with =)
+                app_id_matches = list(re.finditer(r'applicationId\s*=?\s*["\']([^"\'\']+)["\']', content))
+                for match in app_id_matches:
+                    app_id_val = match.group(1).strip()
                     val_lower = app_id_val.lower()
                     if "dev" in val_lower:
                         result["android_id_dev"] = app_id_val
+                        result["android_package_dev"] = app_id_val
                     elif "staging" in val_lower:
                         result["android_id_staging"] = app_id_val
+                        result["android_package_staging"] = app_id_val
                     elif "uat" in val_lower:
                         result["android_id_uat"] = app_id_val
+                        result["android_package_uat"] = app_id_val
                     elif "qa" in val_lower or "test" in val_lower:
                         result["android_id_qa"] = app_id_val
-                    elif not result.get("android_id_prod"):
+                        result["android_package_qa"] = app_id_val
+                    else:
+                        result["android_package"] = app_id_val
+                        result["android_package_prod"] = app_id_val
                         result["android_id_prod"] = app_id_val
+
+                # 2. Look for namespace as fallback
+                if not result.get("android_package") and not result.get("android_id_prod"):
+                    ns_match = re.search(r'namespace\s*=?\s*["\']([^"\'\']+)["\']', content)
+                    if ns_match:
+                        ns_val = ns_match.group(1).strip()
+                        result["android_package"] = ns_val
+                        result["android_package_prod"] = ns_val
+                        result["android_id_prod"] = ns_val
             except Exception:
                 pass
+
+    # 3. Check AndroidManifest.xml package attribute
+    manifest_files = [
+        app_dir / "android" / "app" / "src" / "main" / "AndroidManifest.xml",
+        app_dir / "android" / "src" / "main" / "AndroidManifest.xml",
+    ]
+    for mf in manifest_files:
+        if mf.exists() and not result.get("android_package"):
+            try:
+                content = mf.read_text(encoding="utf-8")
+                pkg_match = re.search(r'package\s*=\s*["\']([^"\'\']+)["\']', content)
+                if pkg_match:
+                    pkg_val = pkg_match.group(1).strip()
+                    result["android_package"] = pkg_val
+                    result["android_package_prod"] = pkg_val
+                    result["android_id_prod"] = pkg_val
+            except Exception:
+                pass
+
+    if result.get("android_package") and not result.get("android_package_prod"):
+        result["android_package_prod"] = result["android_package"]
+    if result.get("android_package") and not result.get("android_id_prod"):
+        result["android_id_prod"] = result["android_package"]
+
     return result
 
 
-def _scan_credentials(discovered: dict[str, Any], app_id: str) -> None:
+def _scan_credentials(discovered: dict[str, Any], app_id: str, app_dir: Path) -> None:
     ws_root = get_workspace_root()
-    app_dir = ws_root / "apps" / app_id
-    if not app_dir.exists():
-        app_dir = ws_root
 
-    android_app_dir = app_dir / "android" / "app"
-    if android_app_dir.exists():
-        for path in android_app_dir.rglob("google-services.json"):
-            rel_path = str(path.relative_to(ws_root))
-            full_path_str = str(path).lower()
-            if "/dev/" in full_path_str:
-                discovered["google_services_json_dev"] = rel_path
-            elif "/qa/" in full_path_str or "/test/" in full_path_str:
-                discovered["google_services_json_qa"] = rel_path
-            elif "/prod/" in full_path_str or "/production/" in full_path_str:
-                discovered["google_services_json_prod"] = rel_path
-            elif not discovered.get("google_services_json_prod"):
-                discovered["google_services_json_prod"] = rel_path
+    def _rel(p: Path) -> str:
+        try:
+            return str(p.relative_to(ws_root))
+        except ValueError:
+            return str(p)
+
+    # 1. Android google-services.json
+    android_search_dirs = [
+        app_dir / "android" / "app",
+        app_dir / "android",
+        app_dir / "private_keys",
+        ws_root / "private_keys" / "Firebase",
+        ws_root / "private_keys",
+        app_dir / "firebase",
+    ]
+    for sdir in android_search_dirs:
+        if sdir.is_dir():
+            for path in sdir.rglob("google-services.json"):
+                rel_path = _rel(path)
+                full_lower = str(path).lower()
+                if "/dev/" in full_lower:
+                    discovered["google_services_json_dev"] = rel_path
+                elif "/qa/" in full_lower or "/test/" in full_lower:
+                    discovered["google_services_json_qa"] = rel_path
+                elif "/staging/" in full_lower:
+                    discovered["google_services_json_staging"] = rel_path
+                elif "/prod/" in full_lower or "/production/" in full_lower:
+                    discovered["google_services_json_prod"] = rel_path
+                    if not discovered.get("google_services_json"):
+                        discovered["google_services_json"] = rel_path
+                else:
+                    if not discovered.get("google_services_json"):
+                        discovered["google_services_json"] = rel_path
+                    if not discovered.get("google_services_json_prod"):
+                        discovered["google_services_json_prod"] = rel_path
+
+    # 2. iOS GoogleService-Info.plist
+    ios_search_dirs = [
+        app_dir / "ios" / "Runner",
+        app_dir / "ios",
+        app_dir / "private_keys",
+        ws_root / "private_keys" / "Firebase",
+        ws_root / "private_keys",
+        app_dir / "firebase",
+    ]
+    for sdir in ios_search_dirs:
+        if sdir.is_dir():
+            for path in sdir.rglob("*GoogleService-Info.plist"):
+                rel_path = _rel(path)
+                full_lower = str(path).lower()
+                if "dev" in full_lower:
+                    discovered["google_service_info_plist_dev"] = rel_path
+                elif "qa" in full_lower or "test" in full_lower:
+                    discovered["google_service_info_plist_qa"] = rel_path
+                elif "staging" in full_lower:
+                    discovered["google_service_info_plist_staging"] = rel_path
+                elif "prod" in full_lower:
+                    discovered["google_service_info_plist_prod"] = rel_path
+                    if not discovered.get("google_service_info_plist"):
+                        discovered["google_service_info_plist"] = rel_path
+                else:
+                    if not discovered.get("google_service_info_plist"):
+                        discovered["google_service_info_plist"] = rel_path
+                    if not discovered.get("google_service_info_plist_prod"):
+                        discovered["google_service_info_plist_prod"] = rel_path
+
+    # 3. Google Play Service Account JSON
+    gplay_search_dirs = [
+        ws_root / "private_keys",
+        app_dir / "private_keys",
+        ws_root / "config",
+    ]
+    for sdir in gplay_search_dirs:
+        if sdir.is_dir():
+            for pattern in ("*service-account*.json", "*play*.json", "*gplay*.json", "*google-play*.json"):
+                for path in sdir.glob(pattern):
+                    if path.is_file() and not path.name.startswith("google-services"):
+                        discovered["play_service_account_path"] = _rel(path)
+                        break
+                if discovered.get("play_service_account_path"):
+                    break
+        if discovered.get("play_service_account_path"):
+            break
 
 
 def scan_app_config(app_id: str) -> dict[str, Any]:
-    ws_root = get_workspace_root()
-    app_dir = ws_root / "apps" / app_id
-    if not app_dir.exists():
-        app_dir = ws_root
-
+    app_dir = _resolve_app_dir(app_id)
     discovered: dict[str, Any] = {}
     discovered.update(_scan_xcconfig_bundle_ids(app_dir))
     discovered.update(_scan_android_app_ids(app_dir))
-    _scan_credentials(discovered, app_id)
-    return {"success": True, "discovered": discovered, "app_id": app_id}
+    _scan_credentials(discovered, app_id, app_dir)
+    detected_flavors = _detect_app_flavors_from_dir(app_dir)
+    discovered["flavors"] = detected_flavors
+    return {
+        "success": True,
+        "discovered": discovered,
+        "app_id": app_id,
+        "app_path": str(app_dir),
+        "has_flavors": len(detected_flavors) > 0,
+    }
 
 
 def scan_all_apps_config() -> dict[str, Any]:
@@ -566,8 +911,11 @@ def scan_all_apps_config() -> dict[str, Any]:
         if res.get("success") and res.get("discovered"):
             disc = res["discovered"]
             app_entry = existing_apps_cfg.get(app_id, {})
+            detected_flavors = disc.get("flavors", [])
+            if "flavors" not in app_entry:
+                app_entry["flavors"] = detected_flavors
             for k, v in disc.items():
-                if not app_entry.get(k):
+                if k != "flavors" and not app_entry.get(k):
                     app_entry[k] = v
             existing_apps_cfg[app_id] = app_entry
             scanned_count += 1
@@ -615,7 +963,12 @@ def discover_workspace_config() -> None:
             discovered_apps.append(detected_root)
         elif ws_root != DASHBOARD_ROOT:
             root_id = re.sub(r"[^a-zA-Z0-9_-]", "_", ws_root.name.lower()) or "app"
-            discovered_apps.append({"id": root_id, "name": ws_root.name or "App", "stack": "generic"})
+            discovered_apps.append({
+                "id": root_id,
+                "name": ws_root.name or "App",
+                "path": str(ws_root),
+                "stack": "generic",
+            })
 
     if not existing_apps and discovered_apps:
         new_apps = []
@@ -627,9 +980,10 @@ def discover_workspace_config() -> None:
                 "name": app["name"],
                 "color": colors[idx % len(colors)],
                 "icon": icons[idx % len(icons)],
-                "version": "1.0.0 (1)",
+                "version": app.get("version", "1.0.0 (1)"),
                 "stack": app.get("stack", "generic"),
                 "is_package": app.get("is_package", False),
+                "path": app.get("path", str(ws_root)),
             })
         apps_file.write_text(json.dumps(new_apps, indent=2), encoding="utf-8")
 
@@ -640,7 +994,9 @@ def discover_workspace_config() -> None:
             app_id = app["id"]
             scan_res = scan_app_config(app_id)
             if scan_res.get("success"):
-                scanned_apps[app_id] = scan_res["discovered"]
+                disc = scan_res["discovered"]
+                app_entry = dict(disc)
+                scanned_apps[app_id] = app_entry
         save_deploy_config({"apps": scanned_apps})
 
 

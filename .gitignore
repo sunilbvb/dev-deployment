@@ -89,6 +89,8 @@ pnpm-debug.log*
 config/active_workspace.txt
 config/workspaces_list.json
 .dev-dashboard/
+auth_token.txt
+**/auth_token.txt
 graphify-out/
 tmp/
 .tmp/

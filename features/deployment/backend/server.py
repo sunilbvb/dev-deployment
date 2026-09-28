@@ -21,26 +21,42 @@ SHARED_ASSET_PREFIXES = ("css/", "js/", "assets/")
 _SERVER_AUTH_TOKEN = ""
 
 
+def _get_auth_token_file() -> Path:
+    token_dir = Path.home() / ".config" / "dev-deployment"
+    try:
+        token_dir.mkdir(parents=True, exist_ok=True)
+        token_dir.chmod(0o700)
+    except Exception:
+        pass
+    return token_dir / "auth_token.txt"
+
+
 def _get_auth_token() -> str:
     global _SERVER_AUTH_TOKEN
     if _SERVER_AUTH_TOKEN:
         return _SERVER_AUTH_TOKEN
 
     token = os.environ.get("DEPLOYMENT_AUTH_TOKEN", "").strip()
+    token_file = _get_auth_token_file()
+
+    if not token and token_file.exists():
+        try:
+            token = token_file.read_text(encoding="utf-8").strip()
+        except Exception:
+            pass
+
+    # Fallback check for legacy token location if user previously ran it
     if not token:
-        token_file = router.get_workspace_root() / ".dev-dashboard" / "auth_token.txt"
-        if token_file.exists():
+        legacy_file = router.get_workspace_root() / ".dev-dashboard" / "auth_token.txt"
+        if legacy_file.exists():
             try:
-                token = token_file.read_text(encoding="utf-8").strip()
+                token = legacy_file.read_text(encoding="utf-8").strip()
             except Exception:
                 pass
 
     if not token:
         token = secrets.token_hex(16)
         try:
-            target_dir = router.get_workspace_root() / ".dev-dashboard"
-            target_dir.mkdir(parents=True, exist_ok=True)
-            token_file = target_dir / "auth_token.txt"
             token_file.write_text(token, encoding="utf-8")
             token_file.chmod(0o600)
         except Exception:
@@ -294,7 +310,7 @@ class DeploymentHandler(http.server.SimpleHTTPRequestHandler):
             cmds = router.get_commands(app_id).get("commands", [])
             target_cmd = None
             for c in cmds:
-                if c.get("templateId") == template_id and (c.get("flavor") == flavor or c.get("flavor") == "any"):
+                if c.get("templateId") == template_id and (c.get("flavor") in (flavor, "any", "default")):
                     target_cmd = c
                     break
             if not target_cmd:
