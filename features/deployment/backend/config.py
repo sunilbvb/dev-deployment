@@ -295,26 +295,68 @@ def _resolve_app_dir(app_id: str) -> Path:
 
 
 def _detect_app_flavors_from_dir(app_dir: Path) -> list[str]:
-    flavors = set()
+    flavors: set[str] = set()
+    known_flavor_names = {"dev", "qa", "staging", "uat", "sandbox", "beta", "prod"}
     standard_android_dirs = {"main", "debug", "profile", "release", "test", "androidtest", "common"}
 
-    # 1. Android src folders
-    android_src = app_dir / "android" / "app" / "src"
-    if android_src.is_dir():
-        for item in android_src.iterdir():
-            if item.is_dir() and item.name.lower() not in standard_android_dirs:
-                flavors.add(item.name.lower())
+    # 1. Read real productFlavors from build.gradle / build.gradle.kts (B5 fix)
+    # Only fall back to src/ folder scanning if productFlavors block is absent.
+    gradle_files = [
+        app_dir / "android" / "app" / "build.gradle.kts",
+        app_dir / "android" / "app" / "build.gradle",
+    ]
+    found_gradle_flavors = False
+    for gradle_file in gradle_files:
+        if not gradle_file.exists():
+            continue
+        try:
+            content = gradle_file.read_text(encoding="utf-8")
+            # Extract productFlavors { ... } with balanced braces
+            idx = content.find("productFlavors")
+            if idx != -1:
+                brace_start = content.find("{", idx)
+                if brace_start != -1:
+                    depth = 1
+                    pos = brace_start + 1
+                    while pos < len(content) and depth > 0:
+                        if content[pos] == "{":
+                            depth += 1
+                        elif content[pos] == "}":
+                            depth -= 1
+                        pos += 1
+                    block = content[brace_start + 1 : pos - 1]
+                    found_gradle_flavors = True
+                    # Find all flavor names: identifier followed by { or (
+                    # e.g. 'dev {', 'staging {', 'create("prod") {'
+                    for name in re.findall(r'\b([a-zA-Z_][a-zA-Z0-9_]*)\s*[\{]', block):
+                        if name.lower() not in standard_android_dirs:
+                            flavors.add(name.lower())
+                    for name in re.findall(r'create\s*\(\s*["\']([^"\']+)["\']', block):
+                        if name.lower() not in standard_android_dirs:
+                            flavors.add(name.lower())
+                    if flavors:
+                        break
+        except Exception:
+            logging.exception("Failed to parse gradle file for productFlavors: %s", gradle_file)
 
-    # 2. iOS xcconfig / scheme files
+    # Fallback: scan android/app/src/ subfolders only if productFlavors not found in gradle
+    if not found_gradle_flavors:
+        android_src = app_dir / "android" / "app" / "src"
+        if android_src.is_dir():
+            for item in android_src.iterdir():
+                if item.is_dir() and item.name.lower() not in standard_android_dirs:
+                    flavors.add(item.name.lower())
+
+    # 2. iOS xcconfig stem matching — whole-segment regex (B6 fix, consistent with _scan_xcconfig_bundle_ids)
     xcconfig_dir = app_dir / "ios" / "Flutter"
     if xcconfig_dir.is_dir():
-        known_flavors = ["dev", "qa", "prod", "staging", "uat", "beta", "sandbox"]
         for f in xcconfig_dir.glob("*.xcconfig"):
             stem = f.stem.lower()
-            if stem not in ("debug", "release", "generated"):
-                for kf in known_flavors:
-                    if kf in stem:
-                        flavors.add(kf)
+            if stem in ("debug", "release", "generated"):
+                continue
+            for kf in known_flavor_names:
+                if re.search(r'(^|[._\-])' + re.escape(kf) + r'($|[._\-])', stem):
+                    flavors.add(kf)
 
     if flavors:
         ordered = ["dev", "qa", "staging", "uat", "sandbox", "beta", "prod"]
@@ -325,7 +367,6 @@ def _detect_app_flavors_from_dir(app_dir: Path) -> list[str]:
         return res
 
     return []
-
 
 def _detect_app_flavors(app_id: str) -> list[str]:
     deploy_cfg = load_deploy_config()
@@ -899,7 +940,14 @@ def _scan_credentials(discovered: dict[str, Any], app_id: str, app_dir: Path) ->
             break
 
 
-def scan_app_config(app_id: str) -> dict[str, Any]:
+def scan_app_config(app_id: str, *, force: bool = False) -> dict[str, Any]:
+    """Scan app project files for config.
+
+    Args:
+        app_id: The app identifier.
+        force: When True, all discovered values are returned even if the app
+               already has values saved — letting the caller decide what to overwrite.
+    """
     app_dir = _resolve_app_dir(app_id)
     discovered: dict[str, Any] = {}
     discovered.update(_scan_xcconfig_bundle_ids(app_dir))
@@ -907,16 +955,32 @@ def scan_app_config(app_id: str) -> dict[str, Any]:
     _scan_credentials(discovered, app_id, app_dir)
     detected_flavors = _detect_app_flavors_from_dir(app_dir)
     discovered["flavors"] = detected_flavors
+
+    # Build diff vs current saved config (B3 fix: show what changed)
+    existing_cfg = load_deploy_config().get("apps", {}).get(app_id, {})
+    diff: dict[str, dict[str, Any]] = {}
+    for k, new_val in discovered.items():
+        old_val = existing_cfg.get(k)
+        if old_val != new_val:
+            diff[k] = {"old": old_val, "new": new_val}
+
     return {
         "success": True,
         "discovered": discovered,
+        "diff": diff,
         "app_id": app_id,
         "app_path": str(app_dir),
         "has_flavors": len(detected_flavors) > 0,
+        "force": force,
     }
 
 
-def scan_all_apps_config() -> dict[str, Any]:
+def scan_all_apps_config(*, force: bool = False) -> dict[str, Any]:
+    """Scan all apps in the workspace.
+
+    Args:
+        force: When True, overwrite all existing values (not just empty ones) — B3 fix.
+    """
     apps_file = get_apps_config_file()
     if not apps_file.exists():
         return {"success": False, "error": "No apps configured yet"}
@@ -929,24 +993,111 @@ def scan_all_apps_config() -> dict[str, Any]:
     deploy_cfg = load_deploy_config()
     existing_apps_cfg = deploy_cfg.get("apps", {})
     scanned_count = 0
+    all_diffs: dict[str, Any] = {}
 
     for app in apps:
         app_id = app["id"]
-        res = scan_app_config(app_id)
+        res = scan_app_config(app_id, force=force)
         if res.get("success") and res.get("discovered"):
             disc = res["discovered"]
             app_entry = existing_apps_cfg.get(app_id, {})
             detected_flavors = disc.get("flavors", [])
-            if "flavors" not in app_entry:
-                app_entry["flavors"] = detected_flavors
-            for k, v in disc.items():
-                if k != "flavors" and not app_entry.get(k):
-                    app_entry[k] = v
+
+            if force:
+                # B3: overwrite everything including existing values
+                if detected_flavors:
+                    app_entry["flavors"] = detected_flavors
+                for k, v in disc.items():
+                    if k != "flavors":
+                        app_entry[k] = v
+            else:
+                # Original behaviour: only fill empty slots
+                if "flavors" not in app_entry:
+                    app_entry["flavors"] = detected_flavors
+                for k, v in disc.items():
+                    if k != "flavors" and not app_entry.get(k):
+                        app_entry[k] = v
+
             existing_apps_cfg[app_id] = app_entry
             scanned_count += 1
+            if res.get("diff"):
+                all_diffs[app_id] = res["diff"]
 
     save_deploy_config({"apps": existing_apps_cfg})
-    return {"success": True, "count": scanned_count, "total": len(apps)}
+    return {"success": True, "count": scanned_count, "total": len(apps), "diffs": all_diffs}
+
+
+def rescan_workspace() -> dict[str, Any]:
+    """B4 fix: force a full re-discovery of the workspace.
+
+    Clears the apps and commands config files so discover_workspace_config()
+    runs again, then scans all found apps. Returns the apps that were found.
+    """
+    apps_file = get_apps_config_file()
+    cmds_file = get_commands_config_file()
+    deploy_file = get_deploy_config_file()
+
+    # Reset discovery cache
+    try:
+        apps_file.write_text("[]", encoding="utf-8")
+        cmds_file.write_text("[]", encoding="utf-8")
+    except Exception as exc:
+        return {"success": False, "error": f"Could not reset workspace cache: {exc}"}
+
+    # Re-run discovery
+    discover_workspace_config()
+
+    # Auto-scan all discovered apps (force=False so existing manual values survive)
+    try:
+        saved_apps = json.loads(apps_file.read_text(encoding="utf-8"))
+    except Exception:
+        saved_apps = []
+
+    scan_result = scan_all_apps_config()
+    return {
+        "success": True,
+        "apps": saved_apps,
+        "scanned": scan_result.get("count", 0),
+        "total": scan_result.get("total", 0),
+    }
+
+
+def allow_workspace(path_str: str) -> dict[str, Any]:
+    """C10 fix: add a workspace folder to workspaces_list.json without requiring a manual JSON edit.
+
+    The path must exist as a directory. No constraint on its location — the user is
+    explicitly granting permission by clicking 'Allow this folder'.
+    """
+    if not path_str or not path_str.strip():
+        return {"success": False, "error": "No path provided"}
+
+    candidate = Path(path_str.strip()).resolve()
+    if not candidate.exists():
+        return {"success": False, "error": f"Directory does not exist: {candidate}"}
+    if not candidate.is_dir():
+        return {"success": False, "error": f"Path is not a directory: {candidate}"}
+
+    ws_file = DASHBOARD_ROOT / "config" / "workspaces_list.json"
+    workspaces: list[dict[str, Any]] = []
+    if ws_file.exists():
+        try:
+            workspaces = json.loads(ws_file.read_text(encoding="utf-8"))
+        except Exception:
+            logging.exception("Failed to parse workspaces list in %s", ws_file)
+
+    path_str_resolved = str(candidate)
+    if any(isinstance(w, dict) and w.get("path") == path_str_resolved for w in workspaces):
+        return {"success": True, "already_exists": True, "path": path_str_resolved, "name": candidate.name}
+
+    workspaces.append({"name": candidate.name, "path": path_str_resolved})
+    try:
+        ws_file.write_text(json.dumps(workspaces, indent=2), encoding="utf-8")
+    except Exception as exc:
+        return {"success": False, "error": f"Could not write workspaces list: {exc}"}
+
+    return {"success": True, "already_exists": False, "path": path_str_resolved, "name": candidate.name}
+
+
 
 
 def discover_workspace_config() -> None:

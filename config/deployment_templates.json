@@ -6,7 +6,10 @@
       "description": "Build release IPA for {flavor} flavor",
       "command_template": "flutter build ipa --release --flavor {flavor}",
       "icon": "apple",
-      "color": "#64748b"
+      "color": "#64748b",
+      "stacks": [
+        "flutter"
+      ]
     },
     {
       "id": "build_ipa_device",
@@ -14,7 +17,10 @@
       "description": "Build {flavor} IPA for direct device install (development signing)",
       "command_template": "flutter build ipa --release --flavor {flavor} --export-method development",
       "icon": "smartphone",
-      "color": "#475569"
+      "color": "#475569",
+      "stacks": [
+        "flutter"
+      ]
     },
     {
       "id": "deploy_ipa",
@@ -22,7 +28,10 @@
       "description": "Build + upload IPA to TestFlight for {flavor}",
       "command_template": "flutter build ipa --release --flavor {flavor} && ipatool upload --bundle-id {bundle_id} --apple-id {apple_id} --path build/ios/ipa/*.ipa",
       "icon": "rocket",
-      "color": "#3b82f6"
+      "color": "#3b82f6",
+      "stacks": [
+        "flutter"
+      ]
     },
     {
       "id": "upload_ipa",
@@ -30,7 +39,10 @@
       "description": "Upload already-built {flavor} IPA to TestFlight",
       "command_template": "ipatool upload --bundle-id {bundle_id} --apple-id {apple_id} --path build/ios/ipa/*.ipa",
       "icon": "upload-cloud",
-      "color": "#0284c7"
+      "color": "#0284c7",
+      "stacks": [
+        "flutter"
+      ]
     }
   ],
   "android": [
@@ -40,7 +52,10 @@
       "description": "Build release AAB for {flavor} flavor",
       "command_template": "flutter build appbundle --release --flavor {flavor}",
       "icon": "smartphone",
-      "color": "#22c55e"
+      "color": "#22c55e",
+      "stacks": [
+        "flutter"
+      ]
     },
     {
       "id": "deploy_aab",
@@ -48,7 +63,10 @@
       "description": "Build + publish {flavor} AAB to Play Store internal testing",
       "command_template": "flutter build appbundle --release --flavor {flavor} && bundletool upload --aab build/app/outputs/bundle/{flavor}Release/app-{flavor}-release.aab",
       "icon": "rocket",
-      "color": "#10b981"
+      "color": "#10b981",
+      "stacks": [
+        "flutter"
+      ]
     },
     {
       "id": "upload_aab",
@@ -56,7 +74,10 @@
       "description": "Publish already-built {flavor} AAB to Play Store internal testing",
       "command_template": "bundletool upload --aab build/app/outputs/bundle/{flavor}Release/app-{flavor}-release.aab",
       "icon": "upload-cloud",
-      "color": "#059669"
+      "color": "#059669",
+      "stacks": [
+        "flutter"
+      ]
     },
     {
       "id": "build_apk",
@@ -64,7 +85,10 @@
       "description": "Build release APK for {flavor} flavor",
       "command_template": "flutter build apk --release --flavor {flavor}",
       "icon": "play",
-      "color": "#16a34a"
+      "color": "#16a34a",
+      "stacks": [
+        "flutter"
+      ]
     }
   ],
   "combined": [
@@ -182,7 +206,10 @@
       "description": "Clean build artifacts and caches",
       "command_template": "flutter clean",
       "icon": "trash-2",
-      "color": "#dc2626"
+      "color": "#dc2626",
+      "stacks": [
+        "flutter"
+      ]
     },
     {
       "id": "pub_get",
@@ -190,7 +217,10 @@
       "description": "Get Dart dependencies",
       "command_template": "flutter pub get",
       "icon": "download",
-      "color": "#7c3aed"
+      "color": "#7c3aed",
+      "stacks": [
+        "flutter"
+      ]
     }
   ]
 }

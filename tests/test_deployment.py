@@ -284,6 +284,78 @@ class TestDeploymentSecurityAndLogic(unittest.TestCase):
                 "Single-app store upload (flavor=default) must trigger prod confirmation"
             )
 
+    def test_b5_product_flavors_parsing(self):
+        """B5 fix: real productFlavors block in build.gradle is parsed, not random src/ subfolders."""
+        import tempfile, pathlib
+        with tempfile.TemporaryDirectory() as td:
+            app_dir = pathlib.Path(td)
+            gradle_file = app_dir / "android" / "app" / "build.gradle"
+            gradle_file.parent.mkdir(parents=True)
+            gradle_file.write_text(
+                'android {\n'
+                '    flavorDimensions "default"\n'
+                '    productFlavors {\n'
+                '        dev {\n'
+                '            dimension "default"\n'
+                '            applicationIdSuffix ".dev"\n'
+                '        }\n'
+                '        staging {\n'
+                '            dimension "default"\n'
+                '        }\n'
+                '        prod {\n'
+                '            dimension "default"\n'
+                '        }\n'
+                '    }\n'
+                '}\n',
+                encoding="utf-8",
+            )
+            # Create a random subfolder that is NOT in productFlavors
+            (app_dir / "android" / "app" / "src" / "not_a_flavor").mkdir(parents=True)
+
+            flavors = config._detect_app_flavors_from_dir(app_dir)
+            self.assertIn("dev", flavors)
+            self.assertIn("staging", flavors)
+            self.assertIn("prod", flavors)
+            self.assertNotIn("not_a_flavor", flavors, "Directories in src/ not in productFlavors should be ignored")
+
+    def test_b3_scan_diff_and_force(self):
+        """B3 fix: scan_app_config returns diff of old vs new values, and supports force=True."""
+        res = config.scan_app_config("dummy_app_alpha", force=True)
+        self.assertTrue(res["success"])
+        self.assertIn("diff", res)
+        self.assertTrue(res["force"])
+
+    def test_b4_rescan_workspace(self):
+        """B4 fix: rescan_workspace clears cache and rediscovers workspace apps."""
+        res = config.rescan_workspace()
+        self.assertTrue(res["success"])
+        self.assertIsInstance(res["apps"], list)
+
+    def test_c10_allow_workspace(self):
+        """C10 fix: allow_workspace adds a valid directory to workspaces_list.json."""
+        import tempfile, pathlib
+        with tempfile.TemporaryDirectory() as td:
+            res = config.allow_workspace(td)
+            self.assertTrue(res["success"])
+            self.assertEqual(res["path"], str(pathlib.Path(td).resolve()))
+
+        # Non-existent path fails
+        res_bad = config.allow_workspace("/path/that/definitely/does/not/exist_12345")
+        self.assertFalse(res_bad["success"])
+
+    def test_c11_template_stack_filtering(self):
+        """C11 fix: Flutter templates are skipped for apps with stack='node' or 'react-native'."""
+        # Flutter app gets build_aab
+        cmds_flutter = commands._build_commands_from_templates("app1", "", False, [], app_stack="flutter")
+        self.assertTrue(any(c["templateId"] == "build_aab" for c in cmds_flutter))
+
+        # Node app does NOT get build_aab (it's tagged stacks: ['flutter'])
+        cmds_node = commands._build_commands_from_templates("app1", "", False, [], app_stack="node")
+        self.assertFalse(any(c["templateId"] == "build_aab" for c in cmds_node))
+        # But generic/release templates (like release_preview) are still present
+        self.assertTrue(any(c["templateId"] == "release_preview" for c in cmds_node))
+
 
 if __name__ == "__main__":
     unittest.main()
+

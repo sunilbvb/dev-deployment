@@ -1,6 +1,7 @@
 
 from config import (
     add_app as config_add_app,
+    allow_workspace as config_allow_workspace,
     check_system_health as config_check_system_health,
     get_apps as config_get_apps,
     get_workspaces_list as config_get_workspaces_list,
@@ -8,6 +9,7 @@ from config import (
     inspect_workspace_path as config_inspect_workspace_path,
     load_deploy_config,
     load_templates,
+    rescan_workspace as config_rescan_workspace,
     save_deploy_config as config_save_deploy_config,
     scan_all_apps_config as config_scan_all_apps_config,
     scan_app_config as config_scan_app_config,
@@ -49,5 +51,5 @@ set_active_workspace = config_set_active_workspace
 upload_p8_key = p8_upload_p8_key
 check_system_health = config_check_system_health
 get_workspace_root = config_get_workspace_root
-
-
+rescan_workspace = config_rescan_workspace
+allow_workspace = config_allow_workspace

@@ -81,16 +81,21 @@ def _resolve_command(template: str, app_id: str, flavor: str, deploy_cfg: dict[s
     )
 
 
-def _build_commands_from_templates(app_id: str, app_path_prefix: str, use_melos: bool, flavors: list[str], deploy_cfg: Optional[dict[str, Any]] = None) -> list[dict[str, Any]]:
+def _build_commands_from_templates(app_id: str, app_path_prefix: str, use_melos: bool, flavors: list[str], deploy_cfg: Optional[dict[str, Any]] = None, app_stack: str = "") -> list[dict[str, Any]]:
     templates = load_templates()
     if deploy_cfg is None:
         deploy_cfg = load_deploy_config()
     commands: list[dict[str, Any]] = []
 
     target_flavors = flavors if flavors else ["default"]
+    stack_lower = app_stack.strip().lower()
 
     for platform, tmpl_list in templates.items():
         for tmpl in tmpl_list:
+            # C11: skip templates that don't apply to this app's stack
+            tmpl_stacks = tmpl.get("stacks")
+            if tmpl_stacks and stack_lower and stack_lower not in [s.lower() for s in tmpl_stacks]:
+                continue
             action = ACTION_MAP.get(tmpl["id"], tmpl["id"])
             is_direct = tmpl.get("runner") == "direct" or tmpl.get("direct") is True or not use_melos
 
@@ -181,7 +186,21 @@ def get_commands(app: str) -> dict[str, Any]:
 
     flavors = _detect_app_flavors(app)
     use_melos = has_melos and (app_dir != ws_root)
-    raw_commands = _build_commands_from_templates(app, prefix, use_melos, flavors)
+
+    # C11: get app stack for template filtering
+    app_stack = ""
+    try:
+        from config import get_apps_config_file
+        import json as _json
+        apps_list = _json.loads(get_apps_config_file().read_text(encoding="utf-8"))
+        for a in apps_list:
+            if a.get("id") == app:
+                app_stack = str(a.get("stack", "")).strip().lower()
+                break
+    except Exception:
+        pass
+
+    raw_commands = _build_commands_from_templates(app, prefix, use_melos, flavors, app_stack=app_stack)
     commands = []
 
     for c in raw_commands:

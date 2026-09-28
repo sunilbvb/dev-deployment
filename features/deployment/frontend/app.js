@@ -1017,11 +1017,36 @@ if (wsModalEls.confirmBtn) {
         }
         wsModalEls.confirmBtn.disabled = true;
         try {
-            const res = await fetch(api('/api/deployment/workspace/select'), {
+            let res = await fetch(api('/api/deployment/workspace/select'), {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ path }),
             }).then(r => r.json());
+
+            // C10 fix: if path is rejected because it is not in the allowed list, offer to allow it
+            if (!res.success && res.error && res.error.includes('not in the allowed workspaces list')) {
+                const userConfirmed = confirm(`Folder "${path}" is not in the authorized workspaces list.\n\nAllow this folder and add it to your workspaces list?`);
+                if (userConfirmed) {
+                    const allowRes = await fetch(api('/api/deployment/workspace/allow'), {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ path }),
+                    }).then(r => r.json());
+                    if (allowRes.success) {
+                        // Retry the selection now that the folder is allowed
+                        res = await fetch(api('/api/deployment/workspace/select'), {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ path }),
+                        }).then(r => r.json());
+                    } else {
+                        showToast('Failed to authorize folder: ' + (allowRes.error || 'Unknown error'));
+                        return;
+                    }
+                } else {
+                    return;
+                }
+            }
 
             if (!res.success) {
                 showToast('Failed to switch workspace: ' + (res.error || 'Unknown error'));

@@ -441,7 +441,14 @@ class DeploymentHandler(http.server.SimpleHTTPRequestHandler):
             self.write_json(router.regenerate_commands())
             return
         if parsed.path == "/api/deployment/scan-all":
-            self.write_json(router.scan_all_apps_config())
+            force = bool(data.get("force") or False)
+            self.write_json(router.scan_all_apps_config(force=force))
+            return
+        if parsed.path == "/api/deployment/rescan-workspace":
+            self.write_json(router.rescan_workspace())
+            return
+        if parsed.path == "/api/deployment/workspace/allow":
+            self.write_json(router.allow_workspace(str(data.get("path") or "")))
             return
         if parsed.path in ("/api/deployment/apps/save", "/api/deployment/apps"):
             self.write_json(router.add_app(data))
