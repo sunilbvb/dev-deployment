@@ -81,16 +81,21 @@ def _resolve_command(template: str, app_id: str, flavor: str, deploy_cfg: dict[s
     )
 
 
-def _build_commands_from_templates(app_id: str, app_path_prefix: str, use_melos: bool, flavors: list[str], deploy_cfg: Optional[dict[str, Any]] = None) -> list[dict[str, Any]]:
+def _build_commands_from_templates(app_id: str, app_path_prefix: str, use_melos: bool, flavors: list[str], deploy_cfg: Optional[dict[str, Any]] = None, app_stack: str = "") -> list[dict[str, Any]]:
     templates = load_templates()
     if deploy_cfg is None:
         deploy_cfg = load_deploy_config()
     commands: list[dict[str, Any]] = []
 
     target_flavors = flavors if flavors else ["default"]
+    stack_lower = app_stack.strip().lower()
 
     for platform, tmpl_list in templates.items():
         for tmpl in tmpl_list:
+            # C11: skip templates that don't apply to this app's stack
+            tmpl_stacks = tmpl.get("stacks")
+            if tmpl_stacks and stack_lower and stack_lower not in [s.lower() for s in tmpl_stacks]:
+                continue
             action = ACTION_MAP.get(tmpl["id"], tmpl["id"])
             is_direct = tmpl.get("runner") == "direct" or tmpl.get("direct") is True or not use_melos
 
@@ -115,7 +120,7 @@ def _build_commands_from_templates(app_id: str, app_path_prefix: str, use_melos:
                 })
             else:
                 for flavor in target_flavors:
-                    configured = _is_flavor_configured(app_id, flavor)
+                    configured = _is_flavor_configured(app_id, flavor, tmpl["id"], deploy_cfg=deploy_cfg)
                     if is_direct and tmpl.get("command_template"):
                         resolved = _resolve_command(tmpl["command_template"], app_id, flavor, deploy_cfg)
                         full_cmd = f"{app_path_prefix} {resolved}".strip()
@@ -145,8 +150,8 @@ def _build_commands_from_templates(app_id: str, app_path_prefix: str, use_melos:
     return commands
 
 
-def _is_flavor_configured(app_id: str, flavor: str) -> bool:
-    cfg = load_deploy_config()
+def _is_flavor_configured(app_id: str, flavor: str, template_id: str = "", deploy_cfg: Optional[dict[str, Any]] = None) -> bool:
+    cfg = deploy_cfg if deploy_cfg is not None else load_deploy_config()
     app_cfg = cfg.get("apps", {}).get(app_id, {})
     bundle_id = str(
         app_cfg.get(f"bundle_id_{flavor}")
@@ -154,7 +159,23 @@ def _is_flavor_configured(app_id: str, flavor: str) -> bool:
         or app_cfg.get("bundle_id_prod")
         or ""
     ).strip()
-    return len(bundle_id) > 0
+    android_pkg = str(
+        app_cfg.get(f"android_package_{flavor}")
+        or app_cfg.get("android_package")
+        or app_cfg.get("android_package_prod")
+        or ""
+    ).strip()
+
+    if not bundle_id and not android_pkg:
+        return False
+
+    # B8 fix: iOS store upload/deploy requires Apple credentials
+    if template_id in ("upload_ipa", "deploy_ipa", "deploy_both"):
+        has_apple = bool(app_cfg.get("apple_id") or app_cfg.get("apple_key_id") or app_cfg.get("apple_p8_base64"))
+        if not has_apple:
+            return False
+
+    return True
 
 
 def get_commands(app: str) -> dict[str, Any]:
@@ -181,7 +202,21 @@ def get_commands(app: str) -> dict[str, Any]:
 
     flavors = _detect_app_flavors(app)
     use_melos = has_melos and (app_dir != ws_root)
-    raw_commands = _build_commands_from_templates(app, prefix, use_melos, flavors)
+
+    # C11: get app stack for template filtering
+    app_stack = ""
+    try:
+        from config import get_apps_config_file
+        import json as _json
+        apps_list = _json.loads(get_apps_config_file().read_text(encoding="utf-8"))
+        for a in apps_list:
+            if a.get("id") == app:
+                app_stack = str(a.get("stack", "")).strip().lower()
+                break
+    except Exception:
+        pass
+
+    raw_commands = _build_commands_from_templates(app, prefix, use_melos, flavors, app_stack=app_stack)
     commands = []
 
     for c in raw_commands:
@@ -206,7 +241,26 @@ def regenerate_commands() -> dict[str, Any]:
     return {"success": True}
 
 
-def _is_prod_store_deploy(resolved_command: str) -> bool:
+def _is_prod_store_deploy(resolved_command: str = "", *, template_id: str = "", flavor: str = "") -> bool:
+    """Return True when this invocation will actually ship a build to a real app store.
+
+    Two calling conventions are supported:
+    - Legacy text-based: _is_prod_store_deploy(command_str)  -- kept for backward compat
+    - Preferred explicit: _is_prod_store_deploy(template_id=..., flavor=...)
+
+    The explicit form is used by execute_command() and is safe for single-app (no-flavor)
+    apps because their flavor value is "default", which counts as a prod-level store upload
+    when no flavors are configured (the app IS its prod environment).
+    """
+    # Explicit call via keyword args (preferred — authoritative check)
+    if template_id:
+        if template_id not in STORE_UPLOAD_TEMPLATE_IDS:
+            return False
+        flavor_lower = flavor.strip().lower()
+        # "prod", "default" (single app, no flavor = prod tier), or "" all trigger confirmation
+        return flavor_lower in ("prod", "default", "")
+
+    # Legacy: fall back to text scanning (still covers old call-sites / tests)
     tokens = resolved_command.split()
     if not tokens:
         return False

@@ -164,16 +164,19 @@ def execute_command(
         if command.rstrip().endswith(" any"):
             command = command.rstrip()[: -len(" any")] + f" {shlex.quote(env)}"
 
-    if _is_prod_store_deploy(command) and not confirmed:
+    if _is_prod_store_deploy(template_id=template_id, flavor=flavor) and not confirmed:
         return {
             "success": False,
             "error": f"This runs a PROD store deploy for '{app}' - resend with confirmed: true once explicitly approved.",
             "needsConfirmation": True,
         }
 
+    ws_root = get_workspace_root()
+    lock_key = f"{ws_root.resolve()}:{app}"
+
     if not _assume_app_lock_held:
         with _JOBS_LOCK:
-            existing = _APP_LOCKS.get(app)
+            existing = _APP_LOCKS.get(lock_key) or _APP_LOCKS.get(app)
             if existing is not None:
                 started_at = existing.get("started_at")
                 elapsed_sec = int(time.time() - started_at) if started_at else None
@@ -202,11 +205,13 @@ def execute_command(
                         "elapsedSeconds": elapsed_sec,
                     },
                 }
-            _APP_LOCKS[app] = {
+            _APP_LOCKS[lock_key] = {
                 "job_id": None,
                 "flavor": flavor,
                 "command": command,
                 "started_at": time.time(),
+                "workspace": str(ws_root.resolve()),
+                "app": app,
             }
 
     try:
@@ -247,6 +252,7 @@ def execute_command(
     except Exception as exc:
         if not _assume_app_lock_held:
             with _JOBS_LOCK:
+                _APP_LOCKS.pop(lock_key, None)
                 _APP_LOCKS.pop(app, None)
         return {"success": False, "error": str(exc)}
 
@@ -265,17 +271,22 @@ def execute_command(
             "template_id": template_id,
             "env": env,
             "started_at": time.time(),
+            "workspace": str(ws_root.resolve()),
         }
-        lock_entry = _APP_LOCKS.get(app)
+        lock_entry = _APP_LOCKS.get(lock_key) or _APP_LOCKS.get(app)
         if lock_entry is not None:
             lock_entry["job_id"] = job_id
             lock_entry["command"] = cmd_str
+            lock_entry["workspace"] = str(ws_root.resolve())
+            lock_entry["app"] = app
         else:
-            _APP_LOCKS[app] = {
+            _APP_LOCKS[lock_key] = {
                 "job_id": job_id,
                 "flavor": flavor,
                 "command": cmd_str,
                 "started_at": time.time(),
+                "workspace": str(ws_root.resolve()),
+                "app": app,
             }
 
     def stream_pipe(pipe, field: str) -> None:
@@ -323,8 +334,9 @@ def execute_command(
             if job:
                 job["status"] = "chaining" if should_chain else status
             if not should_chain:
-                held = _APP_LOCKS.get(app)
-                if held is not None and held.get("job_id") == job_id:
+                held = _APP_LOCKS.get(lock_key) or _APP_LOCKS.get(app)
+                if held is not None and (held.get("job_id") == job_id or held.get("job_id") is None):
+                    _APP_LOCKS.pop(lock_key, None)
                     _APP_LOCKS.pop(app, None)
 
         if should_chain:
@@ -336,6 +348,24 @@ def execute_command(
 
     threading.Thread(target=finish_job, daemon=True).start()
     return {"success": True, "jobId": job_id, "command": cmd_str}
+
+
+def get_running_jobs() -> list[dict[str, Any]]:
+    """Return all currently running jobs across all workspaces (C8 fix)."""
+    with _JOBS_LOCK:
+        running = []
+        for lock_k, info in list(_APP_LOCKS.items()):
+            if isinstance(info, dict) and info.get("job_id"):
+                running.append({
+                    "jobId": info.get("job_id"),
+                    "app": info.get("app"),
+                    "flavor": info.get("flavor"),
+                    "command": info.get("command"),
+                    "startedAt": info.get("started_at"),
+                    "workspace": info.get("workspace"),
+                    "elapsedSeconds": int(time.time() - info["started_at"]) if info.get("started_at") else 0,
+                })
+        return running
 
 
 def get_job(job_id: Optional[str]) -> dict[str, Any]:

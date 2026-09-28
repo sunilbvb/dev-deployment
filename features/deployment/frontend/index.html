@@ -468,18 +468,18 @@
                         </div>
                         <div class="ui-card-body">
                             <div class="ui-field">
-                                <label class="ui-label">Apple ID (email)</label>
+                                <label class="ui-label">Apple ID (email) <span class="ui-badge" data-variant="warning" style="font-size: 0.65rem; margin-left: 6px;">Required for iOS Uploads</span></label>
                                 <input id="cfgAppleId" class="ui-input" type="text" placeholder="developer@company.com">
                                 <span class="ui-help-text">Your Apple developer account email, used to authenticate with App Store Connect for TestFlight upload tasks.</span>
                             </div>
                             <div class="ui-field">
-                                <label class="ui-label">App Store Connect Issuer ID</label>
+                                <label class="ui-label">App Store Connect Issuer ID <span class="ui-badge" data-variant="warning" style="font-size: 0.65rem; margin-left: 6px;">Required for iOS Uploads</span></label>
                                 <input id="cfgIssuerId" class="ui-input" type="text" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx">
                                 <span class="ui-help-text">UUID from App Store Connect → Users &amp; Access → Integrations → Team ID. Saved per-app alongside the API key.</span>
                             </div>
                             <!-- App Store Connect API Key (.p8) Upload -->
                             <div class="ui-field" style="margin-bottom: 0;">
-                                <label class="ui-label">App Store Connect API Key (.p8)</label>
+                                <label class="ui-label">App Store Connect API Key (.p8) <span class="ui-badge" data-variant="warning" style="font-size: 0.65rem; margin-left: 6px;">Required for iOS Uploads</span></label>
                                 <span class="ui-help-text" style="display:block; margin-bottom: 10px;">
                                     Upload your <strong>AuthKey_XXXXXXXXXX.p8</strong> file from App Store Connect → Users &amp; Access → Integrations.
                                     The key is Base64-encoded, saved in deploy_config, and written to
@@ -546,6 +546,10 @@
                             <button id="scanAllBtn" type="button" class="ui-button" data-variant="secondary" title="Scan and configure all apps in workspace">
                                 <i data-lucide="layers"></i>
                                 <span>Scan All Apps</span>
+                            </button>
+                            <button id="rescanWorkspaceBtn" type="button" class="ui-button" data-variant="secondary" title="Re-scan workspace from scratch to find added or removed apps">
+                                <i data-lucide="folder-search"></i>
+                                <span>Rescan Workspace</span>
                             </button>
                             <button id="regenerateBtn" type="button" class="ui-button" data-variant="secondary" title="Regenerate build and deploy commands">
                                 <i data-lucide="refresh-cw"></i>

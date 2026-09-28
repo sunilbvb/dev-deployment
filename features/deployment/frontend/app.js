@@ -67,6 +67,26 @@ const els = {
     batchStopBtn: document.getElementById('batchStopBtn'),
 };
 
+// C9: Tab-isolated workspace - attach X-Workspace header to all fetch requests
+const _nativeFetch = window.fetch;
+window.fetch = function(input, init) {
+    const opts = init || {};
+    opts.headers = opts.headers || {};
+    const curWs = sessionStorage.getItem('active_workspace') || state.activeWorkspace || '';
+    if (curWs) {
+        if (opts.headers instanceof Headers) {
+            if (!opts.headers.has('X-Workspace')) {
+                opts.headers.set('X-Workspace', curWs);
+            }
+        } else if (typeof opts.headers === 'object' && !Array.isArray(opts.headers)) {
+            if (!opts.headers['X-Workspace']) {
+                opts.headers['X-Workspace'] = curWs;
+            }
+        }
+    }
+    return _nativeFetch(input, opts);
+};
+
 function api(path) {
     return (typeof window.apiUrl === 'function') ? window.apiUrl(path) : path;
 }
@@ -379,9 +399,10 @@ function renderCertBannerFromResult(result) {
  *  git release tag/push). Used to decide whether Run needs a second, explicit click. */
 function isProdStoreDeploy() {
     if (!state.selectedCommand) return false;
-    const flavor = String(state.selectedCommand.flavor || '').toLowerCase();
-    if (flavor !== 'prod') return false;
-    return STORE_SHIPPING_TEMPLATE_IDS.has(state.selectedCommand.templateId);
+    if (!STORE_SHIPPING_TEMPLATE_IDS.has(state.selectedCommand.templateId)) return false;
+    const flavor = String(state.selectedCommand.flavor || '').toLowerCase().trim();
+    // "prod", "default" (single-app = the one prod environment), or "" all require confirmation
+    return flavor === 'prod' || flavor === 'default' || flavor === '';
 }
 
 function openProdConfirmModal() {
@@ -846,20 +867,60 @@ function renderProjectSegments(workspaces, activePath) {
 async function switchWorkspacePath(path) {
     if (!path) return;
     try {
-        const res = await fetch(api('/api/deployment/workspace/select'), {
+        // C8: Check if any job is currently running before switching workspace
+        try {
+            const runRes = await fetch(api('/api/deployment/running-jobs')).then(r => r.json());
+            const curWs = sessionStorage.getItem('active_workspace') || state.activeWorkspace;
+            const runningInCur = (runRes.runningJobs || []).filter(j => j.workspace === curWs);
+            if (runningInCur.length > 0) {
+                const proceed = confirm(`A deployment job (#${runningInCur[0].jobId} for "${runningInCur[0].app}") is currently running in this workspace.\n\nSwitching workspaces will leave it running in the background. Continue?`);
+                if (!proceed) return;
+            }
+        } catch (_) {}
+
+        let res = await fetch(api('/api/deployment/workspace/select'), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ path }),
         }).then(r => r.json());
+
+        // C10: If path is rejected because it is not in the allowed list, offer to allow it
+        if (!res.success && res.error && res.error.includes('not in the allowed workspaces list')) {
+            const userConfirmed = confirm(`Folder "${path}" is not in the authorized workspaces list.\n\nAllow this folder and add it to your workspaces list?`);
+            if (userConfirmed) {
+                const allowRes = await fetch(api('/api/deployment/workspace/allow'), {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ path }),
+                }).then(r => r.json());
+                if (allowRes.success) {
+                    res = await fetch(api('/api/deployment/workspace/select'), {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ path }),
+                    }).then(r => r.json());
+                } else {
+                    showToast('Failed to authorize folder: ' + (allowRes.error || 'Unknown error'));
+                    return;
+                }
+            } else {
+                return;
+            }
+        }
 
         if (!res.success) {
             showToast('Failed to switch workspace: ' + (res.error || 'Unknown error'));
             return;
         }
 
+        sessionStorage.setItem('active_workspace', path);
+        state.activeWorkspace = path;
         showToast(`Switched workspace to: ${res.activeName || path}`);
         await loadWorkspaceInfo();
         await loadApps();
+        if (typeof loadSetupData === 'function' && document.getElementById('setupOverlay')?.classList.contains('ui-active')) {
+            await loadSetupData();
+        }
     } catch (err) {
         showToast('Error switching workspace: ' + err.message);
     }
@@ -869,6 +930,26 @@ async function loadWorkspaceInfo() {
     try {
         const res = await fetch(api('/api/deployment/workspaces'));
         const data = await res.json();
+
+        // C12: Missing workspace warning banner
+        if (data.workspaceMissing) {
+            showToast(`⚠️ Configured workspace path "${data.workspaceMissing}" was not found on disk.`);
+            let missingBanner = document.getElementById('workspaceMissingBanner');
+            if (!missingBanner) {
+                missingBanner = document.createElement('div');
+                missingBanner.id = 'workspaceMissingBanner';
+                missingBanner.className = 'cert-status-box';
+                missingBanner.dataset.status = 'warning';
+                missingBanner.style.cssText = 'margin: 12px 24px 0 24px; font-size: 0.82rem;';
+                document.querySelector('.dashboard-container')?.prepend(missingBanner);
+            }
+            missingBanner.textContent = `⚠️ Workspace folder "${data.workspaceMissing}" was not found on disk. Dashboard fell back to "${data.active}". Please select a valid project folder.`;
+            missingBanner.style.display = 'block';
+        } else {
+            const missingBanner = document.getElementById('workspaceMissingBanner');
+            if (missingBanner) missingBanner.style.display = 'none';
+        }
+
         const label = document.getElementById('workspaceLabel');
         if (label && data.activeName) {
             label.textContent = `WORKSPACE: ${data.activeName.toUpperCase()}`;
@@ -1016,26 +1097,8 @@ if (wsModalEls.confirmBtn) {
         }
         wsModalEls.confirmBtn.disabled = true;
         try {
-            const res = await fetch(api('/api/deployment/workspace/select'), {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ path }),
-            }).then(r => r.json());
-
-            if (!res.success) {
-                showToast('Failed to switch workspace: ' + (res.error || 'Unknown error'));
-                return;
-            }
-
-            showToast(`Switched workspace to: ${res.activeName || path}`);
+            await switchWorkspacePath(path);
             closeWorkspaceModal();
-            await loadWorkspaceInfo();
-            await loadApps();
-            if (typeof loadSetupData === 'function' && document.getElementById('setupOverlay')?.classList.contains('ui-active')) {
-                await loadSetupData();
-            }
-        } catch (err) {
-            showToast('Error switching workspace: ' + err.message);
         } finally {
             wsModalEls.confirmBtn.disabled = false;
         }

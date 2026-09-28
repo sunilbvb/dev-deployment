@@ -442,7 +442,24 @@ function readFormValues() {
 async function saveDeployConfig() {
     if (!setupState.selectedAppId) { return; }
     if (!setupState.deployConfig.apps) { setupState.deployConfig.apps = {}; }
-    setupState.deployConfig.apps[setupState.selectedAppId] = readFormValues();
+
+    const values = readFormValues();
+
+    // A2 fix: warn when user has typed flavors but the project scan found none.
+    // This prevents silent build failures from invalid --flavor flags.
+    const typedFlavors = values.flavors || [];
+    if (typedFlavors.length > 0) {
+        const app = setupState.apps.find(a => a.id === setupState.selectedAppId);
+        const savedCfg = setupState.deployConfig.apps[setupState.selectedAppId] || {};
+        const hasScannedData = savedCfg.bundle_id || savedCfg.android_package;
+        const scanFoundNoFlavors = Array.isArray(savedCfg.flavors) && savedCfg.flavors.length === 0;
+        if (hasScannedData && scanFoundNoFlavors) {
+            const appName = app ? app.name : setupState.selectedAppId;
+            showToast(`⚠️ Warning: Autoscan found NO flavors for "${appName}". Typed flavors may cause build failures with --flavor flag. Leave Flavors empty for a single app.`, 'warning');
+        }
+    }
+
+    setupState.deployConfig.apps[setupState.selectedAppId] = values;
 
     const res = await fetch('/api/deployment/deploy-config/save', {
         method: 'POST',
@@ -592,15 +609,23 @@ async function autoScanConfig() {
     }
 }
 
-async function autoScanAllConfig() {
+async function autoScanAllConfig({ force = false } = {}) {
     if (!setupEls.scanAllBtn) return;
     setupEls.scanAllBtn.disabled = true;
-    setupEls.scanAllBtn.querySelector('span').textContent = 'Scanning All...';
+    setupEls.scanAllBtn.querySelector('span').textContent = force ? 'Force Scanning...' : 'Scanning All...';
 
     try {
-        const res = await fetch('/api/deployment/scan-all', { method: 'POST' }).then(r => r.json());
+        const res = await fetch('/api/deployment/scan-all', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ force }),
+        }).then(r => r.json());
         if (res.success) {
-            showToast(`Scanned and saved configuration for ${res.count} of ${res.total} app(s)!`);
+            const diffCount = Object.keys(res.diffs || {}).length;
+            const msg = force && diffCount > 0
+                ? `Force-scanned ${res.count}/${res.total} app(s) — ${diffCount} updated. Review and save.`
+                : `Scanned and saved configuration for ${res.count} of ${res.total} app(s)!`;
+            showToast(msg);
             if (setupState.selectedAppId) {
                 await loadSetupData();
                 selectSetupApp(setupState.selectedAppId);
@@ -616,8 +641,45 @@ async function autoScanAllConfig() {
     }
 }
 
+async function rescanWorkspace() {
+    const btn = document.getElementById('rescanWorkspaceBtn');
+    if (btn) {
+        btn.disabled = true;
+        btn.querySelector('span').textContent = 'Rescanning...';
+    }
+    try {
+        const res = await fetch('/api/deployment/rescan-workspace', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({}),
+        }).then(r => r.json());
+        if (res.success) {
+            showToast(`Workspace rescanned — found ${res.apps.length} app(s), scanned ${res.scanned}. Reloading…`);
+            await loadSetupData();
+            if (setupState.apps.length > 0) {
+                selectSetupApp(setupState.apps[0].id);
+            }
+            if (typeof loadApps === 'function') loadApps();
+        } else {
+            showToast('Rescan failed: ' + (res.error || 'unknown'));
+        }
+    } catch (_) {
+        showToast('Rescan failed — check network');
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.querySelector('span').textContent = 'Rescan Workspace';
+        }
+    }
+}
+
 if (setupEls.scanAllBtn) {
-    setupEls.scanAllBtn.addEventListener('click', autoScanAllConfig);
+    setupEls.scanAllBtn.addEventListener('click', () => autoScanAllConfig({ force: false }));
+}
+
+const rescanWorkspaceBtn = document.getElementById('rescanWorkspaceBtn');
+if (rescanWorkspaceBtn) {
+    rescanWorkspaceBtn.addEventListener('click', rescanWorkspace);
 }
 
 // ── Add App Path Detection & Registration ─────────────────────────────────────
