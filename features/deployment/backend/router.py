@@ -202,9 +202,14 @@ def _resolve_command(template: str, app_id: str, flavor: str, deploy_cfg: dict[s
     bundle_id = app_cfg.get(f"bundle_id_{flavor}") or app_cfg.get("bundle_id_prod", f"com.example.{app_id}")
     android_package = app_cfg.get(f"android_package_{flavor}") or app_cfg.get("android_package_prod", f"com.example.{app_id}")
     apple_id = app_cfg.get("apple_id", "")
+    
+    if flavor in ("any", "none", "default"):
+        res = template.replace("--flavor {flavor}", "").replace("-flavor {flavor}", "").replace("{flavor}", "").strip()
+    else:
+        res = template.replace("{flavor}", flavor)
+
     return (
-        template
-        .replace("{flavor}", flavor)
+        res
         .replace("{bundle_id}", bundle_id)
         .replace("{android_package}", android_package)
         .replace("{apple_id}", apple_id)
@@ -222,7 +227,8 @@ def _build_commands_from_templates(app_id: str, app_path_prefix: str, use_melos:
     for platform, tmpl_list in templates.items():
         for tmpl in tmpl_list:
             action = ACTION_MAP.get(tmpl["id"], tmpl["id"])
-            is_direct = tmpl.get("runner") == "direct" or tmpl.get("direct") is True
+            # If not using Melos (e.g. single standalone app), default to direct CLI runner
+            is_direct = tmpl.get("runner") == "direct" or tmpl.get("direct") is True or not use_melos
 
             if platform in ("utility", "release"):
                 if is_direct and tmpl.get("command_template"):
@@ -266,6 +272,54 @@ def _build_commands_from_templates(app_id: str, app_path_prefix: str, use_melos:
     return commands
 
 
+def _detect_app_flavors(app_id: str) -> list[str]:
+    """Detect if an app has explicit flavors or is a single app without flavors."""
+    deploy_cfg = load_deploy_config()
+    app_cfg = deploy_cfg.get("apps", {}).get(app_id, {})
+    if "flavors" in app_cfg and isinstance(app_cfg["flavors"], list) and len(app_cfg["flavors"]) > 0:
+        if app_cfg.get("flavors_custom") is True:
+            return app_cfg["flavors"]
+
+    if (WORKSPACE_ROOT / "apps" / app_id).exists():
+        app_dir = WORKSPACE_ROOT / "apps" / app_id
+    else:
+        app_dir = WORKSPACE_ROOT
+
+    # 1. Search for Android productFlavors / flavorDimensions
+    android_gradle = app_dir / "android" / "app" / "build.gradle"
+    android_kts = app_dir / "android" / "app" / "build.gradle.kts"
+    has_flavors = False
+    for g_file in (android_gradle, android_kts):
+        if g_file.exists():
+            try:
+                txt = g_file.read_text(encoding="utf-8")
+                if "flavorDimensions" in txt or "productFlavors" in txt:
+                    has_flavors = True
+                    break
+            except Exception:
+                pass
+
+    # 2. Search for iOS flavor xcconfig files
+    ios_dir = app_dir / "ios"
+    if not has_flavors and ios_dir.exists():
+        for xc in ios_dir.rglob("*.xcconfig"):
+            name = xc.name.lower()
+            if "dev" in name or "qa" in name or "prod" in name or "staging" in name:
+                has_flavors = True
+                break
+
+    # 3. Search for lib/main_*.dart flavor entrypoints
+    lib_dir = app_dir / "lib"
+    if not has_flavors and lib_dir.exists():
+        if list(lib_dir.glob("main_*.dart")):
+            has_flavors = True
+
+    if has_flavors:
+        return ["dev", "qa", "prod"]
+
+    return ["default"]
+
+
 def regenerate_commands() -> dict[str, Any]:
     """Re-generate commands_config.json from templates + current deploy_config. Replaces old commands."""
     apps_file = get_apps_config_file()
@@ -281,14 +335,13 @@ def regenerate_commands() -> dict[str, Any]:
     )
 
     new_cmds: list[dict[str, Any]] = []
-    deploy_cfg = load_deploy_config()
     for app in existing_apps:
         app_id = app["id"]
         if use_apps_dir := (WORKSPACE_ROOT / "apps" / app_id).exists():
             prefix = f"cd apps/{app_id} &&"
         else:
             prefix = ""
-        flavors = deploy_cfg.get("apps", {}).get(app_id, {}).get("flavors", ["dev", "qa", "prod"])
+        flavors = _detect_app_flavors(app_id)
         new_cmds.extend(_build_commands_from_templates(app_id, prefix, has_melos and bool(use_apps_dir), flavors))
 
     cmds_file.write_text(json.dumps(new_cmds, indent=2), encoding="utf-8")
@@ -561,6 +614,10 @@ def discover_workspace_config():
             if scan_res.get("success"):
                 scanned_apps[app_id] = scan_res["discovered"]
         save_deploy_config({"apps": scanned_apps})
+
+    # Always ensure commands_config.json is populated for discovered apps
+    if not existing_cmds or not cmds_file.exists() or cmds_file.read_text(encoding="utf-8").strip() in ("", "[]"):
+        regenerate_commands()
 
 
 def get_apps() -> dict[str, Any]:
@@ -1084,9 +1141,8 @@ def get_commands(app: str) -> dict[str, Any]:
     use_apps_dir = (WORKSPACE_ROOT / "apps" / app).exists()
     prefix = f"cd apps/{app} &&" if use_apps_dir else ""
     
-    # Load dynamic flavors list from deploy_config.json for this app
-    deploy_cfg = load_deploy_config()
-    flavors = deploy_cfg.get("apps", {}).get(app, {}).get("flavors", ["dev", "qa", "prod"])
+    # Load dynamic flavors list for this app
+    flavors = _detect_app_flavors(app)
     
     raw_commands = _build_commands_from_templates(app, prefix, has_melos and use_apps_dir, flavors)
     commands = []

@@ -190,7 +190,7 @@ async function selectApp(appId) {
 function renderEnvTabs() {
     const flavors = new Set();
     state.commands.forEach(cmd => {
-        if (cmd.flavor && cmd.flavor !== 'any' && cmd.flavor !== 'all') {
+        if (cmd.flavor && cmd.flavor !== 'any' && cmd.flavor !== 'all' && cmd.flavor !== 'default' && cmd.flavor !== 'none') {
             flavors.add(cmd.flavor.toLowerCase());
         }
     });
@@ -198,14 +198,16 @@ function renderEnvTabs() {
         const order = { dev: 1, qa: 2, prod: 3 };
         return (order[a] || 99) - (order[b] || 99);
     });
-    // Whether this app genuinely has more than one distinct environment configured.
-    // Release actions only get an env forwarded (and thus a tag suffix) when this is
-    // true — an app with zero or one real flavor has nothing to disambiguate, so its
-    // releases stay unsuffixed exactly like before this feature existed.
     state.hasMultipleEnvs = sortedFlavors.length > 1;
+
     if (sortedFlavors.length === 0) {
-        sortedFlavors.push('dev');
+        if (els.envTabs) els.envTabs.style.display = 'none';
+        state.selectedEnv = 'default';
+        return;
+    } else {
+        if (els.envTabs) els.envTabs.style.display = 'flex';
     }
+
     if (!sortedFlavors.includes(state.selectedEnv)) {
         state.selectedEnv = sortedFlavors[0];
     }
@@ -816,6 +818,53 @@ els.batchStopBtn.addEventListener('click', stopBatchDeploy);
 
 let currentWorkspacesList = [];
 
+function renderProjectSegments(workspaces, activePath) {
+    const container = document.getElementById('projectSegmentedControl');
+    if (!container) return;
+
+    if (!workspaces || workspaces.length === 0) {
+        container.innerHTML = '<span style="font-size:0.8rem; color:var(--ui-text-muted);">No projects imported</span>';
+        return;
+    }
+
+    container.innerHTML = workspaces.map(w => {
+        const isActive = w.path === activePath;
+        const name = w.name || w.path.split('/').pop() || 'Project';
+        return `<button class="ui-segment ${isActive ? 'active' : ''}" type="button" data-path="${escapeHtml(w.path)}" title="${escapeHtml(w.path)}">${escapeHtml(name)}</button>`;
+    }).join('');
+
+    container.querySelectorAll('.ui-segment').forEach(btn => {
+        btn.addEventListener('click', async () => {
+            const targetPath = btn.getAttribute('data-path');
+            if (targetPath && targetPath !== activePath) {
+                await switchWorkspacePath(targetPath);
+            }
+        });
+    });
+}
+
+async function switchWorkspacePath(path) {
+    if (!path) return;
+    try {
+        const res = await fetch(api('/api/deployment/workspace/select'), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ path }),
+        }).then(r => r.json());
+
+        if (!res.success) {
+            showToast('Failed to switch workspace: ' + (res.error || 'Unknown error'));
+            return;
+        }
+
+        showToast(`Switched workspace to: ${res.activeName || path}`);
+        await loadWorkspaceInfo();
+        await loadApps();
+    } catch (err) {
+        showToast('Error switching workspace: ' + err.message);
+    }
+}
+
 async function loadWorkspaceInfo() {
     try {
         const res = await fetch(api('/api/deployment/workspaces'));
@@ -826,6 +875,8 @@ async function loadWorkspaceInfo() {
             label.title = data.active || '';
         }
         currentWorkspacesList = data.workspaces || [];
+        renderProjectSegments(currentWorkspacesList, data.active);
+
         const dropdown = document.getElementById('workspaceSelectDropdown');
         if (dropdown) {
             dropdown.innerHTML = '<option value="">-- Select a saved project --</option>' +

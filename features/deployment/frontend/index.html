@@ -32,9 +32,9 @@
     <header class="ui-page-header">
         <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px;">
             <span class="ui-page-eyebrow" id="workspaceLabel">WORKSPACE</span>
-            <button id="switchWorkspaceBtn" class="ui-button" data-variant="ghost" data-size="xs" type="button" style="padding: 2px 8px; font-size: 0.72rem; display: inline-flex; align-items: center; gap: 4px;" title="Switch or Add Workspace Directory">
-                <i data-lucide="folder-symlink" style="width: 14px; height: 14px;"></i>
-                <span>Switch / Add Project Folder</span>
+            <button id="switchWorkspaceBtn" class="ui-button" data-variant="ghost" data-size="xs" type="button" style="padding: 2px 8px; font-size: 0.72rem; display: inline-flex; align-items: center; gap: 4px;" title="Import New Project Folder">
+                <i data-lucide="folder-plus" style="width: 14px; height: 14px;"></i>
+                <span>+ Import Project</span>
             </button>
         </div>
         <div class="ui-page-title-row">
@@ -51,6 +51,16 @@
             </div>
         </div>
         <p class="ui-page-subtitle">Select target apps, environments, and trigger automated build pipelines.</p>
+
+        <!-- Segmented Control Bar for Imported Projects -->
+        <div class="projects-segmented-bar" style="margin-top: 14px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+            <span style="font-size: 0.75rem; font-weight: 700; text-transform: uppercase; color: var(--ui-text-muted, #94a3b8); letter-spacing: 0.05em; display: inline-flex; align-items: center; gap: 4px; white-space: nowrap;">
+                <i data-lucide="folder-git-2" style="width: 14px; height: 14px;"></i> Projects:
+            </span>
+            <div class="ui-segmented-control" id="projectSegmentedControl" aria-label="Projects" style="overflow-x: auto; scrollbar-width: none; flex: 1;">
+                <!-- Dynamically rendered project segments -->
+            </div>
+        </div>
     </header>
 
     <section class="workspace-grid">
