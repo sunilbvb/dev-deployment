@@ -1,3 +1,5 @@
+import contextvars
+import fnmatch
 import json
 import logging
 import os
@@ -9,16 +11,28 @@ from typing import Any, Optional
 FEATURE_DIR = Path(__file__).resolve().parents[1]
 DASHBOARD_ROOT = FEATURE_DIR.parents[1]
 
+# C12: Track if configured workspace root was missing on disk
+WORKSPACE_MISSING: Optional[str] = None
+
 
 def _resolve_workspace_root() -> Path:
+    global WORKSPACE_MISSING
     ws_env = os.environ.get("WORKSPACE_ROOT")
-    if ws_env and Path(ws_env).is_dir():
-        return Path(ws_env)
+    if ws_env:
+        candidate_env = Path(ws_env)
+        if candidate_env.is_dir():
+            return candidate_env
+        WORKSPACE_MISSING = ws_env
+
     active_ws_file = DASHBOARD_ROOT / "config" / "active_workspace.txt"
     if active_ws_file.exists():
         candidate = active_ws_file.read_text(encoding="utf-8").strip()
-        if candidate and Path(candidate).is_dir():
-            return Path(candidate)
+        if candidate:
+            cand_path = Path(candidate)
+            if cand_path.is_dir():
+                return cand_path
+            WORKSPACE_MISSING = candidate
+
     return DASHBOARD_ROOT
 
 
@@ -27,8 +41,22 @@ TMP_DIR = Path(os.environ.get("DEPLOYMENT_TMP_DIR", str(Path(tempfile.gettempdir
 TEMPLATES_FILE = DASHBOARD_ROOT / "config" / "deployment_templates.json"
 SAFE_ID_PATTERN = re.compile(r"^[A-Za-z0-9._-]+$")
 
+# C9: ContextVar to allow request-scoped workspace without overriding other tabs
+_REQUEST_WORKSPACE: contextvars.ContextVar[Optional[Path]] = contextvars.ContextVar("request_workspace", default=None)
+
+
+def set_request_workspace(ws: Optional[Path]) -> contextvars.Token:
+    return _REQUEST_WORKSPACE.set(ws)
+
+
+def reset_request_workspace(token: contextvars.Token) -> None:
+    _REQUEST_WORKSPACE.reset(token)
+
 
 def get_workspace_root() -> Path:
+    req_ws = _REQUEST_WORKSPACE.get()
+    if req_ws is not None:
+        return req_ws
     return WORKSPACE_ROOT
 
 
@@ -50,8 +78,26 @@ def _get_allowed_workspace_roots() -> list[Path]:
     return allowed
 
 
+def _ensure_gitignore_has_dashboard(ws_root: Path) -> None:
+    """B7 fix: auto-add .dev-dashboard/ to .gitignore in the user's workspace."""
+    try:
+        gitignore = ws_root / ".gitignore"
+        entry = ".dev-dashboard/"
+        if gitignore.exists():
+            content = gitignore.read_text(encoding="utf-8", errors="replace")
+            if ".dev-dashboard" not in content:
+                suffix = "\n" if not content.endswith("\n") else ""
+                gitignore.write_text(content + suffix + "# Dev Deployment Dashboard config\n.dev-dashboard/\n", encoding="utf-8")
+        elif (ws_root / ".git").exists():
+            gitignore.write_text("# Dev Deployment Dashboard config\n.dev-dashboard/\n", encoding="utf-8")
+    except Exception:
+        pass
+
+
 def get_apps_config_file() -> Path:
-    target_dir = get_workspace_root() / ".dev-dashboard"
+    ws_root = get_workspace_root()
+    _ensure_gitignore_has_dashboard(ws_root)
+    target_dir = ws_root / ".dev-dashboard"
     target_dir.mkdir(parents=True, exist_ok=True)
     target = target_dir / "apps_config.json"
     if not target.exists():
@@ -60,7 +106,9 @@ def get_apps_config_file() -> Path:
 
 
 def get_deploy_config_file() -> Path:
-    target_dir = get_workspace_root() / ".dev-dashboard"
+    ws_root = get_workspace_root()
+    _ensure_gitignore_has_dashboard(ws_root)
+    target_dir = ws_root / ".dev-dashboard"
     target_dir.mkdir(parents=True, exist_ok=True)
     target = target_dir / "deploy_config.json"
     if not target.exists():
@@ -69,7 +117,9 @@ def get_deploy_config_file() -> Path:
 
 
 def get_commands_config_file() -> Path:
-    target_dir = get_workspace_root() / ".dev-dashboard"
+    ws_root = get_workspace_root()
+    _ensure_gitignore_has_dashboard(ws_root)
+    target_dir = ws_root / ".dev-dashboard"
     target_dir.mkdir(parents=True, exist_ok=True)
     target = target_dir / "commands_config.json"
     if not target.exists():
@@ -225,35 +275,222 @@ def _detect_app_in_dir(path: Path) -> Optional[dict[str, Any]]:
     }
 
 
-def _parse_melos_config(root_dir: Path) -> list[str]:
-    melos_file = root_dir / "melos.yaml"
-    if not melos_file.exists():
-        pubspec = root_dir / "pubspec.yaml"
-        if pubspec.exists() and "melos:" in pubspec.read_text(encoding="utf-8", errors="replace"):
-            melos_file = pubspec
-        else:
-            return ["apps"]
+def _parse_yaml_list_field(content: str, field_name: str) -> list[str]:
+    """Parse list items from a YAML string for a given field key."""
+    items: list[str] = []
+    inline_match = re.search(rf'^\s*{field_name}\s*:\s*\[(.*?)\]', content, re.MULTILINE | re.DOTALL)
+    if inline_match:
+        for raw in inline_match.group(1).split(","):
+            cleaned = raw.strip().strip("'\"")
+            if cleaned:
+                items.append(cleaned)
+        return items
 
-    try:
-        content = melos_file.read_text(encoding="utf-8", errors="replace")
-        packages: list[str] = []
-        in_pkgs = False
-        for line in content.splitlines():
-            if line.strip().startswith("packages:"):
-                in_pkgs = True
+    lines = content.splitlines()
+    in_section = False
+    base_indent = 0
+    for line in lines:
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#"):
+            continue
+        header_match = re.match(rf'^(\s*){field_name}\s*:\s*$', line)
+        if header_match:
+            in_section = True
+            base_indent = len(header_match.group(1))
+            continue
+        if in_section:
+            current_indent = len(line) - len(line.lstrip())
+            if current_indent <= base_indent and not line.lstrip().startswith("-"):
+                break
+            if stripped.startswith("-"):
+                val = stripped.lstrip("-").strip().strip("'\"")
+                if val:
+                    items.append(val)
+            elif current_indent <= base_indent:
+                break
+    return items
+
+
+SKIP_DIR_NAMES = {
+    ".git", ".dart_tool", "build", "dist", "node_modules", "Pods",
+    ".idea", ".vscode", ".dev-dashboard", ".gradle", "ios/Pods",
+    "target", ".bundle"
+}
+
+
+def _discover_apps_in_workspace(candidate: Path) -> tuple[list[dict[str, Any]], bool, bool]:
+    """Discover all apps in a workspace directory.
+
+    Fixes:
+    - C3: Dart 3.5+ / Melos 7 pub workspaces ('workspace:' in root pubspec.yaml)
+    - C4: Melos glob expansion (e.g. apps/**, packages/*) and ignore patterns
+    - C5: Multi-level discovery (2-3 levels deep) skipping non-project dirs
+    - C6: Disambiguation of duplicate app IDs with path info
+    """
+    discovered_apps: list[dict[str, Any]] = []
+    is_monorepo = False
+    has_melos = False
+
+    melos_file = candidate / "melos.yaml"
+    pubspec_file = candidate / "pubspec.yaml"
+
+    package_globs: list[str] = []
+    ignore_globs: list[str] = []
+
+    # 1. Melos configuration (melos.yaml)
+    if melos_file.exists():
+        has_melos = True
+        is_monorepo = True
+        try:
+            m_text = melos_file.read_text(encoding="utf-8", errors="replace")
+            package_globs.extend(_parse_yaml_list_field(m_text, "packages"))
+            ignore_globs.extend(_parse_yaml_list_field(m_text, "ignore"))
+        except Exception:
+            logging.exception("Failed to parse melos.yaml in %s", candidate)
+
+    # 2. Dart pub workspace / Melos in pubspec.yaml (C3)
+    if pubspec_file.exists():
+        try:
+            p_text = pubspec_file.read_text(encoding="utf-8", errors="replace")
+            if "melos:" in p_text:
+                has_melos = True
+                is_monorepo = True
+            ws_entries = _parse_yaml_list_field(p_text, "workspace")
+            if ws_entries:
+                is_monorepo = True
+                package_globs.extend(ws_entries)
+        except Exception:
+            logging.exception("Failed to parse pubspec.yaml in %s", candidate)
+
+    # Standard monorepo folders if present
+    standard_monorepo_folders = ["apps", "packages", "modules"]
+    has_standard_mono_folder = any((candidate / f).is_dir() for f in standard_monorepo_folders)
+    if has_standard_mono_folder:
+        is_monorepo = True
+        if not package_globs:
+            for f in standard_monorepo_folders:
+                if (candidate / f).is_dir():
+                    package_globs.append(f"{f}/**")
+
+    def _is_ignored(rel_p: Path) -> bool:
+        rel_str = str(rel_p).replace("\\", "/")
+        for ign in ignore_globs:
+            ign_clean = ign.rstrip("/")
+            if (
+                fnmatch.fnmatch(rel_str, ign_clean)
+                or fnmatch.fnmatch(rel_str + "/", ign_clean + "/")
+                or fnmatch.fnmatch(rel_p.name, ign_clean)
+            ):
+                return True
+        return False
+
+    found_dirs: list[Path] = []
+
+    # Case A: Monorepo with package globs (C3, C4)
+    if package_globs:
+        for glob_pat in package_globs:
+            clean_glob = glob_pat.strip().strip("'\"")
+            direct_p = candidate / clean_glob
+            if direct_p.is_dir():
+                try:
+                    rel = direct_p.relative_to(candidate)
+                    if not _is_ignored(rel) and direct_p not in found_dirs:
+                        found_dirs.append(direct_p)
+                except ValueError:
+                    pass
                 continue
-            if in_pkgs:
-                if line and not line.startswith(" ") and not line.startswith("\t") and not line.strip().startswith("-"):
-                    break
-                stripped = line.strip()
-                if stripped.startswith("-"):
-                    pkg_glob = stripped.lstrip("-").strip().strip("'\"")
-                    folder = pkg_glob.split("/")[0].replace("*", "").strip()
-                    if folder and folder not in packages:
-                        packages.append(folder)
-        return packages or ["apps"]
-    except Exception:
-        return ["apps"]
+            try:
+                for matched in candidate.glob(clean_glob):
+                    if matched.is_dir() and matched != candidate:
+                        try:
+                            rel = matched.relative_to(candidate)
+                            if not _is_ignored(rel) and matched not in found_dirs:
+                                found_dirs.append(matched)
+                        except ValueError:
+                            pass
+            except Exception:
+                logging.exception("Failed globbing %s in %s", clean_glob, candidate)
+
+    # Case B: Multi-level search fallback (C5) - search up to 3 levels deep
+    if not found_dirs:
+        queue = [(candidate, 0)]
+        while queue:
+            curr_dir, depth = queue.pop(0)
+            if depth > 0 and curr_dir != candidate:
+                if curr_dir.name in SKIP_DIR_NAMES or curr_dir.name.startswith("."):
+                    continue
+                try:
+                    rel = curr_dir.relative_to(candidate)
+                    if _is_ignored(rel):
+                        continue
+                except ValueError:
+                    pass
+                det = _detect_app_in_dir(curr_dir)
+                if det is not None:
+                    found_dirs.append(curr_dir)
+                    continue
+            if depth < 3:
+                try:
+                    for child in sorted(curr_dir.iterdir()):
+                        if child.is_dir() and child.name not in SKIP_DIR_NAMES and not child.name.startswith("."):
+                            queue.append((child, depth + 1))
+                except Exception:
+                    pass
+
+    # Check each found directory with _detect_app_in_dir
+    seen_paths = set()
+    for d in found_dirs:
+        if d in seen_paths or not d.is_dir():
+            continue
+        seen_paths.add(d)
+        det = _detect_app_in_dir(d)
+        if det is not None:
+            discovered_apps.append(det)
+
+    # Case C: Candidate itself is a single app
+    if not discovered_apps:
+        detected_root = _detect_app_in_dir(candidate)
+        if detected_root is not None:
+            discovered_apps.append(detected_root)
+
+    # Case D: Disambiguate duplicate app IDs (C6)
+    seen_ids: dict[str, int] = {}
+    for app in discovered_apps:
+        orig_id = app["id"]
+        if orig_id in seen_ids:
+            seen_ids[orig_id] += 1
+            app_p = Path(app["path"])
+            try:
+                rel = app_p.relative_to(candidate)
+                parent_name = re.sub(r"[^a-zA-Z0-9_-]", "_", rel.parent.name.lower())
+                if parent_name and parent_name != ".":
+                    new_id = f"{orig_id}_{parent_name}"
+                else:
+                    new_id = f"{orig_id}_{seen_ids[orig_id]}"
+                app["name"] = f"{app['name']} ({rel.parent})"
+            except Exception:
+                new_id = f"{orig_id}_{seen_ids[orig_id]}"
+            app["id"] = new_id
+        else:
+            seen_ids[orig_id] = 1
+
+    return discovered_apps, is_monorepo, has_melos
+
+
+def _parse_melos_config(root_dir: Path) -> list[str]:
+    """Compatibility helper returning top-level folder names from melos config."""
+    apps, _, _ = _discover_apps_in_workspace(root_dir)
+    folders = []
+    for a in apps:
+        p = Path(a["path"])
+        try:
+            rel = p.relative_to(root_dir)
+            top = rel.parts[0] if rel.parts else ""
+            if top and top not in folders:
+                folders.append(top)
+        except ValueError:
+            pass
+    return folders or ["apps"]
 
 
 def _resolve_app_dir(app_id: str) -> Path:
@@ -545,11 +782,12 @@ def get_workspaces_list() -> dict[str, Any]:
         "active": current_path,
         "activeName": WORKSPACE_ROOT.name or "Current",
         "workspaces": workspaces,
+        "workspaceMissing": WORKSPACE_MISSING,
     }
 
 
 def set_active_workspace(new_path: str) -> dict[str, Any]:
-    global WORKSPACE_ROOT
+    global WORKSPACE_ROOT, WORKSPACE_MISSING
     candidate = Path(new_path).resolve()
     if not candidate.is_dir():
         return {"success": False, "error": f"Directory not found: {new_path}"}
@@ -561,6 +799,7 @@ def set_active_workspace(new_path: str) -> dict[str, Any]:
             "error": f"Directory '{new_path}' is not in the allowed workspaces list or authorized folders.",
         }
 
+    WORKSPACE_MISSING = None
     WORKSPACE_ROOT = candidate
     os.environ["WORKSPACE_ROOT"] = str(WORKSPACE_ROOT)
 
@@ -621,35 +860,8 @@ def inspect_workspace_path(path_str: str) -> dict[str, Any]:
             "restricted": True,
         }
 
+    discovered_apps, is_monorepo, has_melos = _discover_apps_in_workspace(candidate)
     detected_app = _detect_app_in_dir(candidate)
-    discovered_apps = []
-    is_monorepo = False
-
-    has_melos = (candidate / "melos.yaml").exists() or (
-        (candidate / "pubspec.yaml").exists()
-        and "melos:" in (candidate / "pubspec.yaml").read_text(encoding="utf-8", errors="replace")
-    )
-
-    for folder_name in _parse_melos_config(candidate):
-        sub_dir = candidate / folder_name
-        if sub_dir.is_dir():
-            is_monorepo = True
-            for child in sorted(sub_dir.iterdir()):
-                if child.is_dir() and not child.name.startswith("."):
-                    detected = _detect_app_in_dir(child)
-                    if detected and not any(a["id"] == detected["id"] for a in discovered_apps):
-                        discovered_apps.append(detected)
-
-    if not discovered_apps:
-        if detected_app:
-            discovered_apps.append(detected_app)
-        else:
-            for child in sorted(candidate.iterdir()):
-                if child.is_dir() and not child.name.startswith("."):
-                    det = _detect_app_in_dir(child)
-                    if det and not any(a["id"] == det["id"] for a in discovered_apps):
-                        discovered_apps.append(det)
-
     stacks = list(set(a.get("stack", "generic") for a in discovered_apps))
 
     return {
@@ -1121,30 +1333,8 @@ def discover_workspace_config() -> None:
     if existing_apps and existing_cmds:
         return
 
-    discovered_apps = []
     ws_root = get_workspace_root()
-    search_folders = _parse_melos_config(ws_root)
-    for folder_name in search_folders:
-        sub_dir = ws_root / folder_name
-        if sub_dir.is_dir():
-            for child in sorted(sub_dir.iterdir()):
-                if child.is_dir() and not child.name.startswith("."):
-                    detected = _detect_app_in_dir(child)
-                    if detected and not any(a["id"] == detected["id"] for a in discovered_apps):
-                        discovered_apps.append(detected)
-
-    if not discovered_apps:
-        detected_root = _detect_app_in_dir(ws_root)
-        if detected_root:
-            discovered_apps.append(detected_root)
-        elif ws_root != DASHBOARD_ROOT:
-            root_id = re.sub(r"[^a-zA-Z0-9_-]", "_", ws_root.name.lower()) or "app"
-            discovered_apps.append({
-                "id": root_id,
-                "name": ws_root.name or "App",
-                "path": str(ws_root),
-                "stack": "generic",
-            })
+    discovered_apps, is_monorepo, has_melos = _discover_apps_in_workspace(ws_root)
 
     if not existing_apps and discovered_apps:
         new_apps = []

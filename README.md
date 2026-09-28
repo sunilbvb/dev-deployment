@@ -138,19 +138,25 @@ Or use the background service scripts:
 
 ## 📱 How It Finds Your Apps
 
-The console auto-discovers apps in your `WORKSPACE_ROOT`:
+The console features a zero-configuration discovery engine that inspects your `WORKSPACE_ROOT`:
 
-1. **Monorepos** — Scans `apps/`, `packages/`, `modules/`, and sibling subdirectories for project manifests.
-2. **Single Projects** — If `WORKSPACE_ROOT` points directly to one app, that becomes the single app tile.
-3. **Manual Registration** — Register apps via the **Configure** modal (⚙️) or by editing `.dev-dashboard/apps_config.json` directly.
+1. **Dart 3.5+ & Melos 7 Pub Workspaces** — Reads the `workspace:` manifest from root `pubspec.yaml` and maps every declared package path or glob.
+2. **Melos Monorepos** — Parses `packages:` patterns (e.g. `apps/**`, `packages/*`) and respects `ignore:` exclusion rules from `melos.yaml`.
+3. **Standard Monorepos & Multi-Level Repositories** — Automatically traverses up to 3 levels deep across `apps/`, `packages/`, `modules/`, and subdirectories, skipping internal folders like `build/`, `.dart_tool/`, `node_modules/`, `Pods/`, and `dist/`.
+4. **Single Projects** — If `WORKSPACE_ROOT` targets a standalone app (with or without flavors), it is detected immediately as the primary application tile.
+5. **Duplicate App ID Disambiguation** — When multiple packages in different folders share the same manifest name (e.g. `apps/core` and `packages/core`), unique IDs and labeled names are assigned so all apps appear distinctly.
+6. **Package vs. App Differentiation** — Pure libraries and packages (without `android/`, `ios/`, or `lib/main.dart`) are recognized as packages, omitting unnecessary store deploy buttons.
+7. **Manual Registration** — Register any app manually via the **Configure** modal (⚙️) or by editing `.dev-dashboard/apps_config.json`.
 
 **Project type detection:**
 
 | Manifest file | Detected as |
 |---|---|
-| `pubspec.yaml` | Flutter |
-| `package.json` | Node.js / React Native |
-| `build.gradle` / `settings.gradle` | Android Native |
+| `pubspec.yaml` (with `android/`, `ios/`, or `lib/main.dart`) | Flutter App |
+| `pubspec.yaml` (library only) | Dart/Flutter Package |
+| `package.json` (with mobile dirs) | React Native |
+| `package.json` (without mobile dirs) | Node.js / Web |
+| `build.gradle` / `build.gradle.kts` | Android Native |
 | `*.xcworkspace` / `*.xcodeproj` | iOS Native |
 | Custom scripts / no manifest | Generic / Script |
 

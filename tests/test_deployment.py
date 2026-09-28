@@ -355,6 +355,201 @@ class TestDeploymentSecurityAndLogic(unittest.TestCase):
         # But generic/release templates (like release_preview) are still present
         self.assertTrue(any(c["templateId"] == "release_preview" for c in cmds_node))
 
+    def test_b7_gitignore_auto_added(self):
+        """B7 fix: .dev-dashboard/ is auto-added to workspace .gitignore."""
+        import tempfile, pathlib
+        with tempfile.TemporaryDirectory() as td:
+            ws = pathlib.Path(td)
+            gitignore = ws / ".gitignore"
+            gitignore.write_text("node_modules/\n", encoding="utf-8")
+            config._ensure_gitignore_has_dashboard(ws)
+            content = gitignore.read_text(encoding="utf-8")
+            self.assertIn(".dev-dashboard/", content)
+
+    def test_b8_apple_credentials_required(self):
+        """B8 fix: iOS upload/deploy commands require Apple ID or key configured."""
+        deploy_cfg = {
+            "apps": {
+                "test_app": {
+                    "bundle_id": "com.example.test",
+                    # No apple_id or apple_key_id!
+                }
+            }
+        }
+        cmds = commands._build_commands_from_templates("test_app", "", False, ["prod"], deploy_cfg)
+        upload_cmd = next(c for c in cmds if c["templateId"] == "upload_ipa")
+        self.assertFalse(upload_cmd["configured"], "upload_ipa must be marked unconfigured when Apple credentials missing")
+
+        # Now configure apple_id
+        deploy_cfg["apps"]["test_app"]["apple_id"] = "dev@example.com"
+        cmds2 = commands._build_commands_from_templates("test_app", "", False, ["prod"], deploy_cfg)
+        upload_cmd2 = next(c for c in cmds2 if c["templateId"] == "upload_ipa")
+        self.assertTrue(upload_cmd2["configured"], "upload_ipa must be marked configured when apple_id present")
+
+    def test_c3_dart_pub_workspace(self):
+        """C3 fix: Dart 3.5+ / Melos 7 pub workspaces (workspace: in pubspec.yaml) are discovered."""
+        import tempfile, pathlib
+        with tempfile.TemporaryDirectory() as td:
+            ws = pathlib.Path(td)
+            (ws / "pubspec.yaml").write_text(
+                "name: my_workspace\n"
+                "workspace:\n"
+                "  - packages/pkg_a\n"
+                "  - packages/pkg_b\n",
+                encoding="utf-8"
+            )
+            for pkg in ("pkg_a", "pkg_b"):
+                p_dir = ws / "packages" / pkg
+                (p_dir / "lib").mkdir(parents=True)
+                (p_dir / "lib" / "main.dart").write_text("// main", encoding="utf-8")
+                (p_dir / "pubspec.yaml").write_text(f"name: {pkg}\nversion: 1.0.0\n", encoding="utf-8")
+
+            apps, is_mono, _ = config._discover_apps_in_workspace(ws)
+            self.assertTrue(is_mono)
+            self.assertEqual(len(apps), 2)
+            app_ids = [a["id"] for a in apps]
+            self.assertIn("pkg_a", app_ids)
+            self.assertIn("pkg_b", app_ids)
+
+    def test_c4_melos_globs_and_ignore(self):
+        """C4 fix: Melos parser expands globs (apps/**) and respects ignore patterns."""
+        import tempfile, pathlib
+        with tempfile.TemporaryDirectory() as td:
+            ws = pathlib.Path(td)
+            (ws / "melos.yaml").write_text(
+                "name: my_melos\n"
+                "packages:\n"
+                "  - 'apps/**'\n"
+                "ignore:\n"
+                "  - '**/example/**'\n",
+                encoding="utf-8"
+            )
+            # Create nested app at apps/client/mobile
+            nested_app = ws / "apps" / "client" / "mobile"
+            (nested_app / "lib").mkdir(parents=True)
+            (nested_app / "lib" / "main.dart").write_text("// main", encoding="utf-8")
+            (nested_app / "pubspec.yaml").write_text("name: mobile_client\nversion: 1.0.0\n", encoding="utf-8")
+
+            # Create ignored app in example
+            ignored_app = ws / "apps" / "example" / "sample"
+            (ignored_app / "lib").mkdir(parents=True)
+            (ignored_app / "lib" / "main.dart").write_text("// main", encoding="utf-8")
+            (ignored_app / "pubspec.yaml").write_text("name: sample_example\nversion: 1.0.0\n", encoding="utf-8")
+
+            apps, is_mono, has_melos = config._discover_apps_in_workspace(ws)
+            self.assertTrue(is_mono)
+            self.assertTrue(has_melos)
+            app_ids = [a["id"] for a in apps]
+            self.assertIn("mobile_client", app_ids)
+            self.assertNotIn("sample_example", app_ids, "Ignored example app should not be discovered")
+
+    def test_c5_multilevel_discovery(self):
+        """C5 fix: multi-level discovery finds apps up to 3 levels deep."""
+        import tempfile, pathlib
+        with tempfile.TemporaryDirectory() as td:
+            ws = pathlib.Path(td)
+            # App at level 2: repo/mobile/app
+            app_dir = ws / "subfolder" / "deep_app"
+            (app_dir / "lib").mkdir(parents=True)
+            (app_dir / "lib" / "main.dart").write_text("// main", encoding="utf-8")
+            (app_dir / "pubspec.yaml").write_text("name: deep_app\nversion: 1.0.0\n", encoding="utf-8")
+
+            apps, _, _ = config._discover_apps_in_workspace(ws)
+            self.assertEqual(len(apps), 1)
+            self.assertEqual(apps[0]["id"], "deep_app")
+
+    def test_c6_duplicate_app_ids_disambiguated(self):
+        """C6 fix: duplicate app IDs are disambiguated with path info instead of dropped."""
+        import tempfile, pathlib
+        with tempfile.TemporaryDirectory() as td:
+            ws = pathlib.Path(td)
+            for parent in ("apps", "packages"):
+                p_dir = ws / parent / "core"
+                (p_dir / "lib").mkdir(parents=True)
+                (p_dir / "lib" / "main.dart").write_text("// main", encoding="utf-8")
+                (p_dir / "pubspec.yaml").write_text("name: core\nversion: 1.0.0\n", encoding="utf-8")
+
+            apps, _, _ = config._discover_apps_in_workspace(ws)
+            self.assertEqual(len(apps), 2, "Both core projects should be discovered")
+            app_ids = [a["id"] for a in apps]
+            self.assertNotEqual(app_ids[0], app_ids[1], "IDs must be disambiguated")
+
+    def test_c7_app_lock_scoped_to_workspace(self):
+        """C7 fix: app locks are workspace-scoped."""
+        import tempfile, pathlib
+        with tempfile.TemporaryDirectory() as td1, tempfile.TemporaryDirectory() as td2:
+            ws1 = pathlib.Path(td1)
+            ws2 = pathlib.Path(td2)
+
+            token1 = config.set_request_workspace(ws1)
+            try:
+                # Lock app in workspace 1
+                lock_k1 = f"{ws1.resolve()}:my_app"
+                with jobs._JOBS_LOCK:
+                    jobs._APP_LOCKS[lock_k1] = {
+                        "job_id": "job_1",
+                        "flavor": "dev",
+                        "command": "echo 1",
+                        "started_at": 1000,
+                        "workspace": str(ws1.resolve()),
+                        "app": "my_app",
+                    }
+            finally:
+                config.reset_request_workspace(token1)
+
+            # In workspace 2, the same app name is NOT locked
+            token2 = config.set_request_workspace(ws2)
+            try:
+                ws_now = config.get_workspace_root()
+                self.assertEqual(ws_now, ws2)
+                lock_k2 = f"{ws2.resolve()}:my_app"
+                self.assertNotIn(lock_k2, jobs._APP_LOCKS)
+            finally:
+                config.reset_request_workspace(token2)
+                with jobs._JOBS_LOCK:
+                    jobs._APP_LOCKS.pop(lock_k1, None)
+
+    def test_c8_get_running_jobs(self):
+        """C8 fix: get_running_jobs returns jobs across all workspaces."""
+        with jobs._JOBS_LOCK:
+            jobs._APP_LOCKS["dummy_ws:dummy_app"] = {
+                "job_id": "job_999",
+                "app": "dummy_app",
+                "flavor": "prod",
+                "command": "flutter build",
+                "started_at": 100,
+                "workspace": "/dummy_ws",
+            }
+        try:
+            running = jobs.get_running_jobs()
+            found = any(j.get("jobId") == "job_999" for j in running)
+            self.assertTrue(found)
+        finally:
+            with jobs._JOBS_LOCK:
+                jobs._APP_LOCKS.pop("dummy_ws:dummy_app", None)
+
+    def test_c9_request_scoped_workspace(self):
+        """C9 fix: request-scoped workspace via set_request_workspace works without race conditions."""
+        import tempfile, pathlib
+        with tempfile.TemporaryDirectory() as td:
+            custom_ws = pathlib.Path(td)
+            self.assertNotEqual(config.get_workspace_root(), custom_ws)
+            token = config.set_request_workspace(custom_ws)
+            try:
+                self.assertEqual(config.get_workspace_root(), custom_ws)
+            finally:
+                config.reset_request_workspace(token)
+            self.assertNotEqual(config.get_workspace_root(), custom_ws)
+
+    def test_c12_workspace_missing_flag(self):
+        """C12 fix: get_workspaces_list reports workspaceMissing when active workspace was not found."""
+        config.WORKSPACE_MISSING = "/nonexistent/path/for/test"
+        try:
+            res = config.get_workspaces_list()
+            self.assertEqual(res.get("workspaceMissing"), "/nonexistent/path/for/test")
+        finally:
+            config.WORKSPACE_MISSING = None
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -120,7 +120,7 @@ def _build_commands_from_templates(app_id: str, app_path_prefix: str, use_melos:
                 })
             else:
                 for flavor in target_flavors:
-                    configured = _is_flavor_configured(app_id, flavor)
+                    configured = _is_flavor_configured(app_id, flavor, tmpl["id"], deploy_cfg=deploy_cfg)
                     if is_direct and tmpl.get("command_template"):
                         resolved = _resolve_command(tmpl["command_template"], app_id, flavor, deploy_cfg)
                         full_cmd = f"{app_path_prefix} {resolved}".strip()
@@ -150,8 +150,8 @@ def _build_commands_from_templates(app_id: str, app_path_prefix: str, use_melos:
     return commands
 
 
-def _is_flavor_configured(app_id: str, flavor: str) -> bool:
-    cfg = load_deploy_config()
+def _is_flavor_configured(app_id: str, flavor: str, template_id: str = "", deploy_cfg: Optional[dict[str, Any]] = None) -> bool:
+    cfg = deploy_cfg if deploy_cfg is not None else load_deploy_config()
     app_cfg = cfg.get("apps", {}).get(app_id, {})
     bundle_id = str(
         app_cfg.get(f"bundle_id_{flavor}")
@@ -159,7 +159,23 @@ def _is_flavor_configured(app_id: str, flavor: str) -> bool:
         or app_cfg.get("bundle_id_prod")
         or ""
     ).strip()
-    return len(bundle_id) > 0
+    android_pkg = str(
+        app_cfg.get(f"android_package_{flavor}")
+        or app_cfg.get("android_package")
+        or app_cfg.get("android_package_prod")
+        or ""
+    ).strip()
+
+    if not bundle_id and not android_pkg:
+        return False
+
+    # B8 fix: iOS store upload/deploy requires Apple credentials
+    if template_id in ("upload_ipa", "deploy_ipa", "deploy_both"):
+        has_apple = bool(app_cfg.get("apple_id") or app_cfg.get("apple_key_id") or app_cfg.get("apple_p8_base64"))
+        if not has_apple:
+            return False
+
+    return True
 
 
 def get_commands(app: str) -> dict[str, Any]:

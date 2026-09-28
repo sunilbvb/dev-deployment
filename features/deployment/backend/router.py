@@ -26,6 +26,7 @@ from jobs import (
     get_batch_deploy_plan as jobs_get_batch_deploy_plan,
     get_deployment_history as jobs_get_deployment_history,
     get_job as jobs_get_job,
+    get_running_jobs as jobs_get_running_jobs,
     stop_job as jobs_stop_job,
 )
 
@@ -39,6 +40,7 @@ load_templates = load_templates
 scan_app_config = config_scan_app_config
 check_ios_expiry = jobs_check_ios_expiry
 get_job = jobs_get_job
+get_running_jobs = jobs_get_running_jobs
 get_deployment_history = jobs_get_deployment_history
 get_batch_deploy_plan = jobs_get_batch_deploy_plan
 execute_command = jobs_execute_command
