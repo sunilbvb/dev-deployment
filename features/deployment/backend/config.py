@@ -154,18 +154,31 @@ def load_templates() -> dict[str, list[dict[str, Any]]]:
 def _detect_app_in_dir(path: Path) -> Optional[dict[str, Any]]:
     if not path.is_dir():
         return None
+
     pubspec = path / "pubspec.yaml"
     package_json = path / "package.json"
-    build_gradle = path / "android" / "build.gradle"
-    build_gradle_kts = path / "android" / "build.gradle.kts"
-    xcodeproj = list(path.glob("*.xcodeproj")) or list((path / "ios").glob("*.xcodeproj"))
+    android_dir = path / "android"
+    ios_dir = path / "ios"
+    build_gradle = android_dir / "build.gradle"
+    build_gradle_kts = android_dir / "build.gradle.kts"
+    xcodeproj = list(path.glob("*.xcodeproj")) or list(ios_dir.glob("*.xcodeproj"))
+
+    # C1: if none of the known project markers exist, this is not a deployable project
+    has_pubspec = pubspec.exists()
+    has_package_json = package_json.exists()
+    has_android = android_dir.is_dir()
+    has_ios = ios_dir.is_dir()
+    has_native = build_gradle.exists() or build_gradle_kts.exists() or bool(xcodeproj)
+
+    if not (has_pubspec or has_package_json or has_android or has_ios or has_native):
+        return None
 
     stack = "generic"
     app_name = path.name
     version = "1.0.0 (1)"
     is_package = False
 
-    if pubspec.exists():
+    if has_pubspec:
         stack = "flutter"
         try:
             content = pubspec.read_text(encoding="utf-8")
@@ -180,12 +193,16 @@ def _detect_app_in_dir(path: Path) -> Optional[dict[str, Any]]:
                     version = f"{v_parts[0]} ({v_parts[1]})"
                 else:
                     version = raw_ver
-            if "executables:" not in content and "flutter:" not in content:
+
+            # C2: a Flutter repo is a deployable app only if it has android/, ios/, or lib/main.dart
+            # Pure Dart/Flutter packages won't have those (they just have lib/ with no main.dart).
+            has_main = (path / "lib" / "main.dart").exists()
+            if not (has_android or has_ios or has_main):
                 is_package = True
         except Exception:
             logging.exception("Failed to parse pubspec.yaml in %s", path)
-    elif package_json.exists():
-        stack = "react-native" if (path / "ios").exists() or (path / "android").exists() else "node"
+    elif has_package_json:
+        stack = "react-native" if (has_android or has_ios) else "node"
         try:
             p_data = json.loads(package_json.read_text(encoding="utf-8"))
             if p_data.get("name"):
@@ -194,7 +211,7 @@ def _detect_app_in_dir(path: Path) -> Optional[dict[str, Any]]:
                 version = p_data["version"]
         except Exception:
             logging.exception("Failed to parse package.json in %s", path)
-    elif build_gradle.exists() or build_gradle_kts.exists() or xcodeproj:
+    elif has_native:
         stack = "native"
 
     app_id = re.sub(r"[^a-zA-Z0-9_-]", "_", app_name.lower())
@@ -622,7 +639,9 @@ def _scan_xcconfig_bundle_ids(app_dir: Path) -> dict[str, str]:
             name_lower = xcconfig.stem.lower()
             matched_flavor = None
             for key, val in flavor_map.items():
-                if key in name_lower:
+                # Whole-segment match: key must be a standalone word/segment in the filename
+                # e.g. "Debug-dev" matches "dev", but "devstudio" does NOT.
+                if re.search(r'(^|[._\-])' + re.escape(key) + r'($|[._\-])', name_lower):
                     matched_flavor = val
                     break
             try:
@@ -733,16 +752,21 @@ def _scan_android_app_ids(app_dir: Path) -> dict[str, str]:
                 for match in app_id_matches:
                     app_id_val = match.group(1).strip()
                     val_lower = app_id_val.lower()
-                    if "dev" in val_lower:
+
+                    def _seg(kw: str) -> bool:
+                        """True iff kw is a whole segment in the reverse-domain string."""
+                        return bool(re.search(r'(^|[._\-])' + re.escape(kw) + r'($|[._\-])', val_lower))
+
+                    if _seg("dev"):
                         result["android_id_dev"] = app_id_val
                         result["android_package_dev"] = app_id_val
-                    elif "staging" in val_lower:
+                    elif _seg("staging"):
                         result["android_id_staging"] = app_id_val
                         result["android_package_staging"] = app_id_val
-                    elif "uat" in val_lower:
+                    elif _seg("uat"):
                         result["android_id_uat"] = app_id_val
                         result["android_package_uat"] = app_id_val
-                    elif "qa" in val_lower or "test" in val_lower:
+                    elif _seg("qa") or _seg("test"):
                         result["android_id_qa"] = app_id_val
                         result["android_package_qa"] = app_id_val
                     else:

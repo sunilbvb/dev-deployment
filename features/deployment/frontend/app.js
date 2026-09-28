@@ -379,9 +379,10 @@ function renderCertBannerFromResult(result) {
  *  git release tag/push). Used to decide whether Run needs a second, explicit click. */
 function isProdStoreDeploy() {
     if (!state.selectedCommand) return false;
-    const flavor = String(state.selectedCommand.flavor || '').toLowerCase();
-    if (flavor !== 'prod') return false;
-    return STORE_SHIPPING_TEMPLATE_IDS.has(state.selectedCommand.templateId);
+    if (!STORE_SHIPPING_TEMPLATE_IDS.has(state.selectedCommand.templateId)) return false;
+    const flavor = String(state.selectedCommand.flavor || '').toLowerCase().trim();
+    // "prod", "default" (single-app = the one prod environment), or "" all require confirmation
+    return flavor === 'prod' || flavor === 'default' || flavor === '';
 }
 
 function openProdConfirmModal() {

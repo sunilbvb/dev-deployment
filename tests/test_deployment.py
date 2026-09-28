@@ -56,18 +56,142 @@ class TestDeploymentSecurityAndLogic(unittest.TestCase):
         cls.temp_dir.cleanup()
 
     def test_is_prod_store_deploy(self):
-        # Valid prod store deploy commands
+        # Valid prod store deploy commands (legacy text form - backward compat)
         self.assertTrue(commands._is_prod_store_deploy("bash run_build.sh deployIPA app1 prod"))
         self.assertTrue(commands._is_prod_store_deploy("bash run_build.sh uploadAAB app1 prod"))
         self.assertTrue(commands._is_prod_store_deploy("bash run_build.sh deployBothPlatforms app1 prod"))
 
-        # Non-prod commands
+        # Non-prod commands (legacy form)
         self.assertFalse(commands._is_prod_store_deploy("bash run_build.sh deployIPA app1 dev"))
         self.assertFalse(commands._is_prod_store_deploy("bash run_build.sh buildIPA app1 prod"))
 
-        # Bypass attempts with trailing characters or command chaining
+        # Bypass attempts with trailing characters or command chaining (legacy form)
         self.assertTrue(commands._is_prod_store_deploy("bash run_build.sh deployIPA app1 prod ; echo pwned"))
         self.assertTrue(commands._is_prod_store_deploy("bash run_build.sh deployIPA app1 prod # trailing comment"))
+
+    def test_is_prod_store_deploy_explicit_form(self):
+        """A1 fix: explicit template_id + flavor form works correctly for all scenarios."""
+        # Explicit prod flavor + store template → True
+        self.assertTrue(commands._is_prod_store_deploy(template_id="upload_ipa", flavor="prod"))
+        self.assertTrue(commands._is_prod_store_deploy(template_id="upload_aab", flavor="prod"))
+        self.assertTrue(commands._is_prod_store_deploy(template_id="deploy_ipa", flavor="prod"))
+        self.assertTrue(commands._is_prod_store_deploy(template_id="deploy_aab", flavor="prod"))
+        self.assertTrue(commands._is_prod_store_deploy(template_id="deploy_both", flavor="prod"))
+
+        # Single-app (no-flavor) = "default" → must ALSO require confirmation
+        self.assertTrue(commands._is_prod_store_deploy(template_id="upload_ipa", flavor="default"))
+        self.assertTrue(commands._is_prod_store_deploy(template_id="upload_aab", flavor="default"))
+        self.assertTrue(commands._is_prod_store_deploy(template_id="upload_aab", flavor=""))
+
+        # Build templates (not store-shipping) → False even with prod flavor
+        self.assertFalse(commands._is_prod_store_deploy(template_id="build_ipa", flavor="prod"))
+        self.assertFalse(commands._is_prod_store_deploy(template_id="build_aab", flavor="prod"))
+
+        # DEV flavor store template → False
+        self.assertFalse(commands._is_prod_store_deploy(template_id="upload_ipa", flavor="dev"))
+        self.assertFalse(commands._is_prod_store_deploy(template_id="upload_aab", flavor="qa"))
+
+    def test_scan_android_segment_matching(self):
+        """B1 fix: com.devstudio.app must NOT match 'dev'; com.app.dev must match 'dev'."""
+        import tempfile, pathlib
+        with tempfile.TemporaryDirectory() as td:
+            app_path = pathlib.Path(td)
+            android_app = app_path / "android" / "app"
+            android_app.mkdir(parents=True)
+
+            # 'devstudio' has 'dev' as a substring but NOT as a whole segment → should NOT match dev
+            (android_app / "build.gradle").write_text(
+                'android {\n  defaultConfig {\n    applicationId "com.devstudio.myapp"\n  }\n}\n',
+                encoding="utf-8",
+            )
+            result = config._scan_android_app_ids(app_path)
+            # Should fall through to prod (the base package), NOT android_id_dev
+            self.assertNotIn("android_id_dev", result)
+            self.assertEqual(result.get("android_package"), "com.devstudio.myapp")
+
+        with tempfile.TemporaryDirectory() as td:
+            app_path = pathlib.Path(td)
+            android_app = app_path / "android" / "app"
+            android_app.mkdir(parents=True)
+
+            # 'com.example.dev' — "dev" IS a whole segment after the last dot → should match dev
+            (android_app / "build.gradle").write_text(
+                'android {\n  defaultConfig {\n    applicationId "com.example.dev"\n  }\n}\n',
+                encoding="utf-8",
+            )
+            result2 = config._scan_android_app_ids(app_path)
+            self.assertIn("android_id_dev", result2)
+            self.assertEqual(result2["android_id_dev"], "com.example.dev")
+
+    def test_scan_xcconfig_segment_matching(self):
+        """B2 fix: 'devstudio.xcconfig' must NOT match 'dev' flavor; 'Debug-dev.xcconfig' must match."""
+        import tempfile, pathlib
+        with tempfile.TemporaryDirectory() as td:
+            app_path = pathlib.Path(td)
+            xcconfig_dir = app_path / "ios" / "Flutter"
+            xcconfig_dir.mkdir(parents=True)
+
+            # 'devstudio' contains 'dev' as substring but not whole segment → no flavor match
+            (xcconfig_dir / "devstudio.xcconfig").write_text(
+                "PRODUCT_BUNDLE_IDENTIFIER = com.example.myapp\n", encoding="utf-8"
+            )
+            result = config._scan_xcconfig_bundle_ids(app_path)
+            # No flavor-suffixed key; just plain bundle_id
+            self.assertNotIn("bundle_id_dev", result)
+            self.assertEqual(result.get("bundle_id"), "com.example.myapp")
+
+        with tempfile.TemporaryDirectory() as td:
+            app_path = pathlib.Path(td)
+            xcconfig_dir = app_path / "ios" / "Flutter"
+            xcconfig_dir.mkdir(parents=True)
+
+            # 'Debug-dev' — "dev" is a whole segment → should match dev flavor
+            (xcconfig_dir / "Debug-dev.xcconfig").write_text(
+                "PRODUCT_BUNDLE_IDENTIFIER = com.example.myapp.dev\n", encoding="utf-8"
+            )
+            result2 = config._scan_xcconfig_bundle_ids(app_path)
+            self.assertIn("bundle_id_dev", result2)
+            self.assertEqual(result2["bundle_id_dev"], "com.example.myapp.dev")
+
+    def test_detect_app_in_dir_empty_returns_none(self):
+        """C1 fix: empty directory must return None, not a generic dict."""
+        import tempfile, pathlib
+        with tempfile.TemporaryDirectory() as td:
+            empty_dir = pathlib.Path(td) / "random_folder"
+            empty_dir.mkdir()
+            result = config._detect_app_in_dir(empty_dir)
+            self.assertIsNone(result, "Empty directory should return None, not a generic app dict")
+
+    def test_detect_app_flutter_package_vs_app(self):
+        """C2 fix: Flutter package (no android/ios/main.dart) should be is_package=True.
+           Flutter app (has android/ or ios/ or lib/main.dart) should be is_package=False."""
+        import tempfile, pathlib
+        # Pure package — has pubspec.yaml but no android/, ios/, or lib/main.dart
+        with tempfile.TemporaryDirectory() as td:
+            pkg_dir = pathlib.Path(td) / "my_utils"
+            pkg_dir.mkdir()
+            (pkg_dir / "pubspec.yaml").write_text(
+                "name: my_utils\nversion: 1.0.0\ndescription: A Dart utility package\n"
+                "environment:\n  sdk: '>=3.0.0 <4.0.0'\n",
+                encoding="utf-8",
+            )
+            (pkg_dir / "lib").mkdir()
+            (pkg_dir / "lib" / "my_utils.dart").write_text("// library", encoding="utf-8")
+            result = config._detect_app_in_dir(pkg_dir)
+            self.assertIsNotNone(result)
+            self.assertTrue(result["is_package"], "Flutter package without android/ios/main.dart must be is_package=True")
+
+        # App — has pubspec.yaml + android/
+        with tempfile.TemporaryDirectory() as td:
+            app_dir = pathlib.Path(td) / "my_app"
+            (app_dir / "android").mkdir(parents=True)
+            (app_dir / "pubspec.yaml").write_text(
+                "name: my_app\nversion: 1.0.0\nflutter:\n  uses-material-design: true\n",
+                encoding="utf-8",
+            )
+            result2 = config._detect_app_in_dir(app_dir)
+            self.assertIsNotNone(result2)
+            self.assertFalse(result2["is_package"], "Flutter app with android/ must be is_package=False")
 
     def test_path_traversal_protection(self):
         # inspect_workspace_path outside WORKSPACE_ROOT
@@ -150,6 +274,15 @@ class TestDeploymentSecurityAndLogic(unittest.TestCase):
         self.assertIsNotNone(ipa_cmd)
         self.assertEqual(ipa_cmd["command"], "flutter build ipa --release")
         self.assertEqual(ipa_cmd["name"], "Build IPA")
+
+        # A1: store upload commands with "default" flavor must report needsConfirmation
+        upload_aab_cmd = next((c for c in cmds if c["templateId"] == "upload_aab"), None)
+        if upload_aab_cmd:
+            self.assertEqual(upload_aab_cmd["flavor"], "default")
+            self.assertTrue(
+                commands._is_prod_store_deploy(template_id="upload_aab", flavor=upload_aab_cmd["flavor"]),
+                "Single-app store upload (flavor=default) must trigger prod confirmation"
+            )
 
 
 if __name__ == "__main__":

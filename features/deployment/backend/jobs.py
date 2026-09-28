@@ -164,7 +164,7 @@ def execute_command(
         if command.rstrip().endswith(" any"):
             command = command.rstrip()[: -len(" any")] + f" {shlex.quote(env)}"
 
-    if _is_prod_store_deploy(command) and not confirmed:
+    if _is_prod_store_deploy(template_id=template_id, flavor=flavor) and not confirmed:
         return {
             "success": False,
             "error": f"This runs a PROD store deploy for '{app}' - resend with confirmed: true once explicitly approved.",

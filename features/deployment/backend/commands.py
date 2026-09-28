@@ -206,7 +206,26 @@ def regenerate_commands() -> dict[str, Any]:
     return {"success": True}
 
 
-def _is_prod_store_deploy(resolved_command: str) -> bool:
+def _is_prod_store_deploy(resolved_command: str = "", *, template_id: str = "", flavor: str = "") -> bool:
+    """Return True when this invocation will actually ship a build to a real app store.
+
+    Two calling conventions are supported:
+    - Legacy text-based: _is_prod_store_deploy(command_str)  -- kept for backward compat
+    - Preferred explicit: _is_prod_store_deploy(template_id=..., flavor=...)
+
+    The explicit form is used by execute_command() and is safe for single-app (no-flavor)
+    apps because their flavor value is "default", which counts as a prod-level store upload
+    when no flavors are configured (the app IS its prod environment).
+    """
+    # Explicit call via keyword args (preferred — authoritative check)
+    if template_id:
+        if template_id not in STORE_UPLOAD_TEMPLATE_IDS:
+            return False
+        flavor_lower = flavor.strip().lower()
+        # "prod", "default" (single app, no flavor = prod tier), or "" all trigger confirmation
+        return flavor_lower in ("prod", "default", "")
+
+    # Legacy: fall back to text scanning (still covers old call-sites / tests)
     tokens = resolved_command.split()
     if not tokens:
         return False
