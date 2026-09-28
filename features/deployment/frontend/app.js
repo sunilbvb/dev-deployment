@@ -1,7 +1,22 @@
+// Ensure all fetch requests automatically attach X-API-Token if injected
+if (typeof window !== 'undefined' && window.fetch) {
+    const _nativeFetch = window.fetch;
+    window.fetch = function(url, options = {}) {
+        options = options || {};
+        const headers = new Headers(options.headers || {});
+        if (window.__DEPLOYMENT_TOKEN__ && !headers.has('X-API-Token')) {
+            headers.set('X-API-Token', window.__DEPLOYMENT_TOKEN__);
+        }
+        options.headers = headers;
+        return _nativeFetch(url, options);
+    };
+}
+
 // Keep in sync with router.py's STORE_UPLOAD_TEMPLATE_IDS - the template ids whose
 // success means a build actually reached TestFlight/Play Store, not just a local
 // artifact or a git tag/push.
 const STORE_SHIPPING_TEMPLATE_IDS = new Set(['deploy_ipa', 'upload_ipa', 'deploy_aab', 'upload_aab', 'deploy_both']);
+
 
 const state = {
     apps: [],
@@ -466,9 +481,7 @@ async function executeSelected(confirmed = false) {
         pollJob(data.jobId);
     } catch (error) {
         writeTerminal(`Failed to start: ${error.message}`, 'error');
-        showToast(error.code === 'APP_BUSY'
-            ? `Already running for ${state.selectedApp} — wait for it to finish or stop it first`
-            : 'Failed to start deployment command');
+        showToast(error.message || 'Failed to start deployment command', 'error');
         finishExecution();
     }
 }

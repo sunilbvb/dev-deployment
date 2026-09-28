@@ -12,6 +12,7 @@ from config import (
     get_commands_config_file,
     get_deploy_config_file,
     get_workspaces_list as config_get_workspaces_list,
+    get_workspace_root as config_get_workspace_root,
     inspect_workspace_path as config_inspect_workspace_path,
     load_deploy_config,
     load_templates,
@@ -56,4 +57,6 @@ add_app = config_add_app
 set_active_workspace = config_set_active_workspace
 upload_p8_key = p8_upload_p8_key
 check_system_health = config_check_system_health
+get_workspace_root = config_get_workspace_root
+
 

@@ -6,11 +6,11 @@ from pathlib import Path
 from typing import Any, Dict, Optional
 
 from config import (
-    WORKSPACE_ROOT,
     get_deploy_config_file,
     load_deploy_config,
     save_deploy_config,
 )
+
 
 
 def upload_p8_key(app_id: str, filename: str, content_bytes: bytes, issuer_id: str = "") -> dict[str, Any]:

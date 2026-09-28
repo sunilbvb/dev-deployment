@@ -64,9 +64,13 @@ ngrok_config.json
 
 # Fastlane & Tool Reports
 report.xml
+**/report.xml
 fastlane/report.xml
+features/deployment/fastlane/report.xml
+**/fastlane/report.xml
 fastlane/Preview.html
 fastlane/README.md
+
 
 # Node & Package Managers
 node_modules/

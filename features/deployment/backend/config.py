@@ -24,10 +24,33 @@ def _resolve_workspace_root() -> Path:
 WORKSPACE_ROOT = _resolve_workspace_root()
 TMP_DIR = Path(os.environ.get("DEPLOYMENT_TMP_DIR", str(Path(tempfile.gettempdir()) / "deployment_dashboard_tmp")))
 TEMPLATES_FILE = DASHBOARD_ROOT / "config" / "deployment_templates.json"
+SAFE_ID_PATTERN = re.compile(r"^[A-Za-z0-9._-]+$")
+
+
+def get_workspace_root() -> Path:
+    return WORKSPACE_ROOT
+
+
+def _get_allowed_workspace_roots() -> list[Path]:
+    allowed = [DASHBOARD_ROOT.resolve()]
+    for filename in ("workspaces_list.json", "workspaces_list.example.json"):
+        ws_file = DASHBOARD_ROOT / "config" / filename
+        if ws_file.exists():
+            try:
+                data = json.loads(ws_file.read_text(encoding="utf-8"))
+                if isinstance(data, list):
+                    for item in data:
+                        if isinstance(item, dict) and item.get("path"):
+                            p = Path(item["path"]).resolve()
+                            if p not in allowed:
+                                allowed.append(p)
+            except Exception:
+                pass
+    return allowed
 
 
 def get_apps_config_file() -> Path:
-    target_dir = WORKSPACE_ROOT / ".dev-dashboard"
+    target_dir = get_workspace_root() / ".dev-dashboard"
     target_dir.mkdir(parents=True, exist_ok=True)
     target = target_dir / "apps_config.json"
     if not target.exists():
@@ -36,7 +59,7 @@ def get_apps_config_file() -> Path:
 
 
 def get_deploy_config_file() -> Path:
-    target_dir = WORKSPACE_ROOT / ".dev-dashboard"
+    target_dir = get_workspace_root() / ".dev-dashboard"
     target_dir.mkdir(parents=True, exist_ok=True)
     target = target_dir / "deploy_config.json"
     if not target.exists():
@@ -45,7 +68,7 @@ def get_deploy_config_file() -> Path:
 
 
 def get_commands_config_file() -> Path:
-    target_dir = WORKSPACE_ROOT / ".dev-dashboard"
+    target_dir = get_workspace_root() / ".dev-dashboard"
     target_dir.mkdir(parents=True, exist_ok=True)
     target = target_dir / "commands_config.json"
     if not target.exists():
@@ -65,12 +88,46 @@ def load_deploy_config() -> dict[str, Any]:
 
 
 def save_deploy_config(data: dict[str, Any]) -> dict[str, Any]:
+    if not isinstance(data, dict):
+        return {"success": False, "error": "Invalid deploy config format: expected JSON object"}
+
+    apps = data.get("apps", {})
+    if not isinstance(apps, dict):
+        return {"success": False, "error": "Invalid 'apps' section in deploy config"}
+
+    for app_id, app_cfg in apps.items():
+        if not isinstance(app_id, str) or not SAFE_ID_PATTERN.match(app_id):
+            return {"success": False, "error": f"Invalid app ID '{app_id}'. Must match ^[A-Za-z0-9._-]+$"}
+        if not isinstance(app_cfg, dict):
+            continue
+        for key, val in app_cfg.items():
+            if val is None or val == "":
+                continue
+            if isinstance(val, str):
+                if key.startswith(("bundle_id_", "android_id_", "android_package_")) or key in (
+                    "apple_id", "apple_key_id", "apple_issuer_id"
+                ):
+                    if not SAFE_ID_PATTERN.match(val):
+                        return {
+                            "success": False,
+                            "error": f"Invalid value for '{key}' in app '{app_id}': '{val}'. Must match ^[A-Za-z0-9._-]+$",
+                        }
+            elif isinstance(val, list):
+                if key == "flavors":
+                    for f in val:
+                        if not isinstance(f, str) or not SAFE_ID_PATTERN.match(f):
+                            return {
+                                "success": False,
+                                "error": f"Invalid flavor '{f}' in app '{app_id}'. Must match ^[A-Za-z0-9._-]+$",
+                            }
+
     cfg = get_deploy_config_file()
     try:
         cfg.write_text(json.dumps(data, indent=2), encoding="utf-8")
         return {"success": True}
     except Exception as exc:
         return {"success": False, "error": str(exc)}
+
 
 
 def load_templates() -> dict[str, list[dict[str, Any]]]:
@@ -268,6 +325,13 @@ def set_active_workspace(new_path: str) -> dict[str, Any]:
     if not candidate.is_dir():
         return {"success": False, "error": f"Directory not found: {new_path}"}
 
+    allowed_roots = _get_allowed_workspace_roots()
+    if not any(candidate == allowed or allowed in candidate.parents for allowed in allowed_roots):
+        return {
+            "success": False,
+            "error": f"Directory '{new_path}' is not in the allowed workspaces list or authorized folders.",
+        }
+
     WORKSPACE_ROOT = candidate
     os.environ["WORKSPACE_ROOT"] = str(WORKSPACE_ROOT)
 
@@ -310,14 +374,19 @@ def inspect_workspace_path(path_str: str) -> dict[str, Any]:
         return {"success": False, "error": "Path is not a directory", "exists": False}
 
     # Path traversal protection check
-    root_res = WORKSPACE_ROOT.resolve()
-    if candidate != root_res and root_res not in candidate.parents:
+    root_res = get_workspace_root().resolve()
+    allowed_roots = _get_allowed_workspace_roots()
+    is_safe = (candidate == root_res or root_res in candidate.parents) or any(
+        candidate == allowed or allowed in candidate.parents for allowed in allowed_roots
+    )
+    if not is_safe:
         return {
             "success": False,
             "error": "Path traversal restriction: Candidate directory must be within workspace root",
             "exists": True,
             "restricted": True,
         }
+
 
     discovered_apps = []
     is_monorepo = False
@@ -444,14 +513,15 @@ def _scan_android_app_ids(app_dir: Path) -> dict[str, str]:
 
 
 def _scan_credentials(discovered: dict[str, Any], app_id: str) -> None:
-    app_dir = WORKSPACE_ROOT / "apps" / app_id
+    ws_root = get_workspace_root()
+    app_dir = ws_root / "apps" / app_id
     if not app_dir.exists():
-        app_dir = WORKSPACE_ROOT
+        app_dir = ws_root
 
     android_app_dir = app_dir / "android" / "app"
     if android_app_dir.exists():
         for path in android_app_dir.rglob("google-services.json"):
-            rel_path = str(path.relative_to(WORKSPACE_ROOT))
+            rel_path = str(path.relative_to(ws_root))
             full_path_str = str(path).lower()
             if "/dev/" in full_path_str:
                 discovered["google_services_json_dev"] = rel_path
@@ -464,9 +534,10 @@ def _scan_credentials(discovered: dict[str, Any], app_id: str) -> None:
 
 
 def scan_app_config(app_id: str) -> dict[str, Any]:
-    app_dir = WORKSPACE_ROOT / "apps" / app_id
+    ws_root = get_workspace_root()
+    app_dir = ws_root / "apps" / app_id
     if not app_dir.exists():
-        app_dir = WORKSPACE_ROOT
+        app_dir = ws_root
 
     discovered: dict[str, Any] = {}
     discovered.update(_scan_xcconfig_bundle_ids(app_dir))
@@ -527,9 +598,10 @@ def discover_workspace_config() -> None:
         return
 
     discovered_apps = []
-    search_folders = _parse_melos_config(WORKSPACE_ROOT)
+    ws_root = get_workspace_root()
+    search_folders = _parse_melos_config(ws_root)
     for folder_name in search_folders:
-        sub_dir = WORKSPACE_ROOT / folder_name
+        sub_dir = ws_root / folder_name
         if sub_dir.is_dir():
             for child in sorted(sub_dir.iterdir()):
                 if child.is_dir() and not child.name.startswith("."):
@@ -538,12 +610,12 @@ def discover_workspace_config() -> None:
                         discovered_apps.append(detected)
 
     if not discovered_apps:
-        detected_root = _detect_app_in_dir(WORKSPACE_ROOT)
+        detected_root = _detect_app_in_dir(ws_root)
         if detected_root:
             discovered_apps.append(detected_root)
-        elif WORKSPACE_ROOT != DASHBOARD_ROOT:
-            root_id = re.sub(r"[^a-zA-Z0-9_-]", "_", WORKSPACE_ROOT.name.lower()) or "app"
-            discovered_apps.append({"id": root_id, "name": WORKSPACE_ROOT.name or "App", "stack": "generic"})
+        elif ws_root != DASHBOARD_ROOT:
+            root_id = re.sub(r"[^a-zA-Z0-9_-]", "_", ws_root.name.lower()) or "app"
+            discovered_apps.append({"id": root_id, "name": ws_root.name or "App", "stack": "generic"})
 
     if not existing_apps and discovered_apps:
         new_apps = []
@@ -570,6 +642,7 @@ def discover_workspace_config() -> None:
             if scan_res.get("success"):
                 scanned_apps[app_id] = scan_res["discovered"]
         save_deploy_config({"apps": scanned_apps})
+
 
 
 def check_system_health() -> dict[str, Any]:
@@ -604,7 +677,8 @@ def check_system_health() -> dict[str, Any]:
     return {
         "success": True,
         "healthy": healthy,
-        "workspaceRoot": str(WORKSPACE_ROOT),
+        "workspaceRoot": str(get_workspace_root()),
         "tools": tools,
     }
+
 
