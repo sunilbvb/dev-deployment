@@ -1,0 +1,587 @@
+import json
+import os
+import plistlib
+import re
+import signal
+import subprocess
+import threading
+import time
+from datetime import date, datetime
+from pathlib import Path
+from typing import Any, Dict, Optional
+
+from config import (
+    DASHBOARD_ROOT,
+    FEATURE_DIR,
+    TMP_DIR,
+    WORKSPACE_ROOT,
+    get_apps,
+    load_deploy_config,
+)
+from commands import (
+    _STORE_SHIPPING_ACTIONS,
+    STORE_UPLOAD_TEMPLATE_IDS,
+    _is_prod_store_deploy,
+    get_commands,
+)
+
+_JOBS: dict[str, dict[str, Any]] = {}
+_JOBS_LOCK = threading.Lock()
+_APP_LOCKS: dict[str, dict[str, Any]] = {}
+_HISTORY_LOCK = threading.Lock()
+EXPIRY_WARNING_THRESHOLD_DAYS = 30
+
+
+def _new_job_id() -> str:
+    return f"job_{int(time.time() * 1000)}"
+
+
+def _get_history_file() -> Path:
+    target_dir = WORKSPACE_ROOT / ".dev-dashboard"
+    target_dir.mkdir(parents=True, exist_ok=True)
+    return target_dir / "deployment_history.jsonl"
+
+
+def _append_job_log(job_id: str, field: str, text: str) -> None:
+    with _JOBS_LOCK:
+        job = _JOBS.get(job_id)
+        if not job:
+            return
+        curr = job.get(field, "")
+        if len(curr) > 40000:
+            curr = curr[-30000:] + "\n... [truncated]\n"
+        job[field] = curr + text
+
+
+def _record_history_entry(job_id: str) -> None:
+    with _JOBS_LOCK:
+        job = _JOBS.get(job_id)
+        if not job:
+            return
+        entry = {
+            "id": job["id"],
+            "app": job.get("app"),
+            "command": job.get("command"),
+            "status": job.get("status"),
+            "returnCode": job.get("return_code"),
+            "startedAt": job.get("started_at"),
+            "finishedAt": time.time(),
+            "env": job.get("env"),
+            "templateId": job.get("template_id"),
+        }
+
+    history_file = _get_history_file()
+    with _HISTORY_LOCK:
+        try:
+            with history_file.open("a", encoding="utf-8") as f:
+                f.write(json.dumps(entry) + "\n")
+        except Exception:
+            pass
+
+
+def _release_auto_chain_configured(app: str, env: str) -> tuple[bool, str]:
+    deploy_cfg = load_deploy_config()
+    app_cfg = deploy_cfg.get("apps", {}).get(app, {})
+    chain_enabled = bool(app_cfg.get("auto_release_tag", False))
+    return chain_enabled, "release_full" if chain_enabled else ""
+
+
+def _trigger_chained_release(app: str, env: str, action_id: str, parent_job_id: str) -> None:
+    target_cmd = None
+    for c in get_commands(app).get("commands", []):
+        if c.get("templateId") == action_id:
+            target_cmd = c
+            break
+
+    if not target_cmd:
+        _record_history_entry(parent_job_id)
+        return
+
+    execute_command(
+        app=app,
+        command=target_cmd["key"],
+        runner=target_cmd.get("runner", "custom"),
+        env=env,
+        template_id=action_id,
+        flavor=env,
+        confirmed=True,
+        _assume_app_lock_held=True,
+    )
+
+
+def execute_command(
+    app: str,
+    command: str,
+    runner: str = "make",
+    env: str = "",
+    template_id: str = "",
+    flavor: str = "",
+    confirmed: bool = False,
+    _assume_app_lock_held: bool = False,
+) -> dict[str, Any]:
+    if not app or not command:
+        return {"success": False, "error": "App and command are required"}
+
+    if env and command.rstrip().endswith(" any"):
+        command = command.rstrip()[: -len(" any")] + f" {env}"
+
+    if _is_prod_store_deploy(command) and not confirmed:
+        return {
+            "success": False,
+            "error": f"This runs a PROD store deploy for '{app}' - resend with confirmed: true once explicitly approved.",
+            "needsConfirmation": True,
+        }
+
+    if not _assume_app_lock_held:
+        with _JOBS_LOCK:
+            existing = _APP_LOCKS.get(app)
+            if existing is not None:
+                return {
+                    "success": False,
+                    "error": (
+                        f"A deployment job is already running for '{app}' "
+                        f"({existing.get('flavor') or 'any flavor'}): {existing.get('command')}. "
+                        "Wait for it to finish, or stop it, before starting another."
+                    ),
+                    "code": "APP_BUSY",
+                    "runningJob": {
+                        "jobId": existing.get("job_id"),
+                        "flavor": existing.get("flavor"),
+                        "command": existing.get("command"),
+                        "startedAt": existing.get("started_at"),
+                    },
+                }
+            _APP_LOCKS[app] = {
+                "job_id": None,
+                "flavor": flavor,
+                "command": command,
+                "started_at": time.time(),
+            }
+
+    try:
+        TMP_DIR.mkdir(parents=True, exist_ok=True)
+    except Exception:
+        pass
+
+    child_env = os.environ.copy()
+    child_env["TMPDIR"] = str(TMP_DIR)
+    child_env["TMP"] = str(TMP_DIR)
+    child_env["TEMP"] = str(TMP_DIR)
+    child_env["DASHBOARD_SCRIPTS_PATH"] = str(FEATURE_DIR / "scripts")
+
+    if runner == "custom":
+        shell_bin = shutil.which("bash") or shutil.which("zsh") or os.environ.get("SHELL") or "/bin/sh"
+        cmd = [shell_bin, "-c", command]
+        cmd_str = command
+    elif runner == "melos":
+        cmd = ["melos", "run", command]
+        cmd_str = f"melos run {command}"
+    else:
+        cmd = ["make", command]
+        cmd_str = f"make {command}"
+
+    job_id = _new_job_id()
+    try:
+        process = subprocess.Popen(
+            cmd,
+            cwd=WORKSPACE_ROOT,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=False,
+            start_new_session=True,
+            bufsize=0,
+            env=child_env,
+        )
+    except Exception as exc:
+        if not _assume_app_lock_held:
+            with _JOBS_LOCK:
+                _APP_LOCKS.pop(app, None)
+        return {"success": False, "error": str(exc)}
+
+    with _JOBS_LOCK:
+        _JOBS[job_id] = {
+            "id": job_id,
+            "command": cmd_str,
+            "status": "running",
+            "return_code": None,
+            "output": "",
+            "error": "",
+            "pid": process.pid,
+            "pgid": process.pid,
+            "process": process,
+            "app": app,
+            "template_id": template_id,
+            "env": env,
+            "started_at": time.time(),
+        }
+        lock_entry = _APP_LOCKS.get(app)
+        if lock_entry is not None:
+            lock_entry["job_id"] = job_id
+            lock_entry["command"] = cmd_str
+        else:
+            _APP_LOCKS[app] = {
+                "job_id": job_id,
+                "flavor": flavor,
+                "command": cmd_str,
+                "started_at": time.time(),
+            }
+
+    def stream_pipe(pipe, field: str) -> None:
+        try:
+            if pipe is None:
+                return
+            while True:
+                line = pipe.readline()
+                if not line:
+                    break
+                try:
+                    text = line.decode("utf-8")
+                except UnicodeDecodeError:
+                    text = line.decode("utf-8", errors="replace")
+                _append_job_log(job_id, field, text)
+        finally:
+            try:
+                if pipe is not None:
+                    pipe.close()
+            except Exception:
+                pass
+
+    threading.Thread(target=stream_pipe, args=(process.stdout, "output"), daemon=True).start()
+    threading.Thread(target=stream_pipe, args=(process.stderr, "error"), daemon=True).start()
+
+    def finish_job() -> None:
+        process.wait()
+        with _JOBS_LOCK:
+            job = _JOBS.get(job_id)
+            if not job:
+                return
+            job["return_code"] = process.returncode
+            status = "stopped" if job.get("status") == "stopping" else ("success" if process.returncode == 0 else "error")
+            job.pop("process", None)
+
+        should_chain = False
+        action_id = ""
+        if status == "success" and template_id in STORE_UPLOAD_TEMPLATE_IDS:
+            should_chain, action_id = _release_auto_chain_configured(app, env)
+
+        with _JOBS_LOCK:
+            job = _JOBS.get(job_id)
+            if job:
+                job["status"] = "chaining" if should_chain else status
+            if not should_chain:
+                held = _APP_LOCKS.get(app)
+                if held is not None and held.get("job_id") == job_id:
+                    _APP_LOCKS.pop(app, None)
+
+        if should_chain:
+            _trigger_chained_release(app, env, action_id, job_id)
+        else:
+            _record_history_entry(job_id)
+
+    threading.Thread(target=finish_job, daemon=True).start()
+    return {"success": True, "jobId": job_id, "command": cmd_str}
+
+
+def get_job(job_id: Optional[str]) -> dict[str, Any]:
+    if not job_id:
+        return {"success": False, "error": "Missing job id"}
+    with _JOBS_LOCK:
+        job = _JOBS.get(str(job_id))
+        if not job:
+            return {"success": False, "error": "Job not found"}
+        payload = {k: v for k, v in job.items() if k != "process"}
+    return {"success": True, "job": payload}
+
+
+def stop_job(job_id: Optional[str]) -> dict[str, Any]:
+    if not job_id:
+        return {"success": False, "error": "Missing jobId"}
+
+    with _JOBS_LOCK:
+        job = _JOBS.get(str(job_id))
+        if not job:
+            return {"success": False, "error": "Job not found"}
+        process = job.get("process")
+        if process is None:
+            return {"success": False, "error": "Job is not running"}
+        job["status"] = "stopping"
+
+    try:
+        pgid = job.get("pgid")
+        if pgid:
+            os.killpg(int(pgid), signal.SIGTERM)
+        else:
+            process.terminate()
+    except Exception:
+        pass
+
+    def kill_later() -> None:
+        try:
+            process.wait(timeout=5)
+        except Exception:
+            try:
+                pgid = job.get("pgid")
+                if pgid:
+                    os.killpg(int(pgid), signal.SIGKILL)
+                else:
+                    process.kill()
+            except Exception:
+                pass
+
+    threading.Thread(target=kill_later, daemon=True).start()
+    return {"success": True, "message": "Stop requested"}
+
+
+def get_deployment_history(limit: int = 50, app: str = "", flavor: str = "", status: str = "") -> dict[str, Any]:
+    results: list[dict[str, Any]] = []
+
+    def scan_file(fpath: Path) -> None:
+        if not fpath.exists():
+            return
+        try:
+            lines = fpath.read_text(encoding="utf-8").splitlines()
+        except Exception:
+            return
+        for raw in reversed(lines):
+            if len(results) >= limit:
+                return
+            raw = raw.strip()
+            if not raw:
+                continue
+            try:
+                entry = json.loads(raw)
+            except Exception:
+                continue
+            if app and entry.get("app") != app:
+                continue
+            if flavor and entry.get("flavor") != flavor:
+                continue
+            if status and entry.get("status") != status:
+                continue
+            results.append(entry)
+
+    history_file = _get_history_file()
+    with _HISTORY_LOCK:
+        scan_file(history_file)
+        if len(results) < limit:
+            scan_file(history_file.parent / (history_file.name + ".1"))
+
+    return {"success": True, "entries": results, "count": len(results)}
+
+
+BATCH_ELIGIBLE_TEMPLATE_IDS = {
+    "deploy_both", "deploy_aab", "deploy_ipa", "upload_aab", "upload_ipa",
+    "build_aab", "build_ipa", "build_apk", "build_ipa_device",
+}
+
+
+def get_batch_deploy_plan(flavor: str, template_id: str = "auto") -> dict[str, Any]:
+    if not flavor:
+        return {"success": False, "error": "flavor is required"}
+    if template_id and template_id != "auto" and template_id not in BATCH_ELIGIBLE_TEMPLATE_IDS:
+        return {"success": False, "error": f"Unsupported batch template: {template_id}"}
+
+    plan: list[dict[str, Any]] = []
+    for app in get_apps().get("apps", []):
+        app_id = app["id"]
+        by_template = {
+            c["templateId"]: c
+            for c in get_commands(app_id).get("commands", [])
+            if c.get("flavor") == flavor
+        }
+        entry: dict[str, Any] = {"appId": app_id, "appName": app.get("name", app_id), "color": app.get("color", "#6366f1")}
+
+        def _use(cmd: dict[str, Any]) -> None:
+            entry.update({
+                "templateId": cmd["templateId"], "templateName": cmd["name"],
+                "command": cmd["key"], "runner": cmd["runner"],
+                "willRun": True, "skipReason": None
+            })
+
+        if template_id and template_id != "auto":
+            cmd = by_template.get(template_id)
+            if cmd:
+                _use(cmd)
+            else:
+                entry.update({"templateId": template_id, "templateName": template_id, "command": None, "runner": None, "willRun": False, "skipReason": f"No command configured for {flavor}"})
+        else:
+            if "deploy_both" in by_template:
+                _use(by_template["deploy_both"])
+            elif "deploy_ipa" in by_template and "deploy_aab" not in by_template:
+                _use(by_template["deploy_ipa"])
+            elif "deploy_aab" in by_template and "deploy_ipa" not in by_template:
+                _use(by_template["deploy_aab"])
+            elif "build_aab" in by_template:
+                _use(by_template["build_aab"])
+            else:
+                entry.update({"templateId": "none", "templateName": "None", "command": None, "runner": None, "willRun": False, "skipReason": f"No deploy commands available for {flavor}"})
+        plan.append(entry)
+
+    return {"success": True, "flavor": flavor, "templateId": template_id, "plan": plan, "appCount": len(plan), "runnableCount": sum(1 for e in plan if e.get("willRun"))}
+
+
+def _app_has_ios(app_id: str) -> bool:
+    app_dir = WORKSPACE_ROOT / "apps" / app_id
+    return (app_dir / "ios").exists()
+
+
+def _run_cli(args: list[str], input_bytes: Optional[bytes] = None, timeout: float = 5.0) -> tuple[int, bytes, bytes]:
+    try:
+        r = subprocess.run(args, input=input_bytes, capture_output=True, timeout=timeout)
+        return r.returncode, r.stdout, r.stderr
+    except Exception:
+        return 1, b"", b""
+
+
+def _find_keychain_distribution_certs() -> list[dict]:
+    rc, out, _ = _run_cli(["security", "find-certificate", "-a", "-c", "Apple Distribution", "-p", "login.keychain"])
+    if rc != 0 or not out:
+        return []
+    pem_blocks = re.findall(rb"-----BEGIN CERTIFICATE-----.*?-----END CERTIFICATE-----", out, re.DOTALL)
+    results = []
+    for block in pem_blocks:
+        rc2, out2, _ = _run_cli(["openssl", "x509", "-noout", "-subject", "-enddate", "-fingerprint", "-sha1"], input_bytes=block)
+        if rc2 != 0:
+            continue
+        text = out2.decode(errors="replace")
+        end_match = re.search(r"notAfter=(.+)", text)
+        subj_match = re.search(r"subject=(.+)", text)
+        expires_on = None
+        if end_match:
+            try:
+                expires_on = datetime.strptime(end_match.group(1).strip(), "%b %d %H:%M:%S %Y %Z").date().isoformat()
+            except Exception:
+                pass
+        if expires_on:
+            results.append({"name": subj_match.group(1).strip() if subj_match else None, "expiresOn": expires_on})
+    return sorted(results, key=lambda c: c["expiresOn"])
+
+
+def _find_local_mobileprovision_files(app_id: str) -> list[Path]:
+    search_dir = WORKSPACE_ROOT / "private_keys" / app_id
+    if not search_dir.exists():
+        return []
+    return list(search_dir.rglob("*.mobileprovision"))
+
+
+def _read_mobileprovision_metadata(path: Path) -> Optional[dict]:
+    rc, out, _ = _run_cli(["security", "cms", "-D", "-i", str(path)])
+    if rc != 0 or not out:
+        return None
+    try:
+        plist = plistlib.loads(out)
+    except Exception:
+        return None
+    expires = plist.get("ExpirationDate")
+    entitlements = plist.get("Entitlements", {}) or {}
+    return {
+        "path": str(path),
+        "name": plist.get("Name"),
+        "uuid": plist.get("UUID"),
+        "applicationIdentifier": entitlements.get("application-identifier"),
+        "isDistributionStyle": "ProvisionedDevices" not in plist,
+        "expiresOn": expires.date().isoformat() if hasattr(expires, "date") else None,
+    }
+
+
+def _select_matching_profile(candidates: list[dict], app_id: str, flavor: str) -> Optional[dict]:
+    if not candidates:
+        return None
+    deploy_cfg = load_deploy_config()
+    app_cfg = deploy_cfg.get("apps", {}).get(app_id, {})
+    bundle_id = str(app_cfg.get(f"bundle_id_{flavor}") or app_cfg.get("bundle_id_prod") or "").strip()
+    scored = []
+    for c in candidates:
+        app_identifier = str(c.get("applicationIdentifier") or "")
+        matches_bundle = bool(bundle_id) and app_identifier.endswith(bundle_id)
+        scored.append((matches_bundle, c.get("isDistributionStyle", False), c))
+    scored.sort(key=lambda t: (t[0], t[1]), reverse=True)
+    return scored[0][2] if scored else None
+
+
+def _find_last_distribution_summary(app_id: str) -> Optional[Path]:
+    candidate = WORKSPACE_ROOT / "apps" / app_id / "build" / "ios" / "ipa" / "DistributionSummary.plist"
+    return candidate if candidate.exists() else None
+
+
+def _parse_distribution_summary_expiry(raw: str) -> dict:
+    try:
+        a, b, yy = (int(x) for x in raw.split("/"))
+    except Exception:
+        return {"raw": raw, "expiresOn": None, "formatConfidence": "unparseable"}
+    year = 2000 + yy
+    if a > 12:
+        day, month = a, b
+    elif b > 12:
+        day, month = b, a
+    else:
+        return {"raw": raw, "expiresOn": None, "formatConfidence": "ambiguous"}
+    try:
+        d = date(year, month, day)
+        return {"raw": raw, "expiresOn": d.isoformat(), "formatConfidence": "day_first_unambiguous"}
+    except ValueError:
+        return {"raw": raw, "expiresOn": None, "formatConfidence": "unparseable"}
+
+
+def check_ios_expiry(app: str, flavor: str = "prod") -> dict[str, Any]:
+    if not app:
+        return {"success": False, "error": "app is required"}
+    if not _app_has_ios(app):
+        return {"success": True, "app": app, "flavor": flavor, "status": "not_ios_app"}
+
+    warnings: list[str] = []
+    now = datetime.utcnow()
+
+    def _status_for(expires_on: Optional[str]) -> str:
+        if not expires_on:
+            return "unknown"
+        days = (date.fromisoformat(expires_on) - now.date()).days
+        if days < 0:
+            return "expired"
+        if days < EXPIRY_WARNING_THRESHOLD_DAYS:
+            return "warning"
+        return "ok"
+
+    certs = _find_keychain_distribution_certs()
+    cert_result = None
+    if certs:
+        best = certs[0]
+        cert_result = {**best, "source": "keychain", "confidence": "high", "status": _status_for(best["expiresOn"]), "candidates": certs if len(certs) > 1 else None}
+        if len(certs) > 1:
+            warnings.append(f"{len(certs)} 'Apple Distribution' identities found in Keychain - showing the soonest-expiring; verify which one Xcode will actually pick.")
+
+    profile_result = None
+    local_files = _find_local_mobileprovision_files(app)
+    profiles = [m for m in (_read_mobileprovision_metadata(p) for p in local_files) if m]
+    matched = _select_matching_profile(profiles, app, flavor)
+    if matched:
+        profile_result = {**matched, "source": "local_mobileprovision", "confidence": "high", "status": _status_for(matched["expiresOn"])}
+
+    summary_path = _find_last_distribution_summary(app)
+    if summary_path and (not cert_result or not profile_result):
+        try:
+            summary = plistlib.load(summary_path.open("rb"))
+            build_key = next(iter(summary))
+            entry = summary[build_key][0]
+            cert_parsed = _parse_distribution_summary_expiry(entry["certificate"]["dateExpires"])
+            profile_parsed = _parse_distribution_summary_expiry(entry["profile"]["dateExpires"])
+            stale_days = (now - datetime.utcfromtimestamp(summary_path.stat().st_mtime)).days
+            if cert_result is None:
+                cert_result = {**cert_parsed, "source": "last_build_summary", "confidence": "low", "bestEffort": True, "staleBuildDays": stale_days, "status": _status_for(cert_parsed["expiresOn"]) if cert_parsed["expiresOn"] else "unknown"}
+            if profile_result is None:
+                profile_result = {**profile_parsed, "source": "last_build_summary", "confidence": "low", "bestEffort": True, "staleBuildDays": stale_days, "status": _status_for(profile_parsed["expiresOn"]) if profile_parsed["expiresOn"] else "unknown"}
+            if "Cloud Managed" in entry["certificate"].get("type", "") and local_files:
+                warnings.append("Local .mobileprovision file(s) found on disk, but the last real build was signed with a Cloud Managed (Xcode-automatic) identity - the local files may be stale test artifacts, not what will actually be used.")
+        except Exception:
+            pass
+
+    return {
+        "success": True,
+        "app": app,
+        "flavor": flavor,
+        "thresholdDays": EXPIRY_WARNING_THRESHOLD_DAYS,
+        "checkedAt": now.isoformat() + "Z",
+        "certificate": cert_result or {"status": "unknown", "source": "none"},
+        "provisioningProfile": profile_result or {"status": "unknown", "source": "none"},
+        "warnings": warnings,
+    }

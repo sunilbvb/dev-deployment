@@ -1,8 +1,11 @@
 #!/usr/bin/env python3
 import argparse
+import hmac
 import http.server
+import hashlib
 import io
 import json
+import os
 import sys
 from email.parser import BytesFeedParser
 from pathlib import Path
@@ -10,12 +13,21 @@ from urllib.parse import parse_qs, urlparse
 
 import router
 
-
 FRONTEND_DIR = Path(__file__).resolve().parents[1] / "frontend"
-# Shared css/js/assets are vendored once at the repo-root frontend/ dir and
-# referenced the same way by every feature - not duplicated per feature.
 SHARED_FRONTEND_DIR = Path(__file__).resolve().parents[3] / "frontend"
 SHARED_ASSET_PREFIXES = ("css/", "js/", "assets/")
+
+
+def _get_auth_token() -> str:
+    token = os.environ.get("DEPLOYMENT_AUTH_TOKEN", "").strip()
+    if not token:
+        token_file = router.WORKSPACE_ROOT / ".dev-dashboard" / "auth_token.txt"
+        if token_file.exists():
+            try:
+                token = token_file.read_text(encoding="utf-8").strip()
+            except Exception:
+                pass
+    return token
 
 
 def _content_type(path: Path) -> str:
@@ -35,18 +47,56 @@ def _content_type(path: Path) -> str:
 
 
 class DeploymentHandler(http.server.SimpleHTTPRequestHandler):
+    def _is_allowed_origin(self, origin: str) -> bool:
+        if not origin:
+            return True
+        parsed = urlparse(origin)
+        host_header = self.headers.get("Host", "")
+        # Allow localhost and 127.0.0.1 or exact Host match
+        if parsed.hostname in ("localhost", "127.0.0.1", "0.0.0.0"):
+            return True
+        if host_header and (parsed.netloc == host_header or parsed.hostname == host_header.split(":")[0]):
+            return True
+        return False
+
     def end_headers(self) -> None:
-        self.send_header("Access-Control-Allow-Origin", "*")
-        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-        self.send_header("Access-Control-Allow-Headers", "Content-Type")
+        origin = self.headers.get("Origin", "")
+        if origin and self._is_allowed_origin(origin):
+            self.send_header("Access-Control-Allow-Origin", origin)
+            self.send_header("Access-Control-Allow-Credentials", "true")
+            self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+            self.send_header("Access-Control-Allow-Headers", "Content-Type, X-API-Token, X-Webhook-Secret, X-Hub-Signature-256")
         self.send_header("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
         super().end_headers()
 
     def do_OPTIONS(self) -> None:
+        origin = self.headers.get("Origin", "")
+        if origin and not self._is_allowed_origin(origin):
+            self.send_response(403)
+            self.end_headers()
+            return
         self.send_response(204)
         self.end_headers()
 
+    def _verify_auth(self) -> bool:
+        expected_token = _get_auth_token()
+        if not expected_token:
+            return True  # If no auth token configured, fallback to standard origin/CSRF checks
+
+        token = self.headers.get("X-API-Token", "").strip()
+        if not token:
+            parsed = urlparse(self.path)
+            query = parse_qs(parsed.query)
+            token = query.get("token", [""])[0].strip()
+
+        return hmac.compare_digest(token, expected_token)
+
     def do_GET(self) -> None:
+        origin = self.headers.get("Origin", "")
+        if origin and not self._is_allowed_origin(origin):
+            self.send_error(403, "Cross-origin request rejected")
+            return
+
         parsed = urlparse(self.path)
         if parsed.path == "/api/deployment/workspaces":
             self.write_json(router.get_workspaces_list())
@@ -123,7 +173,6 @@ class DeploymentHandler(http.server.SimpleHTTPRequestHandler):
         return super().do_GET()
 
     def _is_safe_static_path(self, path: str) -> bool:
-        """Refuse to serve anything outside the intended static root (path traversal guard)."""
         parsed = urlparse(path)
         relative = parsed.path.lstrip("/") or "index.html"
         base_dir = SHARED_FRONTEND_DIR if relative.startswith(SHARED_ASSET_PREFIXES) else FRONTEND_DIR
@@ -131,20 +180,26 @@ class DeploymentHandler(http.server.SimpleHTTPRequestHandler):
         return candidate == base_dir or base_dir in candidate.parents
 
     def do_POST(self) -> None:
+        origin = self.headers.get("Origin", "")
+        if origin and not self._is_allowed_origin(origin):
+            self.send_error(403, "Cross-origin request rejected")
+            return
+
         parsed = urlparse(self.path)
         content_type_header = self.headers.get("Content-Type", "")
 
-        # Read raw body bytes once (stream can only be consumed once)
         try:
             length = int(self.headers.get("Content-Length", 0))
             raw_body = self.rfile.read(length) if length else b""
         except Exception:
             raw_body = b""
 
-        # --- Multipart upload routes (must branch before JSON parsing) ---
+        # --- Multipart upload routes ---
         if parsed.path == "/api/deployment/p8/upload" and content_type_header.startswith("multipart/form-data"):
-            # Parse multipart/form-data using email.parser (cgi module removed in Python 3.13+)
-            # Reconstruct a full MIME message so BytesFeedParser can parse parts.
+            if not self._verify_auth():
+                self.write_json({"success": False, "error": "Unauthorized API token"}, status=401)
+                return
+
             mime_header = f"Content-Type: {content_type_header}\r\n\r\n".encode()
             parser = BytesFeedParser()
             parser.feed(mime_header)
@@ -157,7 +212,6 @@ class DeploymentHandler(http.server.SimpleHTTPRequestHandler):
 
             for part in msg.get_payload():
                 disposition = part.get("Content-Disposition", "")
-                # Extract 'name' from Content-Disposition header
                 name = ""
                 for seg in disposition.split(";"):
                     seg = seg.strip()
@@ -179,20 +233,53 @@ class DeploymentHandler(http.server.SimpleHTTPRequestHandler):
             self.write_json(router.upload_p8_key(app_id, file_name, file_content, issuer_id))
             return
 
-        # Parse JSON body for all other routes
+        # Enforce strict application/json content type for API POST requests
+        if not content_type_header.startswith("application/json"):
+            self.write_json({"success": False, "error": "Content-Type must be application/json"}, status=415)
+            return
+
+        if parsed.path != "/api/deployment/webhook" and not self._verify_auth():
+            self.write_json({"success": False, "error": "Unauthorized API token"}, status=401)
+            return
+
         try:
             data = json.loads(raw_body.decode("utf-8")) if raw_body else {}
         except Exception:
             data = {}
 
         if parsed.path == "/api/deployment/execute":
+            app_id = str(data.get("app") or "")
+            req_cmd = str(data.get("command") or "")
+            req_runner = str(data.get("runner") or "make")
+            req_template_id = str(data.get("templateId") or "")
+            req_flavor = str(data.get("flavor") or "")
+
+            # Security: lookup server-registered template command to avoid raw command injection
+            allowed_cmds = router.get_commands(app_id).get("commands", [])
+            target_cmd = None
+            for c in allowed_cmds:
+                if req_template_id and c.get("templateId") == req_template_id and (c.get("flavor") == req_flavor or c.get("flavor") == "any"):
+                    target_cmd = c
+                    break
+                elif c.get("key") == req_cmd:
+                    target_cmd = c
+                    break
+
+            if not target_cmd and req_cmd:
+                # If command doesn't match a server-generated template, check if runner is custom and block arbitrary command
+                self.write_json({"success": False, "error": "Custom arbitrary command execution is disabled. Select a valid template."}, status=400)
+                return
+
+            exec_cmd = target_cmd.get("key") if target_cmd else req_cmd
+            exec_runner = target_cmd.get("runner") if target_cmd else req_runner
+
             self.write_json(router.execute_command(
-                str(data.get("app") or ""),
-                str(data.get("command") or ""),
-                str(data.get("runner") or "make"),
+                app_id,
+                exec_cmd,
+                exec_runner,
                 str(data.get("env") or ""),
-                str(data.get("templateId") or ""),
-                str(data.get("flavor") or ""),
+                req_template_id or (target_cmd.get("templateId") if target_cmd else ""),
+                req_flavor or (target_cmd.get("flavor") if target_cmd else ""),
                 bool(data.get("confirmed") or False),
             ))
             return
@@ -201,9 +288,6 @@ class DeploymentHandler(http.server.SimpleHTTPRequestHandler):
             return
         if parsed.path == "/api/deployment/deploy-config/save":
             self.write_json(router.save_deploy_config(data))
-            return
-        if parsed.path == "/api/deployment/inject-melos":
-            self.write_json(router.inject_melos_scripts(str(data.get("app_id") or data.get("app") or "")))
             return
         if parsed.path == "/api/deployment/regenerate-commands":
             self.write_json(router.regenerate_commands())
@@ -218,7 +302,6 @@ class DeploymentHandler(http.server.SimpleHTTPRequestHandler):
             self.write_json(router.set_active_workspace(str(data.get("path") or "")))
             return
         if parsed.path == "/api/deployment/p8/upload":
-            # JSON body fallback (multipart case is handled above before read_json)
             import base64 as _b64
             filename = str(data.get("filename") or "AuthKey.p8")
             app_id = str(data.get("app_id") or "")
@@ -235,6 +318,22 @@ class DeploymentHandler(http.server.SimpleHTTPRequestHandler):
             self.write_json(router.upload_p8_key(app_id, filename, content_bytes, issuer_id))
             return
         if parsed.path == "/api/deployment/webhook":
+            # Webhook HMAC / Shared secret authentication
+            webhook_secret = os.environ.get("WEBHOOK_SECRET", "").strip()
+            if webhook_secret:
+                provided_secret = self.headers.get("X-Webhook-Secret", "").strip()
+                signature_header = self.headers.get("X-Hub-Signature-256", "").strip()
+                valid = False
+                if provided_secret and hmac.compare_digest(provided_secret, webhook_secret):
+                    valid = True
+                elif signature_header and signature_header.startswith("sha256="):
+                    expected_sig = hmac.new(webhook_secret.encode("utf-8"), raw_body, hashlib.sha256).hexdigest()
+                    valid = hmac.compare_digest(signature_header[7:], expected_sig)
+
+                if not valid:
+                    self.write_json({"success": False, "error": "Invalid webhook secret or HMAC signature"}, status=401)
+                    return
+
             app_id = str(data.get("app") or "")
             flavor = str(data.get("flavor") or "prod")
             template_id = str(data.get("templateId") or "build_aab")
@@ -254,7 +353,7 @@ class DeploymentHandler(http.server.SimpleHTTPRequestHandler):
                 flavor,
                 template_id,
                 flavor,
-                True,
+                bool(data.get("confirmed") or False),
             ))
             return
         self.write_json({"success": False, "error": "Unknown endpoint"}, status=404)
@@ -298,14 +397,6 @@ class DeploymentHandler(http.server.SimpleHTTPRequestHandler):
 
         self.send_error(404, "Icon not found")
 
-    def read_json(self) -> dict:
-        try:
-            length = int(self.headers.get("Content-Length", 0))
-            raw = self.rfile.read(length).decode("utf-8") if length else "{}"
-            return json.loads(raw or "{}")
-        except Exception:
-            return {}
-
     def write_json(self, payload: dict, status: int = 200) -> None:
         body = json.dumps(payload).encode("utf-8")
         self.send_response(status)
@@ -320,6 +411,10 @@ def main() -> int:
     parser.add_argument("--port", type=int, default=18112)
     parser.add_argument("--host", default="localhost", help="Bind address (default: localhost)")
     args = parser.parse_args()
+
+    token = _get_auth_token()
+    if token:
+        print(f"🔑 Auth Token Active: {token[:4]}...{token[-4:]}")
 
     server = http.server.ThreadingHTTPServer((args.host, args.port), DeploymentHandler)
     print(f"Deployment app: http://{args.host}:{args.port}")
