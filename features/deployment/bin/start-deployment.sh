@@ -3,7 +3,7 @@
 # Deployment Console — Standalone Launcher
 # Starts features/deployment as its own independent server.
 
-set -e
+set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 FEATURE_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
@@ -21,7 +21,7 @@ DEFAULT_PORT="${DEPLOYMENT_PORT:-18112}"
 export DEPLOYMENT_PORT="$DEFAULT_PORT"
 
 if [ -f "$PID_FILE" ]; then
-    PID=$(cat "$PID_FILE")
+    PID="$(cat "$PID_FILE")"
     if kill -0 "$PID" 2>/dev/null; then
         echo "❌ Deployment console is already running (PID: $PID)"
         echo "🌐 Access it at: http://localhost:$DEPLOYMENT_PORT"
@@ -36,7 +36,7 @@ fi
 # Point router.py at the active workspace
 ACTIVE_WORKSPACE_FILE="$REPO_ROOT/config/active_workspace.txt"
 if [ -f "$ACTIVE_WORKSPACE_FILE" ]; then
-    CANDIDATE_WORKSPACE="$(cat "$ACTIVE_WORKSPACE_FILE" | tr -d '\r\n' | xargs)"
+    CANDIDATE_WORKSPACE="$(tr -d '\r\n' < "$ACTIVE_WORKSPACE_FILE" | xargs)"
     if [ -n "$CANDIDATE_WORKSPACE" ] && [ -d "$CANDIDATE_WORKSPACE" ]; then
         export WORKSPACE_ROOT="$CANDIDATE_WORKSPACE"
     else

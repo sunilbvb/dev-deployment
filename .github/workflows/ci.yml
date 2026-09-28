@@ -17,6 +17,16 @@ jobs:
         with:
           python-version: '3.11'
 
+      - name: Run Ruff Linter
+        run: |
+          pip install ruff
+          ruff check .
+
+      - name: Run ShellCheck
+        run: |
+          sudo apt-get update && sudo apt-get install -y shellcheck
+          find . -name "*.sh" -not -path "*/.*" -exec shellcheck {} +
+
       - name: Run Unit Tests
         run: |
           python3 -m unittest discover tests

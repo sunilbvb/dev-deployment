@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -euo pipefail
 #------------------------------------------------------------------------------
 # ios_upload.sh - iOS Deployment upload automation functions
 #------------------------------------------------------------------------------
@@ -7,7 +8,15 @@
 # runWithIosEnv - Execute commands with iOS environment variables
 #------------------------------------------------------------------------------
 runWithIosEnv() {
-    local command="${1:-}"
+    local -a cmd=("$@")
+    if [ "${#cmd[@]}" -eq 0 ]; then
+        print_command_required_error
+        return 1
+    fi
+    if [ "${#cmd[@]}" -eq 1 ] && [[ "${cmd[0]}" == *" "* ]]; then
+        read -r -a cmd <<< "${cmd[0]}"
+    fi
+
     local bundle_gemfile="${BUNDLE_GEMFILE:-}"
     if [ -z "$bundle_gemfile" ]; then
         local deployment_fastlane_dir_for_gemfile
@@ -19,13 +28,8 @@ runWithIosEnv() {
         fi
     fi
     
-    # Validate command parameter
-    if [ -z "$command" ]; then
-        print_command_required_error
-        return 1
-    fi
-    
-    if [[ "$command" == *"bundle exec"* ]]; then
+    local cmd_str="${cmd[*]}"
+    if [[ "$cmd_str" == *"bundle exec"* ]]; then
         if ! BUNDLE_GEMFILE="$bundle_gemfile" bundle check >/dev/null 2>&1; then
             print_installing_ruby_gems
             BUNDLE_GEMFILE="$bundle_gemfile" bundle install || true
@@ -48,7 +52,7 @@ runWithIosEnv() {
     APPLE_API_KEY_PATH="${APPLE_API_KEY_PATH:-}" \
     IOS_IPA_PATH="${IOS_IPA_PATH:-}" \
     IPA_PATH="${IPA_PATH:-}" \
-    eval "$command"
+    "${cmd[@]}"
 }
 
 #------------------------------------------------------------------------------
@@ -59,7 +63,8 @@ upload_via_fastlane() {
     print_uploading_via_fastlane
     local deployment_fastlane_dir
     deployment_fastlane_dir="$(resolveDeploymentFastlaneDir)" || return 1
-    if ! _retryUpload "TestFlight upload (Fastlane)" runWithIosEnv "cd '$deployment_fastlane_dir' && bundle exec fastlane ios testflight_build"; then
+    local -a cmd=(bundle exec fastlane ios testflight_build)
+    if ! ( cd "$deployment_fastlane_dir" && _retryUpload "TestFlight upload (Fastlane)" runWithIosEnv "${cmd[@]}" ); then
         print_testflight_upload_failed_fastlane_with_env "$env_name"
         return 1
     fi
@@ -74,7 +79,8 @@ upload_via_altool() {
     local apple_issuer="${3:-}"
     print_uploading_via_altool
     export IPA_PATH="$ipa_path"
-    if ! _retryUpload "App Store upload (altool)" runWithIosEnv "xcrun altool --upload-app --type ios --file '$IPA_PATH' --apiKey '$apple_key' --apiIssuer '$apple_issuer'"; then
+    local -a cmd=(xcrun altool --upload-app --type ios --file "$IPA_PATH" --apiKey "$apple_key" --apiIssuer "$apple_issuer")
+    if ! _retryUpload "App Store upload (altool)" runWithIosEnv "${cmd[@]}"; then
         print_app_store_upload_failed_altool
         return 1
     fi

@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -euo pipefail
 #------------------------------------------------------------------------------
 # ios_diagnostics.sh - iOS Build & Deploy Diagnostic Output Printers
 #------------------------------------------------------------------------------

@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -euo pipefail
 #------------------------------------------------------------------------------
 # android_diagnostics.sh - Android Build & Deploy Diagnostic Output Printers
 #------------------------------------------------------------------------------
@@ -17,7 +18,7 @@ print_service_account_missing_error() {
     local expected_workspace_path
     expected_workspace_path="${MELOS_ROOT_PATH:-}/private_keys/play-store-deployer.json"
 
-    echo "❌ ERROR: Service account file not found"
+    echo "❌ ERROR: Service account file not found for app: ${app_name:-<unspecified>}"
     echo "   Expected path: $service_account_json"
     echo ""
     echo "📋 SOLUTION:"

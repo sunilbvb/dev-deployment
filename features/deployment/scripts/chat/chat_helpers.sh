@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -euo pipefail
 #------------------------------------------------------------------------------
 # chat_helpers.sh - Google Chat Notification Helper & Driver Functions
 #------------------------------------------------------------------------------
@@ -8,7 +9,7 @@ resolve_env_json_path() {
   if [ -z "$candidate" ]; then return 1; fi
   if [ -f "$candidate" ]; then echo "$candidate"; return 0; fi
   local script_root
-  script_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." >/dev/null 2>&1 && pwd || true)"
+  script_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." >/dev/null 2>&1 && pwd)" || script_root=""
   if [ -n "$script_root" ] && [ -f "$script_root/$candidate" ]; then echo "$script_root/$candidate"; return 0; fi
   if [ -n "${MELOS_ROOT_PATH:-}" ] && [ -f "$MELOS_ROOT_PATH/$candidate" ]; then echo "$MELOS_ROOT_PATH/$candidate"; return 0; fi
   local git_root
@@ -318,17 +319,15 @@ send_chat_card() {
   platform_icon_json="$(derive_platform_icon_json "$CMD_STR")"
   app_icon="$(derive_app_icon)"
 
-  local status_text status_color status_emoji pipeline_stages_text
+  local status_text status_color status_emoji
   if [ "$EXIT_CODE" -eq 0 ]; then
     status_text="SUCCESS"
     status_color="#1D9E75"
     status_emoji="✅"
-    pipeline_stages_text="✅ Checkout  →  ✅ Build  →  ✅ Test  →  ✅ Package  →  ✅ Deploy"
   else
     status_text="FAILURE"
     status_color="#e74c3c"
     status_emoji="❌"
-    pipeline_stages_text="✅ Checkout  →  ❌ Failure  →  ⏭️ Skipped"
   fi
 
   local triggered_by
@@ -458,17 +457,21 @@ EOF
     fi
     echo "--- Sent Card Payload ---" >&2
     echo "$card_payload" >&2
+    local title="${TITLE:-Deployment Notification}"
+    local body="${BODY:-$escaped_context}"
     # Fallback to simple text if card payload fails
-    send_chat_text "$TITLE
-$BODY"
+    send_chat_text "$title
+$body"
     return 3
   fi
   rm -f "$response_body_file" >/dev/null 2>&1 || true
 
+  local fallback_title="${TITLE:-Deployment Notification}"
+  local fallback_body="${BODY:-$escaped_context}"
   # Also dispatch to Slack, Teams, and Discord if webhooks are configured
-  send_slack_notification "$TITLE" "$BODY" || true
-  send_teams_notification "$TITLE" "$BODY" || true
-  send_discord_notification "$TITLE" "$BODY" || true
+  send_slack_notification "$fallback_title" "$fallback_body" || true
+  send_teams_notification "$fallback_title" "$fallback_body" || true
+  send_discord_notification "$fallback_title" "$fallback_body" || true
 }
 
 send_slack_notification() {

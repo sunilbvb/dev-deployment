@@ -30,7 +30,7 @@ if [[ "$DRY_RUN" == "1" ]]; then
 fi
 
 echo "Applying replacement: .withOpacity(  ->  .withValues(alpha: "
-perl -0pi -e 's/\.withOpacity\(/.withValues(alpha: /g' $(rg --files -g'*.dart' "$ROOT/apps" "$ROOT/packages")
+rg --files -g'*.dart' "$ROOT/apps" "$ROOT/packages" | xargs -r perl -0pi -e 's/\.withOpacity\(/.withValues(alpha: /g'
 
 MATCHES_AFTER="$(count_matches)"
 echo "Done. Remaining .withOpacity(...) usage(s): $MATCHES_AFTER"

@@ -3,8 +3,8 @@ import argparse
 import hashlib
 import hmac
 import http.server
-import io
 import json
+import logging
 import os
 import secrets
 import sys
@@ -27,7 +27,7 @@ def _get_auth_token_file() -> Path:
         token_dir.mkdir(parents=True, exist_ok=True)
         token_dir.chmod(0o700)
     except Exception:
-        pass
+        logging.exception("Failed to create or set permissions on auth token directory")
     return token_dir / "auth_token.txt"
 
 
@@ -43,7 +43,7 @@ def _get_auth_token() -> str:
         try:
             token = token_file.read_text(encoding="utf-8").strip()
         except Exception:
-            pass
+            logging.exception("Failed to read auth token file")
 
     # Fallback check for legacy token location if user previously ran it
     if not token:
@@ -51,8 +51,13 @@ def _get_auth_token() -> str:
         if legacy_file.exists():
             try:
                 token = legacy_file.read_text(encoding="utf-8").strip()
+                if token:
+                    # Migrate to ~/.config and delete legacy file
+                    token_file.write_text(token, encoding="utf-8")
+                    token_file.chmod(0o600)
+                    legacy_file.unlink(missing_ok=True)
             except Exception:
-                pass
+                logging.exception("Failed to migrate legacy auth token file")
 
     if not token:
         token = secrets.token_hex(16)
@@ -60,7 +65,7 @@ def _get_auth_token() -> str:
             token_file.write_text(token, encoding="utf-8")
             token_file.chmod(0o600)
         except Exception:
-            pass
+            logging.exception("Failed to write new auth token file")
 
     os.environ["DEPLOYMENT_AUTH_TOKEN"] = token
     _SERVER_AUTH_TOKEN = token
@@ -114,6 +119,10 @@ class DeploymentHandler(http.server.SimpleHTTPRequestHandler):
             self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
             self.send_header("Access-Control-Allow-Headers", "Content-Type, X-API-Token, X-Webhook-Secret, X-Hub-Signature-256")
         self.send_header("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
+        self.send_header(
+            "Content-Security-Policy",
+            "default-src 'self'; script-src 'self' 'unsafe-inline' https://unpkg.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.jsdelivr.net; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https:; connect-src 'self';"
+        )
         super().end_headers()
 
     def do_OPTIONS(self) -> None:
@@ -272,8 +281,12 @@ class DeploymentHandler(http.server.SimpleHTTPRequestHandler):
 
         try:
             length = int(self.headers.get("Content-Length", 0))
+            if length > 1024 * 1024:
+                self.send_error(413, "Payload Too Large: Request body exceeds 1 MB limit")
+                return
             raw_body = self.rfile.read(length) if length else b""
         except Exception:
+            logging.exception("Failed to read POST request body")
             raw_body = b""
 
         # --- Webhook endpoint (authenticated via HMAC / shared secret) ---
@@ -302,6 +315,7 @@ class DeploymentHandler(http.server.SimpleHTTPRequestHandler):
             try:
                 data = json.loads(raw_body.decode("utf-8")) if raw_body else {}
             except Exception:
+                logging.exception("Failed to parse webhook JSON payload")
                 data = {}
 
             app_id = str(data.get("app") or "")
@@ -380,6 +394,7 @@ class DeploymentHandler(http.server.SimpleHTTPRequestHandler):
         try:
             data = json.loads(raw_body.decode("utf-8")) if raw_body else {}
         except Exception:
+            logging.exception("Failed to parse POST JSON payload")
             data = {}
 
         if parsed.path == "/api/deployment/execute":

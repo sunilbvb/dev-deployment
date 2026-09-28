@@ -1,4 +1,5 @@
 import json
+import logging
 import os
 import plistlib
 import re
@@ -10,10 +11,9 @@ import threading
 import time
 from datetime import date, datetime
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Optional
 
 from config import (
-    DASHBOARD_ROOT,
     FEATURE_DIR,
     TMP_DIR,
     SAFE_ID_PATTERN,
@@ -22,7 +22,6 @@ from config import (
     load_deploy_config,
 )
 from commands import (
-    _STORE_SHIPPING_ACTIONS,
     STORE_UPLOAD_TEMPLATE_IDS,
     _is_prod_store_deploy,
     get_commands,
@@ -33,6 +32,29 @@ _JOBS_LOCK = threading.Lock()
 _APP_LOCKS: dict[str, dict[str, Any]] = {}
 _HISTORY_LOCK = threading.Lock()
 EXPIRY_WARNING_THRESHOLD_DAYS = 30
+
+
+def _prune_jobs() -> None:
+    """Drop finished jobs older than 1 hour or when count of jobs exceeds 50."""
+    now = time.time()
+    with _JOBS_LOCK:
+        finished_jobs = []
+        for jid, j in list(_JOBS.items()):
+            if j.get("status") in ("success", "error", "stopped"):
+                finished_at = j.get("finished_at") or j.get("started_at", now)
+                # Drop if older than 1 hour (3600 seconds)
+                if now - finished_at > 3600:
+                    _JOBS.pop(jid, None)
+                else:
+                    finished_jobs.append((finished_at, jid))
+
+        # If still more than 50 jobs in total, prune oldest finished jobs
+        if len(_JOBS) > 50:
+            finished_jobs.sort(key=lambda x: x[0])
+            for _, jid in finished_jobs:
+                _JOBS.pop(jid, None)
+                if len(_JOBS) <= 50:
+                    break
 
 
 def _new_job_id() -> str:
@@ -79,8 +101,12 @@ def _record_history_entry(job_id: str) -> None:
         try:
             with history_file.open("a", encoding="utf-8") as f:
                 f.write(json.dumps(entry) + "\n")
+            if history_file.exists():
+                lines = history_file.read_text(encoding="utf-8").splitlines()
+                if len(lines) > 1000:
+                    history_file.write_text("\n".join(lines[-1000:]) + "\n", encoding="utf-8")
         except Exception:
-            pass
+            logging.exception("Failed to write deployment history entry")
 
 
 def _release_auto_chain_configured(app: str, env: str) -> tuple[bool, str]:
@@ -186,7 +212,7 @@ def execute_command(
     try:
         TMP_DIR.mkdir(parents=True, exist_ok=True)
     except Exception:
-        pass
+        logging.exception("Failed to create temporary directory")
 
     child_env = os.environ.copy()
     child_env["TMPDIR"] = str(TMP_DIR)
@@ -205,6 +231,7 @@ def execute_command(
         cmd = ["make", command]
         cmd_str = f"make {command}"
 
+    _prune_jobs()
     job_id = _new_job_id()
     try:
         process = subprocess.Popen(
@@ -269,19 +296,21 @@ def execute_command(
                 if pipe is not None:
                     pipe.close()
             except Exception:
-                pass
+                logging.exception("Failed to close process stream pipe")
 
     threading.Thread(target=stream_pipe, args=(process.stdout, "output"), daemon=True).start()
     threading.Thread(target=stream_pipe, args=(process.stderr, "error"), daemon=True).start()
 
     def finish_job() -> None:
         process.wait()
+        finished_ts = time.time()
         with _JOBS_LOCK:
             job = _JOBS.get(job_id)
             if not job:
                 return
             job["return_code"] = process.returncode
             status = "stopped" if job.get("status") == "stopping" else ("success" if process.returncode == 0 else "error")
+            job["finished_at"] = finished_ts
             job.pop("process", None)
 
         should_chain = False
@@ -302,6 +331,8 @@ def execute_command(
             _trigger_chained_release(app, env, action_id, job_id)
         else:
             _record_history_entry(job_id)
+
+        _prune_jobs()
 
     threading.Thread(target=finish_job, daemon=True).start()
     return {"success": True, "jobId": job_id, "command": cmd_str}
@@ -338,7 +369,7 @@ def stop_job(job_id: Optional[str]) -> dict[str, Any]:
         else:
             process.terminate()
     except Exception:
-        pass
+        logging.exception("Failed to terminate job process")
 
     def kill_later() -> None:
         try:
@@ -351,7 +382,7 @@ def stop_job(job_id: Optional[str]) -> dict[str, Any]:
                 else:
                     process.kill()
             except Exception:
-                pass
+                logging.exception("Failed to force-kill job process")
 
     threading.Thread(target=kill_later, daemon=True).start()
     return {"success": True, "message": "Stop requested"}
@@ -476,7 +507,7 @@ def _find_keychain_distribution_certs() -> list[dict]:
             try:
                 expires_on = datetime.strptime(end_match.group(1).strip(), "%b %d %H:%M:%S %Y %Z").date().isoformat()
             except Exception:
-                pass
+                logging.exception("Failed to parse certificate expiration date")
         if expires_on:
             results.append({"name": subj_match.group(1).strip() if subj_match else None, "expiresOn": expires_on})
     return sorted(results, key=lambda c: c["expiresOn"])
@@ -599,7 +630,7 @@ def check_ios_expiry(app: str, flavor: str = "prod") -> dict[str, Any]:
             if "Cloud Managed" in entry["certificate"].get("type", "") and local_files:
                 warnings.append("Local .mobileprovision file(s) found on disk, but the last real build was signed with a Cloud Managed (Xcode-automatic) identity - the local files may be stale test artifacts, not what will actually be used.")
         except Exception:
-            pass
+            logging.exception("Failed to parse distribution summary plist")
 
     return {
         "success": True,

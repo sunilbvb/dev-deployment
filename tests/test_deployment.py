@@ -1,20 +1,59 @@
-import json
-import os
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
 # Add backend directory to sys.path for importing modules
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "features" / "deployment" / "backend"))
 
-import config
 import commands
+import config
 import jobs
 import p8
-import router
 
 
 class TestDeploymentSecurityAndLogic(unittest.TestCase):
+
+    @classmethod
+    def setUpClass(cls):
+        cls._orig_ws = config.WORKSPACE_ROOT
+        cls.temp_dir = tempfile.TemporaryDirectory()
+        cls.temp_path = Path(cls.temp_dir.name).resolve()
+        config.WORKSPACE_ROOT = cls.temp_path
+
+        # Build fake Flutter app dummy_app_alpha
+        cls.app_dir = cls.temp_path / "dummy_app_alpha"
+        (cls.app_dir / "android" / "app").mkdir(parents=True, exist_ok=True)
+        (cls.app_dir / "ios" / "Runner").mkdir(parents=True, exist_ok=True)
+
+        (cls.app_dir / "pubspec.yaml").write_text(
+            "name: dummy_app_alpha\n"
+            "description: Fake flutter app for tests\n"
+            "version: 1.0.0+1\n"
+            "flutter:\n"
+            "  uses-material-design: true\n",
+            encoding="utf-8",
+        )
+        (cls.app_dir / "android" / "app" / "build.gradle").write_text(
+            'android {\n    defaultConfig {\n        applicationId "com.example.dummy_app_alpha"\n    }\n}\n',
+            encoding="utf-8",
+        )
+        (cls.app_dir / "ios" / "Runner" / "Info.plist").write_text(
+            '<?xml version="1.0" encoding="UTF-8"?>\n'
+            '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">\n'
+            '<plist version="1.0">\n'
+            '<dict>\n'
+            '    <key>CFBundleIdentifier</key>\n'
+            '    <string>com.example.dummyAppAlpha</string>\n'
+            '</dict>\n'
+            '</plist>\n',
+            encoding="utf-8",
+        )
+
+    @classmethod
+    def tearDownClass(cls):
+        config.WORKSPACE_ROOT = cls._orig_ws
+        cls.temp_dir.cleanup()
 
     def test_is_prod_store_deploy(self):
         # Valid prod store deploy commands
@@ -83,7 +122,7 @@ class TestDeploymentSecurityAndLogic(unittest.TestCase):
         self.assertFalse(res["has_flavors"])
 
     def test_inspect_workspace_path_detection(self):
-        res = config.inspect_workspace_path("/home/sunil-bakale/IdeaProjects/dummy_flutter_apps/dummy_app_alpha")
+        res = config.inspect_workspace_path(str(self.app_dir))
         self.assertTrue(res["success"])
         self.assertTrue(res["exists"])
         self.assertIsNotNone(res.get("detectedApp"))
