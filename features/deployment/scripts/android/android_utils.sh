@@ -569,16 +569,11 @@ buildAABRaw() {
     # Print environment config diagnostics
     logEnvironmentConfig "$secret_file"
     
-    # Only remove the AAB *output* directory - that's the only thing findAabFile()
-    # (called later) can pick a stale result from (e.g. a leftover .aab from a
-    # different flavor's earlier build). Wiping the whole build/ tree here was
-    # unnecessarily also destroying Gradle/Kotlin's own incremental-compilation
-    # state (build/app/intermediates, build/app/kotlin, build/.transforms, etc.),
-    # forcing every single Android build to fully recompile from scratch
-    # regardless of the local Gradle build cache being enabled - this is why
-    # bundleDevRelease's own timing crept from ~3min up to 5+min as the app grew.
-    echo "Cleaning stale AAB output (skipping flutter clean / full build/ wipe to preserve Gradle's incremental cache)..."
-    rm -rf build/app/outputs/bundle/
+    # Reverted back to full build/ wipe before every Android build to guarantee build correctness.
+    # Gradle's up-to-date checks can incorrectly treat native compile steps as unchanged
+    # and reuse stale binaries when only deleting the output folder.
+    echo "Cleaning build directory (wiping build/ to ensure clean compilation)..."
+    rm -rf build/
     echo "Running flutter pub get..."
     flutter pub get
     

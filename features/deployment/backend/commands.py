@@ -1,12 +1,13 @@
 import json
+import shlex
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from config import (
     DASHBOARD_ROOT,
-    WORKSPACE_ROOT,
     _detect_app_flavors,
     discover_workspace_config,
+    get_workspace_root,
     load_deploy_config,
     load_templates,
 )
@@ -41,18 +42,26 @@ def _resolve_command(template: str, app_id: str, flavor: str, deploy_cfg: dict[s
     android_package = app_cfg.get(f"android_package_{flavor}") or app_cfg.get("android_package_prod", f"com.example.{app_id}")
     apple_id = app_cfg.get("apple_id", "")
 
+    # Security: wrap all substituted values in shlex.quote to prevent command injection
+    safe_bundle_id = shlex.quote(str(bundle_id))
+    safe_android_package = shlex.quote(str(android_package))
+    safe_apple_id = shlex.quote(str(apple_id))
+    safe_app_id = shlex.quote(str(app_id))
+    safe_flavor = shlex.quote(str(flavor))
+
     if flavor in ("any", "none", "default"):
         res = template.replace("--flavor {flavor}", "").replace("-flavor {flavor}", "").replace("{flavor}", "").strip()
     else:
-        res = template.replace("{flavor}", flavor)
+        res = template.replace("{flavor}", safe_flavor)
 
     return (
         res
-        .replace("{bundle_id}", bundle_id)
-        .replace("{android_package}", android_package)
-        .replace("{apple_id}", apple_id)
-        .replace("{app_id}", app_id)
+        .replace("{bundle_id}", safe_bundle_id)
+        .replace("{android_package}", safe_android_package)
+        .replace("{apple_id}", safe_apple_id)
+        .replace("{app_id}", safe_app_id)
     )
+
 
 
 def _build_commands_from_templates(app_id: str, app_path_prefix: str, use_melos: bool, flavors: list[str], deploy_cfg: Optional[dict[str, Any]] = None) -> list[dict[str, Any]]:
@@ -123,13 +132,15 @@ def get_commands(app: str) -> dict[str, Any]:
 
     discover_workspace_config()
 
-    has_melos = any(WORKSPACE_ROOT.glob("melos*.yaml")) or (
-        (WORKSPACE_ROOT / "pubspec.yaml").exists()
-        and "melos:" in (WORKSPACE_ROOT / "pubspec.yaml").read_text(encoding="utf-8")
+    ws_root = get_workspace_root()
+    has_melos = any(ws_root.glob("melos*.yaml")) or (
+        (ws_root / "pubspec.yaml").exists()
+        and "melos:" in (ws_root / "pubspec.yaml").read_text(encoding="utf-8")
     )
 
-    use_apps_dir = (WORKSPACE_ROOT / "apps" / app).exists()
+    use_apps_dir = (ws_root / "apps" / app).exists()
     prefix = f"cd apps/{app} &&" if use_apps_dir else ""
+
 
     flavors = _detect_app_flavors(app)
     raw_commands = _build_commands_from_templates(app, prefix, has_melos and use_apps_dir, flavors)

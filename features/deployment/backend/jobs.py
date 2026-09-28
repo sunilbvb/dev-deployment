@@ -14,8 +14,8 @@ from config import (
     DASHBOARD_ROOT,
     FEATURE_DIR,
     TMP_DIR,
-    WORKSPACE_ROOT,
     get_apps,
+    get_workspace_root,
     load_deploy_config,
 )
 from commands import (
@@ -37,9 +37,10 @@ def _new_job_id() -> str:
 
 
 def _get_history_file() -> Path:
-    target_dir = WORKSPACE_ROOT / ".dev-dashboard"
+    target_dir = get_workspace_root() / ".dev-dashboard"
     target_dir.mkdir(parents=True, exist_ok=True)
     return target_dir / "deployment_history.jsonl"
+
 
 
 def _append_job_log(job_id: str, field: str, text: str) -> None:
@@ -136,12 +137,23 @@ def execute_command(
         with _JOBS_LOCK:
             existing = _APP_LOCKS.get(app)
             if existing is not None:
+                started_at = existing.get("started_at")
+                elapsed_sec = int(time.time() - started_at) if started_at else None
+                if elapsed_sec is not None:
+                    if elapsed_sec >= 60:
+                        m, s = divmod(elapsed_sec, 60)
+                        elapsed_str = f"running for {m}m {s}s" if s else f"running for {m}m"
+                    else:
+                        elapsed_str = f"running for {elapsed_sec}s"
+                else:
+                    elapsed_str = "running"
+
                 return {
                     "success": False,
                     "error": (
                         f"A deployment job is already running for '{app}' "
-                        f"({existing.get('flavor') or 'any flavor'}): {existing.get('command')}. "
-                        "Wait for it to finish, or stop it, before starting another."
+                        f"({existing.get('flavor') or 'any flavor'}) ({elapsed_str}): {existing.get('command')}. "
+                        "Wait for it to finish, check the History tab, or stop it before starting another."
                     ),
                     "code": "APP_BUSY",
                     "runningJob": {
@@ -149,6 +161,7 @@ def execute_command(
                         "flavor": existing.get("flavor"),
                         "command": existing.get("command"),
                         "startedAt": existing.get("started_at"),
+                        "elapsedSeconds": elapsed_sec,
                     },
                 }
             _APP_LOCKS[app] = {
@@ -184,7 +197,7 @@ def execute_command(
     try:
         process = subprocess.Popen(
             cmd,
-            cwd=WORKSPACE_ROOT,
+            cwd=get_workspace_root(),
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=False,
@@ -421,7 +434,7 @@ def get_batch_deploy_plan(flavor: str, template_id: str = "auto") -> dict[str, A
 
 
 def _app_has_ios(app_id: str) -> bool:
-    app_dir = WORKSPACE_ROOT / "apps" / app_id
+    app_dir = get_workspace_root() / "apps" / app_id
     return (app_dir / "ios").exists()
 
 
@@ -458,7 +471,7 @@ def _find_keychain_distribution_certs() -> list[dict]:
 
 
 def _find_local_mobileprovision_files(app_id: str) -> list[Path]:
-    search_dir = WORKSPACE_ROOT / "private_keys" / app_id
+    search_dir = get_workspace_root() / "private_keys" / app_id
     if not search_dir.exists():
         return []
     return list(search_dir.rglob("*.mobileprovision"))
@@ -500,8 +513,9 @@ def _select_matching_profile(candidates: list[dict], app_id: str, flavor: str) -
 
 
 def _find_last_distribution_summary(app_id: str) -> Optional[Path]:
-    candidate = WORKSPACE_ROOT / "apps" / app_id / "build" / "ios" / "ipa" / "DistributionSummary.plist"
+    candidate = get_workspace_root() / "apps" / app_id / "build" / "ios" / "ipa" / "DistributionSummary.plist"
     return candidate if candidate.exists() else None
+
 
 
 def _parse_distribution_summary_expiry(raw: str) -> dict:

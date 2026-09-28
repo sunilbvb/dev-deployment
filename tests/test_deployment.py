@@ -52,6 +52,26 @@ class TestDeploymentSecurityAndLogic(unittest.TestCase):
         self.assertTrue(res["success"])
         self.assertIsInstance(res["commands"], list)
 
+    def test_app_busy_lock_elapsed_time(self):
+        import time
+        with jobs._JOBS_LOCK:
+            jobs._APP_LOCKS["test_app_lock"] = {
+                "job_id": "job_123",
+                "flavor": "qa",
+                "command": "bash test.sh",
+                "started_at": time.time() - 150,
+            }
+        try:
+            res = jobs.execute_command("test_app_lock", "bash test.sh", flavor="qa")
+            self.assertFalse(res["success"])
+            self.assertEqual(res["code"], "APP_BUSY")
+            self.assertIn("running for 2m 30s", res["error"])
+            self.assertIn("check the History tab", res["error"])
+            self.assertEqual(res["runningJob"]["elapsedSeconds"], 150)
+        finally:
+            with jobs._JOBS_LOCK:
+                jobs._APP_LOCKS.pop("test_app_lock", None)
+
 
 if __name__ == "__main__":
     unittest.main()

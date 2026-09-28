@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 import argparse
+import hashlib
 import hmac
 import http.server
-import hashlib
 import io
 import json
 import os
+import secrets
 import sys
 from email.parser import BytesFeedParser
 from pathlib import Path
@@ -17,17 +18,37 @@ FRONTEND_DIR = Path(__file__).resolve().parents[1] / "frontend"
 SHARED_FRONTEND_DIR = Path(__file__).resolve().parents[3] / "frontend"
 SHARED_ASSET_PREFIXES = ("css/", "js/", "assets/")
 
+_SERVER_AUTH_TOKEN = ""
+
 
 def _get_auth_token() -> str:
+    global _SERVER_AUTH_TOKEN
+    if _SERVER_AUTH_TOKEN:
+        return _SERVER_AUTH_TOKEN
+
     token = os.environ.get("DEPLOYMENT_AUTH_TOKEN", "").strip()
     if not token:
-        token_file = router.WORKSPACE_ROOT / ".dev-dashboard" / "auth_token.txt"
+        token_file = router.get_workspace_root() / ".dev-dashboard" / "auth_token.txt"
         if token_file.exists():
             try:
                 token = token_file.read_text(encoding="utf-8").strip()
             except Exception:
                 pass
-    return token
+
+    if not token:
+        token = secrets.token_hex(16)
+        try:
+            target_dir = router.get_workspace_root() / ".dev-dashboard"
+            target_dir.mkdir(parents=True, exist_ok=True)
+            token_file = target_dir / "auth_token.txt"
+            token_file.write_text(token, encoding="utf-8")
+            token_file.chmod(0o600)
+        except Exception:
+            pass
+
+    os.environ["DEPLOYMENT_AUTH_TOKEN"] = token
+    _SERVER_AUTH_TOKEN = token
+    return _SERVER_AUTH_TOKEN
 
 
 def _content_type(path: Path) -> str:
@@ -47,17 +68,27 @@ def _content_type(path: Path) -> str:
 
 
 class DeploymentHandler(http.server.SimpleHTTPRequestHandler):
+    def _is_allowed_host(self) -> bool:
+        host_header = self.headers.get("Host", "").strip()
+        if not host_header:
+            return False
+        host_name = host_header.split(":")[0].lower()
+        allowed_hosts = {"localhost", "127.0.0.1"}
+        bind_host = getattr(self.server, "server_name", None) or getattr(self.server, "server_address", [None])[0]
+        if bind_host and isinstance(bind_host, str):
+            allowed_hosts.add(bind_host.lower())
+        return host_name in allowed_hosts
+
     def _is_allowed_origin(self, origin: str) -> bool:
         if not origin:
             return True
         parsed = urlparse(origin)
-        host_header = self.headers.get("Host", "")
-        # Allow localhost and 127.0.0.1 or exact Host match
-        if parsed.hostname in ("localhost", "127.0.0.1", "0.0.0.0"):
-            return True
-        if host_header and (parsed.netloc == host_header or parsed.hostname == host_header.split(":")[0]):
-            return True
-        return False
+        hostname = (parsed.hostname or "").lower()
+        allowed_hosts = {"localhost", "127.0.0.1"}
+        bind_host = getattr(self.server, "server_name", None) or getattr(self.server, "server_address", [None])[0]
+        if bind_host and isinstance(bind_host, str):
+            allowed_hosts.add(bind_host.lower())
+        return hostname in allowed_hosts
 
     def end_headers(self) -> None:
         origin = self.headers.get("Origin", "")
@@ -70,6 +101,9 @@ class DeploymentHandler(http.server.SimpleHTTPRequestHandler):
         super().end_headers()
 
     def do_OPTIONS(self) -> None:
+        if not self._is_allowed_host():
+            self.send_error(403, "Invalid Host header: DNS rebinding rejected")
+            return
         origin = self.headers.get("Origin", "")
         if origin and not self._is_allowed_origin(origin):
             self.send_response(403)
@@ -81,23 +115,30 @@ class DeploymentHandler(http.server.SimpleHTTPRequestHandler):
     def _verify_auth(self) -> bool:
         expected_token = _get_auth_token()
         if not expected_token:
-            return True  # If no auth token configured, fallback to standard origin/CSRF checks
-
+            return False
         token = self.headers.get("X-API-Token", "").strip()
         if not token:
-            parsed = urlparse(self.path)
-            query = parse_qs(parsed.query)
-            token = query.get("token", [""])[0].strip()
-
+            return False
         return hmac.compare_digest(token, expected_token)
 
     def do_GET(self) -> None:
+        if not self._is_allowed_host():
+            self.send_error(403, "Invalid Host header: DNS rebinding rejected")
+            return
+
         origin = self.headers.get("Origin", "")
         if origin and not self._is_allowed_origin(origin):
             self.send_error(403, "Cross-origin request rejected")
             return
 
         parsed = urlparse(self.path)
+
+        # Enforce API authentication on all GET endpoints
+        if parsed.path.startswith("/api/"):
+            if not self._verify_auth():
+                self.write_json({"success": False, "error": "Unauthorized: valid X-API-Token header required"}, status=401)
+                return
+
         if parsed.path == "/api/deployment/workspaces":
             self.write_json(router.get_workspaces_list())
             return
@@ -168,8 +209,26 @@ class DeploymentHandler(http.server.SimpleHTTPRequestHandler):
             self.send_header("Location", "/")
             self.end_headers()
             return
-        if parsed.path in ("", "/"):
-            self.path = "/index.html"
+
+        # Serve index.html with injected auth token for the legitimate dashboard
+        if parsed.path in ("", "/", "/index.html"):
+            index_path = FRONTEND_DIR / "index.html"
+            if index_path.exists():
+                html = index_path.read_text(encoding="utf-8")
+                token = _get_auth_token()
+                injected = f'<script>window.__DEPLOYMENT_TOKEN__ = "{token}";</script>'
+                if "<head>" in html:
+                    html = html.replace("<head>", f"<head>\n    {injected}", 1)
+                else:
+                    html = f"{injected}\n{html}"
+                body = html.encode("utf-8")
+                self.send_response(200)
+                self.send_header("Content-Type", "text/html; charset=utf-8")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+                return
+
         if not self._is_safe_static_path(self.path):
             self.send_error(403, "Forbidden")
             return
@@ -183,6 +242,10 @@ class DeploymentHandler(http.server.SimpleHTTPRequestHandler):
         return candidate == base_dir or base_dir in candidate.parents
 
     def do_POST(self) -> None:
+        if not self._is_allowed_host():
+            self.send_error(403, "Invalid Host header: DNS rebinding rejected")
+            return
+
         origin = self.headers.get("Origin", "")
         if origin and not self._is_allowed_origin(origin):
             self.send_error(403, "Cross-origin request rejected")
@@ -197,10 +260,62 @@ class DeploymentHandler(http.server.SimpleHTTPRequestHandler):
         except Exception:
             raw_body = b""
 
+        # --- Webhook endpoint (authenticated via HMAC / shared secret) ---
+        if parsed.path == "/api/deployment/webhook":
+            webhook_secret = os.environ.get("WEBHOOK_SECRET", "").strip()
+            if not webhook_secret:
+                self.write_json({
+                    "success": False,
+                    "error": "Webhook integration disabled: WEBHOOK_SECRET environment variable is not configured on the server."
+                }, status=503)
+                return
+
+            provided_secret = self.headers.get("X-Webhook-Secret", "").strip()
+            signature_header = self.headers.get("X-Hub-Signature-256", "").strip()
+            valid = False
+            if provided_secret and hmac.compare_digest(provided_secret, webhook_secret):
+                valid = True
+            elif signature_header and signature_header.startswith("sha256="):
+                expected_sig = hmac.new(webhook_secret.encode("utf-8"), raw_body, hashlib.sha256).hexdigest()
+                valid = hmac.compare_digest(signature_header[7:], expected_sig)
+
+            if not valid:
+                self.write_json({"success": False, "error": "Invalid webhook secret or HMAC signature"}, status=401)
+                return
+
+            try:
+                data = json.loads(raw_body.decode("utf-8")) if raw_body else {}
+            except Exception:
+                data = {}
+
+            app_id = str(data.get("app") or "")
+            flavor = str(data.get("flavor") or "prod")
+            template_id = str(data.get("templateId") or "build_aab")
+            cmds = router.get_commands(app_id).get("commands", [])
+            target_cmd = None
+            for c in cmds:
+                if c.get("templateId") == template_id and (c.get("flavor") == flavor or c.get("flavor") == "any"):
+                    target_cmd = c
+                    break
+            if not target_cmd:
+                self.write_json({"success": False, "error": f"No matching command found for app '{app_id}', template '{template_id}', flavor '{flavor}'"}, status=400)
+                return
+
+            self.write_json(router.execute_command(
+                app_id,
+                target_cmd.get("command", ""),
+                target_cmd.get("runner", "custom"),
+                flavor,
+                template_id,
+                flavor,
+                bool(data.get("confirmed") or False),
+            ))
+            return
+
         # --- Multipart upload routes ---
         if parsed.path == "/api/deployment/p8/upload" and content_type_header.startswith("multipart/form-data"):
             if not self._verify_auth():
-                self.write_json({"success": False, "error": "Unauthorized API token"}, status=401)
+                self.write_json({"success": False, "error": "Unauthorized: valid X-API-Token header required"}, status=401)
                 return
 
             mime_header = f"Content-Type: {content_type_header}\r\n\r\n".encode()
@@ -241,8 +356,9 @@ class DeploymentHandler(http.server.SimpleHTTPRequestHandler):
             self.write_json({"success": False, "error": "Content-Type must be application/json"}, status=415)
             return
 
-        if parsed.path != "/api/deployment/webhook" and not self._verify_auth():
-            self.write_json({"success": False, "error": "Unauthorized API token"}, status=401)
+        # All other API POST requests require X-API-Token
+        if not self._verify_auth():
+            self.write_json({"success": False, "error": "Unauthorized: valid X-API-Token header required"}, status=401)
             return
 
         try:
@@ -257,7 +373,6 @@ class DeploymentHandler(http.server.SimpleHTTPRequestHandler):
             req_template_id = str(data.get("templateId") or "")
             req_flavor = str(data.get("flavor") or "")
 
-            # Security: lookup server-registered template command to avoid raw command injection
             allowed_cmds = router.get_commands(app_id).get("commands", [])
             target_cmd = None
             for c in allowed_cmds:
@@ -269,7 +384,6 @@ class DeploymentHandler(http.server.SimpleHTTPRequestHandler):
                     break
 
             if not target_cmd and req_cmd:
-                # If command doesn't match a server-generated template, check if runner is custom and block arbitrary command
                 self.write_json({"success": False, "error": "Custom arbitrary command execution is disabled. Select a valid template."}, status=400)
                 return
 
@@ -320,45 +434,7 @@ class DeploymentHandler(http.server.SimpleHTTPRequestHandler):
                 return
             self.write_json(router.upload_p8_key(app_id, filename, content_bytes, issuer_id))
             return
-        if parsed.path == "/api/deployment/webhook":
-            # Webhook HMAC / Shared secret authentication
-            webhook_secret = os.environ.get("WEBHOOK_SECRET", "").strip()
-            if webhook_secret:
-                provided_secret = self.headers.get("X-Webhook-Secret", "").strip()
-                signature_header = self.headers.get("X-Hub-Signature-256", "").strip()
-                valid = False
-                if provided_secret and hmac.compare_digest(provided_secret, webhook_secret):
-                    valid = True
-                elif signature_header and signature_header.startswith("sha256="):
-                    expected_sig = hmac.new(webhook_secret.encode("utf-8"), raw_body, hashlib.sha256).hexdigest()
-                    valid = hmac.compare_digest(signature_header[7:], expected_sig)
 
-                if not valid:
-                    self.write_json({"success": False, "error": "Invalid webhook secret or HMAC signature"}, status=401)
-                    return
-
-            app_id = str(data.get("app") or "")
-            flavor = str(data.get("flavor") or "prod")
-            template_id = str(data.get("templateId") or "build_aab")
-            cmds = router.get_commands(app_id).get("commands", [])
-            target_cmd = None
-            for c in cmds:
-                if c.get("templateId") == template_id and (c.get("flavor") == flavor or c.get("flavor") == "any"):
-                    target_cmd = c
-                    break
-            if not target_cmd:
-                self.write_json({"success": False, "error": f"No matching command found for app '{app_id}', template '{template_id}', flavor '{flavor}'"}, status=400)
-                return
-            self.write_json(router.execute_command(
-                app_id,
-                target_cmd.get("command", ""),
-                target_cmd.get("runner", "custom"),
-                flavor,
-                template_id,
-                flavor,
-                bool(data.get("confirmed") or False),
-            ))
-            return
         self.write_json({"success": False, "error": "Unknown endpoint"}, status=404)
 
     def translate_path(self, path: str) -> str:
@@ -377,16 +453,17 @@ class DeploymentHandler(http.server.SimpleHTTPRequestHandler):
 
         candidates = []
         raw_path = Path(raw_url)
+        ws_root = router.get_workspace_root()
         if raw_path.is_absolute():
             candidates.append(raw_path)
         else:
-            candidates.append(router.WORKSPACE_ROOT / raw_url)
+            candidates.append(ws_root / raw_url)
             candidates.append(SHARED_FRONTEND_DIR / raw_url)
             candidates.append(Path(__file__).resolve().parents[3] / raw_url)
 
         for candidate in candidates:
             resolved = candidate.resolve()
-            allowed_roots = [router.WORKSPACE_ROOT.resolve(), SHARED_FRONTEND_DIR.resolve()]
+            allowed_roots = [ws_root.resolve(), SHARED_FRONTEND_DIR.resolve()]
             if not any(resolved == root or root in resolved.parents for root in allowed_roots):
                 continue
             if resolved.exists() and resolved.is_file():
