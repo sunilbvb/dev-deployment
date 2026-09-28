@@ -731,26 +731,31 @@ Check out our **[CONTRIBUTING.md](CONTRIBUTING.md)** for:
 
 ## ❓ Frequently Asked Questions
 
-### How do I change the port?
-Set `DEPLOYMENT_PORT` in `.env`, or pass it directly:
-```bash
-DEPLOYMENT_PORT=8080 ./start.sh
-```
+### 1. What is this tool, and who is it for?
+Dev Deployment Console is a lightweight, local web dashboard designed for mobile and web developers. It provides a point-and-click UI to build, sign, and upload apps (Flutter, React Native, iOS/Android Native, Node) to TestFlight and Google Play Store without manually typing terminal commands or memorizing CLI flags.
 
-### My app list shows nothing — what's wrong?
-Check `WORKSPACE_ROOT` in `.env`. It must point to a valid directory with your app or monorepo. If still empty, use the **Configure** modal to register apps manually.
+### 2. What do I need installed?
+- **Python ≥ 3.10** (standard library only; no pip dependencies required).
+- **Bash 4+** (standard on Linux; installed via Homebrew on macOS).
+- Your ecosystem build tools (Flutter SDK, Xcode on macOS, Android Studio / JDK, or fastlane depending on what you build).
 
-### Can I run this on Linux?
-**Yes.** The server and all script executors are fully compatible with both Linux and macOS. Paths and shell runners adapt automatically.
+### 3. How do I start and stop it?
+Run `./start.sh` or `python3 features/deployment/backend/server.py --port 18112`. For background execution, use `./features/deployment/bin/start-deployment.sh` and stop with `./features/deployment/bin/stop-deployment.sh`.
 
-### Are my secrets safe?
-**Yes.** `.env` files, `.pid` files, build logs, private keystores, certificate files, and `.p8` key files are all excluded in `.gitignore`. For iOS App Store Connect API keys, the console uses Apple's industry-standard path (`~/.appstoreconnect/private_keys/`) and stores the Base64-encoded key in `.dev-dashboard/deploy_config.json` — both excluded from version control. Keys are written with `chmod 600` (owner read/write only).
+### 4. Are my secrets and credentials safe?
+**Yes.** All secrets, `.env` files, build logs, private keystores, and App Store Connect `.p8` keys are kept out of Git. The dashboard automatically adds `.dev-dashboard/` to your workspace `.gitignore` on first run, and `.p8` keys are saved to `~/.appstoreconnect/private_keys/` with `chmod 600`.
 
-### Can I commit `.dev-dashboard/` to Git?
-**Yes — optionally.** Committing it lets your whole team share the same app configuration, Bundle IDs, and command setup. Just make sure `apple_p8_base64` and any service account paths are excluded (add them to `.gitignore`) if you don't want key material in your repo.
+### 5. Can I run this on Linux and macOS?
+**Yes.** The dashboard, server, and runner scripts run on both Linux and macOS. Linux can build Android APK/AAB bundles and web projects; macOS is required for iOS signing and Xcode builds.
 
-### What Python version is required?
-Python **3.11 or higher**. The server uses `email.parser.BytesFeedParser` for multipart uploads (replaces the removed `cgi` module from Python 3.13+).
+---
+
+> 📖 **More questions? See our comprehensive [FAQ.md](FAQ.md)** for detailed answers on:
+> - Single apps with no flavors vs. flavored projects
+> - Melos 7 & Dart pub workspace support (`workspace:` in `pubspec.yaml`)
+> - Autoscan & ID matching behavior
+> - Concurrency guard (`APP_BUSY`) & prod deployment safety gates
+> - Security model (localhost-only policy) & troubleshooting guide
 
 ---
 
