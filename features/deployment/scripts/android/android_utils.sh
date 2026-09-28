@@ -192,7 +192,16 @@ buildAndUploadAndroid() {
 #   - ANDROID_PACKAGE_NAME: Package name for the app
 #------------------------------------------------------------------------------
 runWithAndroidEnv() {
-    local command="$1"
+    local -a cmd=("$@")
+    if [ "${#cmd[@]}" -eq 0 ]; then
+        echo "Error: Command must be provided"
+        echo "Usage: runWithAndroidEnv <command>"
+        return 1
+    fi
+    if [ "${#cmd[@]}" -eq 1 ] && [[ "${cmd[0]}" == *" "* ]]; then
+        read -r -a cmd <<< "${cmd[0]}"
+    fi
+
     local bundle_gemfile="${BUNDLE_GEMFILE:-}"
     if [ -z "$bundle_gemfile" ]; then
         local deployment_fastlane_dir_for_gemfile
@@ -204,14 +213,8 @@ runWithAndroidEnv() {
         fi
     fi
     
-    # Validate command parameter
-    if [ -z "$command" ]; then
-        echo "Error: Command must be provided"
-        echo "Usage: runWithAndroidEnv <command>"
-        return 1
-    fi
-    
-    if [[ "$command" == *"bundle exec"* ]]; then
+    local cmd_str="${cmd[*]}"
+    if [[ "$cmd_str" == *"bundle exec"* ]]; then
         if ! BUNDLE_GEMFILE="$bundle_gemfile" bundle check >/dev/null 2>&1; then
             echo "Installing missing ruby gems (bundle install)..."
             BUNDLE_GEMFILE="$bundle_gemfile" bundle install || true
@@ -231,7 +234,7 @@ runWithAndroidEnv() {
     SERVICE_ACCOUNT_JSON="$SERVICE_ACCOUNT_JSON" \
     ANDROID_AAB_PATH="${ANDROID_AAB_PATH:-}" \
     ANDROID_PACKAGE_NAME="${ANDROID_PACKAGE_NAME:-}" \
-    eval "$command"
+    "${cmd[@]}"
 }
 
 #------------------------------------------------------------------------------
@@ -325,7 +328,8 @@ uploadAndroid() {
     
     # Upload using Fastlane (retries a few times - Play Store's upload API can
     # also hit transient network errors on large files, same as iOS's Transporter)
-    if ! _retryUpload "Play Store upload (Fastlane)" runWithAndroidEnv "cd '$deployment_fastlane_dir' && bundle exec fastlane android upload_android track:internal release_status:completed"; then
+    local -a cmd=(bundle exec fastlane android upload_android track:internal release_status:completed)
+    if ! ( cd "$deployment_fastlane_dir" && _retryUpload "Play Store upload (Fastlane)" runWithAndroidEnv "${cmd[@]}" ); then
         print_play_store_upload_failed_error
         return 1
     fi
@@ -425,7 +429,8 @@ uploadAAB() {
     deployment_fastlane_dir="$(resolveDeploymentFastlaneDir)" || return 1
 
     # Upload to Play Store using centralized Fastlane
-    if ! _retryUpload "Play Store upload (Fastlane)" runWithAndroidEnv "cd '$deployment_fastlane_dir' && bundle exec fastlane android upload_android track:internal release_status:completed"; then
+    local -a cmd=(bundle exec fastlane android upload_android track:internal release_status:completed)
+    if ! ( cd "$deployment_fastlane_dir" && _retryUpload "Play Store upload (Fastlane)" runWithAndroidEnv "${cmd[@]}" ); then
         print_play_store_upload_failed_error
         return 1
     fi

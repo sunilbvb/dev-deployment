@@ -1,9 +1,10 @@
 import json
+import logging
 import os
 import re
 import tempfile
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Optional
 
 FEATURE_DIR = Path(__file__).resolve().parents[1]
 DASHBOARD_ROOT = FEATURE_DIR.parents[1]
@@ -45,7 +46,7 @@ def _get_allowed_workspace_roots() -> list[Path]:
                             if p not in allowed:
                                 allowed.append(p)
             except Exception:
-                pass
+                logging.exception("Failed to parse allowed workspaces list file %s", ws_file)
     return allowed
 
 
@@ -182,7 +183,7 @@ def _detect_app_in_dir(path: Path) -> Optional[dict[str, Any]]:
             if "executables:" not in content and "flutter:" not in content:
                 is_package = True
         except Exception:
-            pass
+            logging.exception("Failed to parse pubspec.yaml in %s", path)
     elif package_json.exists():
         stack = "react-native" if (path / "ios").exists() or (path / "android").exists() else "node"
         try:
@@ -192,7 +193,7 @@ def _detect_app_in_dir(path: Path) -> Optional[dict[str, Any]]:
             if p_data.get("version"):
                 version = p_data["version"]
         except Exception:
-            pass
+            logging.exception("Failed to parse package.json in %s", path)
     elif build_gradle.exists() or build_gradle_kts.exists() or xcodeproj:
         stack = "native"
 
@@ -257,7 +258,7 @@ def _resolve_app_dir(app_id: str) -> Path:
                             if p.is_dir():
                                 return p.resolve()
         except Exception:
-            pass
+            logging.exception("Failed to read apps_config.json while resolving app dir for %s", app_id)
 
     # 2. Check standard monorepo folders
     candidates = [
@@ -346,7 +347,7 @@ def get_apps() -> dict[str, Any]:
         if isinstance(saved, list):
             return {"success": True, "apps": saved}
     except Exception:
-        pass
+        logging.exception("Failed to read saved apps from %s", cfg_file)
     return {"success": True, "apps": []}
 
 
@@ -475,7 +476,7 @@ def get_workspaces_list() -> dict[str, Any]:
         try:
             workspaces = json.loads(ws_file.read_text(encoding="utf-8"))
         except Exception:
-            pass
+            logging.exception("Failed to load workspaces list from %s", ws_file)
 
     current_path = str(WORKSPACE_ROOT.resolve())
     if not any(w.get("path") == current_path for w in workspaces):
@@ -509,7 +510,7 @@ def set_active_workspace(new_path: str) -> dict[str, Any]:
     try:
         active_ws_file.write_text(str(WORKSPACE_ROOT), encoding="utf-8")
     except Exception:
-        pass
+        logging.exception("Failed to write active workspace to %s", active_ws_file)
 
     ws_file = DASHBOARD_ROOT / "config" / "workspaces_list.json"
     workspaces = []
@@ -517,13 +518,13 @@ def set_active_workspace(new_path: str) -> dict[str, Any]:
         try:
             workspaces = json.loads(ws_file.read_text(encoding="utf-8"))
         except Exception:
-            pass
+            logging.exception("Failed to parse workspaces list in %s", ws_file)
     if not any(isinstance(w, dict) and w.get("path") == str(WORKSPACE_ROOT) for w in workspaces):
         workspaces.append({"name": WORKSPACE_ROOT.name, "path": str(WORKSPACE_ROOT)})
         try:
             ws_file.write_text(json.dumps(workspaces, indent=2), encoding="utf-8")
         except Exception:
-            pass
+            logging.exception("Failed to write updated workspaces list to %s", ws_file)
 
     discover_workspace_config()
     return {
@@ -638,7 +639,7 @@ def _scan_xcconfig_bundle_ids(app_dir: Path) -> dict[str, str]:
                                 result["bundle_id_prod"] = bundle_id
                             break
             except Exception:
-                pass
+                logging.exception("Failed to parse xcconfig file %s", xcconfig)
 
     # 2. Scan ios/Runner.xcodeproj/project.pbxproj
     pbx_files = list(app_dir.glob("ios/*.xcodeproj/project.pbxproj")) or list(app_dir.glob("*.xcodeproj/project.pbxproj"))
@@ -663,7 +664,7 @@ def _scan_xcconfig_bundle_ids(app_dir: Path) -> dict[str, str]:
                         result["bundle_id"] = bid
                         result["bundle_id_prod"] = bid
             except Exception:
-                pass
+                logging.exception("Failed to parse pbxproj file %s", pbx)
 
     # 3. Scan ios/Runner/Info.plist
     info_plist = app_dir / "ios" / "Runner" / "Info.plist"
@@ -677,7 +678,7 @@ def _scan_xcconfig_bundle_ids(app_dir: Path) -> dict[str, str]:
                     result["bundle_id"] = val
                     result["bundle_id_prod"] = val
         except Exception:
-            pass
+            logging.exception("Failed to parse Info.plist %s", info_plist)
 
     if result.get("bundle_id") and not result.get("bundle_id_prod"):
         result["bundle_id_prod"] = result["bundle_id"]
@@ -703,7 +704,7 @@ def _scan_android_app_ids(app_dir: Path) -> dict[str, str]:
                     if line.startswith(f"{prop}="):
                         result[key] = line.split("=", 1)[1].strip()
         except Exception:
-            pass
+            logging.exception("Failed to parse gradle.properties in %s", app_dir)
 
     local_props = app_dir / "android" / "local.properties"
     if local_props.exists() and not result:
@@ -714,7 +715,7 @@ def _scan_android_app_ids(app_dir: Path) -> dict[str, str]:
                     if line.startswith(f"{prop}="):
                         result[key] = line.split("=", 1)[1].strip()
         except Exception:
-            pass
+            logging.exception("Failed to parse local.properties in %s", app_dir)
 
     # Scan build.gradle / build.gradle.kts files
     gradle_files = [
@@ -758,7 +759,7 @@ def _scan_android_app_ids(app_dir: Path) -> dict[str, str]:
                         result["android_package_prod"] = ns_val
                         result["android_id_prod"] = ns_val
             except Exception:
-                pass
+                logging.exception("Failed to parse gradle file %s", build_gradle)
 
     # 3. Check AndroidManifest.xml package attribute
     manifest_files = [
@@ -776,7 +777,7 @@ def _scan_android_app_ids(app_dir: Path) -> dict[str, str]:
                     result["android_package_prod"] = pkg_val
                     result["android_id_prod"] = pkg_val
             except Exception:
-                pass
+                logging.exception("Failed to parse AndroidManifest.xml %s", mf)
 
     if result.get("android_package") and not result.get("android_package_prod"):
         result["android_package_prod"] = result["android_package"]
@@ -933,14 +934,14 @@ def discover_workspace_config() -> None:
         try:
             existing_apps = json.loads(apps_file.read_text(encoding="utf-8"))
         except Exception:
-            pass
+            logging.exception("Failed to read existing apps configuration from %s", apps_file)
 
     existing_cmds = []
     if cmds_file.exists():
         try:
             existing_cmds = json.loads(cmds_file.read_text(encoding="utf-8"))
         except Exception:
-            pass
+            logging.exception("Failed to read existing commands configuration from %s", cmds_file)
 
     if existing_apps and existing_cmds:
         return

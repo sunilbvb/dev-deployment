@@ -32,12 +32,12 @@ class ComponentLibraryHandler(http.server.SimpleHTTPRequestHandler):
 if __name__ == "__main__":
     socketserver.ThreadingTCPServer.allow_reuse_address = True
     with socketserver.ThreadingTCPServer(("", PORT), ComponentLibraryHandler) as httpd:
-        print(f"===========================================================")
-        print(f"⚡ Developer Dashboard UI Component Library Showcase")
+        print("===========================================================")
+        print("⚡ Developer Dashboard UI Component Library Showcase")
         print(f"🌐 Showcase URL: http://localhost:{PORT}/showcase/")
         print(f"📁 Root Path: {PROJECT_ROOT}")
-        print(f"🛑 Press Ctrl+C to stop server")
-        print(f"===========================================================")
+        print("🛑 Press Ctrl+C to stop server")
+        print("===========================================================")
         try:
             httpd.serve_forever()
         except KeyboardInterrupt:

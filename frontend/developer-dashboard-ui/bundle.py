@@ -4,7 +4,6 @@ CSS Bundler for Developer Dashboard UI Component Library.
 Concatenates all widget CSS files into the dist/ directory.
 """
 
-import os
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).parent.resolve()
@@ -48,9 +47,9 @@ CSS_FILES_TO_BUNDLE = [
 
 def bundle():
     print("⚡ Bundling component styles...")
-    
+
     bundled_content = []
-    
+
     for css_path in CSS_FILES_TO_BUNDLE:
         if css_path.exists():
             print(f"  Adding: {css_path.relative_to(PROJECT_ROOT)}")
@@ -61,21 +60,21 @@ def bundle():
             print(f"  ⚠️ Warning: {css_path.relative_to(PROJECT_ROOT)} does not exist yet.")
 
     full_css = "\n\n".join(bundled_content) + "\n"
-    
+
     # Ensure dist directory exists
     DIST_DIR.mkdir(exist_ok=True)
-    
+
     # Write to target files
     ui_css_path = DIST_DIR / "ui.css"
     dev_ui_css_path = DIST_DIR / "developer-dashboard-ui.css"
-    
+
     with open(ui_css_path, "w", encoding="utf-8") as f:
         f.write(full_css)
-        
+
     with open(dev_ui_css_path, "w", encoding="utf-8") as f:
         f.write(full_css)
-        
-    print(f"✅ Success! Bundled CSS written to:")
+
+    print("✅ Success! Bundled CSS written to:")
     print(f"  - {ui_css_path.relative_to(PROJECT_ROOT)}")
     print(f"  - {dev_ui_css_path.relative_to(PROJECT_ROOT)}")
 

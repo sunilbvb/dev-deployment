@@ -395,8 +395,9 @@ exportAppContents() {
 _retryUpload() {
     local description="$1"
     local runner="$2"
-    local command="$3"
-    local max_attempts="${4:-3}"
+    shift 2
+    local -a cmd=("$@")
+    local max_attempts=3
     local attempt=1
 
     # Fixed phrases/codes (matched case-insensitively, one line at a time)
@@ -480,7 +481,7 @@ _retryUpload() {
         case "$-" in *m*) had_monitor=1 ;; esac
         set -m
 
-        ( "$runner" "$command" 2>&1 | tee "$log_file"; echo "${PIPESTATUS[0]}" > "$rc_file" ) &
+        ( "$runner" "${cmd[@]}" 2>&1 | tee "$log_file"; echo "${PIPESTATUS[0]}" > "$rc_file" ) &
         local pipe_pid=$!
         local pgid
         pgid="$(ps -o pgid= -p "$pipe_pid" 2>/dev/null | tr -d ' ')"

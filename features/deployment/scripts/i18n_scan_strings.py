@@ -26,7 +26,7 @@ import re
 import sys
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable, Iterator, List, Optional, Sequence, Tuple
+from typing import Iterator, List, Optional, Sequence, Tuple
 
 
 SKIP_FILE_SUFFIXES: Tuple[str, ...] = (
@@ -302,7 +302,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     path_strs = [p.strip() for p in str(args.path).split(',') if p.strip()]
     contexts: List[str] = list(DEFAULT_CONTEXT_TOKENS) + list(args.context or [])
     matches: List[Match] = []
-    
+
     for p_str in path_strs:
         package_root = Path(os.path.expanduser(p_str)).resolve()
         if not package_root.exists():

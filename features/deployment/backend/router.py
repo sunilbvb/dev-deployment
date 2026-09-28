@@ -1,16 +1,8 @@
-import json
-import os
-from pathlib import Path
-from typing import Any
 
 from config import (
     add_app as config_add_app,
     check_system_health as config_check_system_health,
-    discover_workspace_config,
     get_apps as config_get_apps,
-    get_apps_config_file,
-    get_commands_config_file,
-    get_deploy_config_file,
     get_workspaces_list as config_get_workspaces_list,
     get_workspace_root as config_get_workspace_root,
     inspect_workspace_path as config_inspect_workspace_path,
@@ -22,7 +14,6 @@ from config import (
     set_active_workspace as config_set_active_workspace,
 )
 from commands import (
-    _is_prod_store_deploy,
     get_commands as commands_get_commands,
     regenerate_commands as commands_regenerate_commands,
 )

@@ -288,6 +288,31 @@ class TestSecurityGuards(unittest.TestCase):
         self.assertEqual(token_file.parent, expected_dir)
         self.assertEqual(token_file.name, "auth_token.txt")
 
+    def test_payload_too_large_413(self):
+        """Requests with Content-Length exceeding 1MB must be rejected with 413."""
+        conn = http.client.HTTPConnection("127.0.0.1", self.port)
+        conn.request("POST", "/api/deployment/execute", headers={
+            "Host": f"localhost:{self.port}",
+            "X-API-Token": self.test_token,
+            "Content-Type": "application/json",
+            "Content-Length": str(1024 * 1024 + 100),
+        })
+        resp = conn.getresponse()
+        self.assertEqual(resp.status, 413)
+        conn.close()
+
+    def test_content_security_policy_header(self):
+        """Responses must include Content-Security-Policy header."""
+        conn = http.client.HTTPConnection("127.0.0.1", self.port)
+        conn.request("GET", "/", headers={
+            "Host": f"localhost:{self.port}",
+        })
+        resp = conn.getresponse()
+        csp = resp.getheader("Content-Security-Policy")
+        self.assertIsNotNone(csp)
+        self.assertIn("default-src 'self'", csp)
+        conn.close()
+
 
 if __name__ == "__main__":
     unittest.main()

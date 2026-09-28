@@ -17,7 +17,7 @@ if [ -z "$ROOT" ] || [ ! -f "$ROOT/pubspec.yaml" ]; then
     elif [ -f "$(cd "$SCRIPT_DIR/../../.." && pwd)/pubspec.yaml" ]; then
         ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
     elif [ -f "$(cd "$SCRIPT_DIR/../../../config" 2>/dev/null && pwd)/active_workspace.txt" ]; then
-        ACTIVE_WS="$(cat "$(cd "$SCRIPT_DIR/../../../config" && pwd)/active_workspace.txt" 2>/dev/null | tr -d '\r\n' | xargs)"
+        ACTIVE_WS="$(tr -d '\r\n' < "$(cd "$SCRIPT_DIR/../../../config" && pwd)/active_workspace.txt" 2>/dev/null | xargs)"
         if [ -n "$ACTIVE_WS" ] && [ -f "$ACTIVE_WS/pubspec.yaml" ]; then
             ROOT="$ACTIVE_WS"
         fi

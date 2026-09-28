@@ -1,16 +1,3 @@
-// Ensure all fetch requests automatically attach X-API-Token if injected
-if (typeof window !== 'undefined' && window.fetch) {
-    const _nativeFetch = window.fetch;
-    window.fetch = function(url, options = {}) {
-        options = options || {};
-        const headers = new Headers(options.headers || {});
-        if (window.__DEPLOYMENT_TOKEN__ && !headers.has('X-API-Token')) {
-            headers.set('X-API-Token', window.__DEPLOYMENT_TOKEN__);
-        }
-        options.headers = headers;
-        return _nativeFetch(url, options);
-    };
-}
 
 // Keep in sync with router.py's STORE_UPLOAD_TEMPLATE_IDS - the template ids whose
 // success means a build actually reached TestFlight/Play Store, not just a local

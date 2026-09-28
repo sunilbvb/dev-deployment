@@ -5,7 +5,7 @@ A lightweight, self-hosted web dashboard to build, sign, and deploy mobile and w
 Open `http://localhost:18112` in your browser, pick your app, choose an environment (`dev`, `qa`, `prod`), click a button, and watch your build logs scroll in real-time.
 
 > **Location of deployment subsystem:** `features/deployment/`
-> **Backend:** `features/deployment/backend/router.py` & `features/deployment/backend/server.py`
+> **Backend:** Modular architecture in `features/deployment/backend/` (`server.py`, `router.py`, `commands.py`, `config.py`, `jobs.py`, `p8.py`)
 > **Frontend:** `features/deployment/frontend/{index.html, app.js, setup.js, styles.css}`
 > **Default port:** `18112` (configurable via `DEPLOYMENT_PORT`)
 
@@ -79,7 +79,7 @@ It is **zero-intrusion** — it lives completely separately from your apps. No r
 ## 🏁 Quick Start
 
 ### Prerequisites
-- **Python 3.11+** (`python3 --version`)
+- **Python ≥ 3.10** (`python3 --version`)
 - **Bash 4+** (`bash --version`)
 - Your normal build tools (Flutter, Node, Xcode, Android Studio — depending on what you build)
 
@@ -424,14 +424,15 @@ jobs:
 │       Routing · CORS · Static files · Multipart uploads     │
 │                           :18112                            │
 └──────────────────────────────┬──────────────────────────────┘
-                               │ Direct function calls
+                                │ Direct function calls
 ┌──────────────────────────────▼──────────────────────────────┐
-│                    Router & Process Engine                  │
-│             features/deployment/backend/router.py           │
-│  App autodiscovery · Command generator · Subprocess runner  │
-│  Job state management · Concurrency locking                 │
-│  p8 key upload & storage · Workspace switching              │
-│  Log buffer & history writer                                │
+│                    Modular Backend Engine                   │
+│             features/deployment/backend/                    │
+│  router.py    (Facade & re-exports)                         │
+│  commands.py  (Command generator, batch deploy planning)    │
+│  config.py    (Workspace discovery, app config & health)    │
+│  jobs.py      (Process execution, job state & history)      │
+│  p8.py        (App Store Connect .p8 key storage)           │
 └──────────────────────────────┬──────────────────────────────┘
                                │ Subprocess execution
 ┌──────────────────────────────▼──────────────────────────────┐
@@ -458,7 +459,11 @@ dev-deployment/
 │   └── deployment/
 │       ├── backend/
 │       │   ├── server.py            # HTTP server: routing, CORS, static, multipart upload
-│       │   └── router.py            # Core engine: discovery, execution, p8 upload, history
+│       │   ├── router.py            # Unified facade and re-exports
+│       │   ├── commands.py          # Command generation & batch deploy planning
+│       │   ├── config.py            # App discovery, workspace configuration & health checks
+│       │   ├── jobs.py              # Process execution, async job management & history log
+│       │   └── p8.py                # App Store Connect .p8 key validation & storage
 │       ├── bin/
 │       │   ├── start-deployment.sh  # Background launcher
 │       │   ├── stop-deployment.sh   # Graceful stop
