@@ -177,7 +177,7 @@ function renderSetupAppNav() {
 
 function getActiveFlavors() {
     const val = setupEls.flavors.value.trim();
-    if (!val) return ['dev', 'qa', 'prod'];
+    if (!val || val.toLowerCase() === 'none' || val.toLowerCase() === 'single') return [];
     return val.split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
 }
 
@@ -190,67 +190,127 @@ function renderDynamicFields(flavors, cfg) {
     packageContainer.innerHTML = '';
     servicesContainer.innerHTML = '';
 
-    flavors.forEach(flavor => {
+    if (!flavors || flavors.length === 0) {
+        // ── Single App Mode (No Flavors) ──
         // iOS Bundle ID Input
         const bundleField = document.createElement('div');
         bundleField.className = 'ui-field';
         bundleField.style.marginBottom = '0';
-
-        const bundleLabel = document.createElement('label');
-        bundleLabel.className = 'ui-label';
-        bundleLabel.textContent = `${flavor.toUpperCase()} Bundle ID`;
-
-        const bundleInput = document.createElement('input');
-        bundleInput.type = 'text';
-        bundleInput.className = 'ui-input';
-        bundleInput.id = `cfgBundle_${flavor}`;
-        bundleInput.placeholder = `com.example.app.${flavor}`;
-        bundleInput.value = cfg[`bundle_id_${flavor}`] || '';
-
-        bundleField.appendChild(bundleLabel);
-        bundleField.appendChild(bundleInput);
+        bundleField.innerHTML = `
+            <label class="ui-label">iOS Bundle Identifier</label>
+            <input type="text" class="ui-input" id="cfgBundle_single" placeholder="e.g. com.example.app" value="${escapeHtml(cfg.bundle_id || cfg.bundle_id_prod || '')}">
+            <span class="ui-help-text">Used for TestFlight uploads and provisioning profile verification.</span>
+        `;
         bundleContainer.appendChild(bundleField);
 
         // Android Package ID Input
         const packageField = document.createElement('div');
         packageField.className = 'ui-field';
         packageField.style.marginBottom = '0';
-
-        const packageLabel = document.createElement('label');
-        packageLabel.className = 'ui-label';
-        packageLabel.textContent = `${flavor.toUpperCase()} Package Name`;
-
-        const packageInput = document.createElement('input');
-        packageInput.type = 'text';
-        packageInput.className = 'ui-input';
-        packageInput.id = `cfgAndroidPackage_${flavor}`;
-        packageInput.placeholder = `com.example.app.${flavor}`;
-        packageInput.value = cfg[`android_package_${flavor}`] || '';
-
-        packageField.appendChild(packageLabel);
-        packageField.appendChild(packageInput);
+        packageField.innerHTML = `
+            <label class="ui-label">Android Package Name (Application ID)</label>
+            <input type="text" class="ui-input" id="cfgAndroidPackage_single" placeholder="e.g. com.example.app" value="${escapeHtml(cfg.android_package || cfg.android_package_prod || '')}">
+            <span class="ui-help-text">Matches applicationId in build.gradle(.kts) for Play Store deployment.</span>
+        `;
         packageContainer.appendChild(packageField);
 
-        // Firebase google-services.json Path Input
-        const servicesField = document.createElement('div');
-        servicesField.className = 'ui-field';
-        servicesField.style.marginBottom = '0';
+        // Firebase Client Config (Android & iOS)
+        const notice = document.createElement('div');
+        notice.className = 'cert-status-box';
+        notice.dataset.status = 'info';
+        notice.style.marginBottom = '14px';
+        notice.style.fontSize = '0.82rem';
+        notice.style.lineHeight = '1.45';
+        notice.innerHTML = `
+            <strong>💡 Single-App Project (No Flavors):</strong> Standard Firebase files live directly in project folders:
+            <code>android/app/google-services.json</code> and <code>ios/Runner/GoogleService-Info.plist</code>.
+            If kept in <code>private_keys/</code> or a custom directory, provide paths below.
+        `;
+        servicesContainer.appendChild(notice);
 
-        const servicesLabel = document.createElement('label');
-        servicesLabel.className = 'ui-label';
-        servicesLabel.textContent = `${flavor.toUpperCase()} google-services.json Path`;
+        const grid = document.createElement('div');
+        grid.className = 'dynamic-inputs-grid';
 
-        const servicesInput = document.createElement('input');
-        servicesInput.type = 'text';
-        servicesInput.className = 'ui-input';
-        servicesInput.id = `cfgGoogleServices_${flavor}`;
-        servicesInput.placeholder = `private_keys/Firebase/${flavor}/google-services.json`;
-        servicesInput.value = cfg[`google_services_json_${flavor}`] || '';
+        const gServicesField = document.createElement('div');
+        gServicesField.className = 'ui-field';
+        gServicesField.style.marginBottom = '0';
+        gServicesField.innerHTML = `
+            <label class="ui-label">Android (google-services.json) Path</label>
+            <input type="text" class="ui-input" id="cfgGoogleServices_single" placeholder="android/app/google-services.json" value="${escapeHtml(cfg.google_services_json || cfg.google_services_json_prod || '')}">
+        `;
+        grid.appendChild(gServicesField);
 
-        servicesField.appendChild(servicesLabel);
-        servicesField.appendChild(servicesInput);
-        servicesContainer.appendChild(servicesField);
+        const gInfoField = document.createElement('div');
+        gInfoField.className = 'ui-field';
+        gInfoField.style.marginBottom = '0';
+        gInfoField.innerHTML = `
+            <label class="ui-label">iOS (GoogleService-Info.plist) Path</label>
+            <input type="text" class="ui-input" id="cfgGoogleServiceInfo_single" placeholder="ios/Runner/GoogleService-Info.plist" value="${escapeHtml(cfg.google_service_info_plist || cfg.google_service_info_plist_prod || '')}">
+        `;
+        grid.appendChild(gInfoField);
+
+        servicesContainer.appendChild(grid);
+        return;
+    }
+
+    // ── Flavored App Mode ──
+    const notice = document.createElement('div');
+    notice.className = 'cert-status-box';
+    notice.dataset.status = 'info';
+    notice.style.marginBottom = '14px';
+    notice.style.fontSize = '0.82rem';
+    notice.style.lineHeight = '1.45';
+    notice.innerHTML = `
+        <strong>Flavor-Specific Firebase Config:</strong> Provide individual client files per environment flavor.
+    `;
+    servicesContainer.appendChild(notice);
+
+    const servicesGrid = document.createElement('div');
+    servicesGrid.className = 'dynamic-inputs-grid';
+
+    flavors.forEach(flavor => {
+        // iOS Bundle ID Input
+        const bundleField = document.createElement('div');
+        bundleField.className = 'ui-field';
+        bundleField.style.marginBottom = '0';
+        bundleField.innerHTML = `
+            <label class="ui-label">${flavor.toUpperCase()} Bundle ID</label>
+            <input type="text" class="ui-input" id="cfgBundle_${flavor}" placeholder="com.example.app.${flavor}" value="${escapeHtml(cfg[`bundle_id_${flavor}`] || '')}">
+        `;
+        bundleContainer.appendChild(bundleField);
+
+        // Android Package ID Input
+        const packageField = document.createElement('div');
+        packageField.className = 'ui-field';
+        packageField.style.marginBottom = '0';
+        packageField.innerHTML = `
+            <label class="ui-label">${flavor.toUpperCase()} Package Name</label>
+            <input type="text" class="ui-input" id="cfgAndroidPackage_${flavor}" placeholder="com.example.app.${flavor}" value="${escapeHtml(cfg[`android_package_${flavor}`] || '')}">
+        `;
+        packageContainer.appendChild(packageField);
+
+        // Android google-services.json
+        const androidField = document.createElement('div');
+        androidField.className = 'ui-field';
+        androidField.style.marginBottom = '0';
+        androidField.innerHTML = `
+            <label class="ui-label">${flavor.toUpperCase()} google-services.json (Android)</label>
+            <input type="text" class="ui-input" id="cfgGoogleServices_${flavor}" placeholder="private_keys/Firebase/${flavor}/google-services.json" value="${escapeHtml(cfg[`google_services_json_${flavor}`] || '')}">
+        `;
+        servicesGrid.appendChild(androidField);
+
+        // iOS GoogleService-Info.plist
+        const iosField = document.createElement('div');
+        iosField.className = 'ui-field';
+        iosField.style.marginBottom = '0';
+        iosField.innerHTML = `
+            <label class="ui-label">${flavor.toUpperCase()} GoogleService-Info.plist (iOS)</label>
+            <input type="text" class="ui-input" id="cfgGoogleServiceInfo_${flavor}" placeholder="private_keys/Firebase/${flavor}/GoogleService-Info.plist" value="${escapeHtml(cfg[`google_service_info_plist_${flavor}`] || '')}">
+        `;
+        servicesGrid.appendChild(iosField);
     });
+
+    servicesContainer.appendChild(servicesGrid);
 }
 
 function selectSetupApp(appId) {
@@ -263,7 +323,9 @@ function selectSetupApp(appId) {
 
     setupEls.appTitle.textContent = app ? app.name : appId;
     
-    const activeFlavors = cfg.flavors || ['dev', 'qa', 'prod'];
+    const activeFlavors = cfg.flavors !== undefined && Array.isArray(cfg.flavors)
+        ? cfg.flavors
+        : [];
     setupEls.flavors.value = activeFlavors.join(', ');
 
     renderDynamicFields(activeFlavors, cfg);
@@ -320,14 +382,12 @@ setupEls.flavors.addEventListener('input', () => {
 
 function readFormValues() {
     const flavors = getActiveFlavors();
-    // Preserve any already-uploaded p8 fields — those are written by the /p8/upload
-    // endpoint and should NOT be overwritten when the user clicks "Save Config".
+    // Preserve any already-uploaded p8 fields
     const existingCfg = setupState.deployConfig.apps?.[setupState.selectedAppId] || {};
     const values = {
         flavors: flavors,
         apple_id: setupEls.appleId.value.trim(),
         apple_issuer_id: setupEls.issuerId.value.trim(),
-        // Preserve Base64 + key ID written by /api/deployment/p8/upload
         apple_key_id: existingCfg.apple_key_id || '',
         apple_p8_base64: existingCfg.apple_p8_base64 || '',
         play_service_account_path: setupEls.playService.value.trim(),
@@ -338,15 +398,43 @@ function readFormValues() {
             : ['prod'],
     };
 
-    flavors.forEach(flavor => {
-        const bundleVal = document.getElementById(`cfgBundle_${flavor}`)?.value.trim() || '';
-        const packageVal = document.getElementById(`cfgAndroidPackage_${flavor}`)?.value.trim() || '';
-        const servicesVal = document.getElementById(`cfgGoogleServices_${flavor}`)?.value.trim() || '';
+    if (flavors.length === 0) {
+        const bundleVal = document.getElementById('cfgBundle_single')?.value.trim() || '';
+        const packageVal = document.getElementById('cfgAndroidPackage_single')?.value.trim() || '';
+        const servicesVal = document.getElementById('cfgGoogleServices_single')?.value.trim() || '';
+        const infoVal = document.getElementById('cfgGoogleServiceInfo_single')?.value.trim() || '';
 
-        values[`bundle_id_${flavor}`] = bundleVal;
-        values[`android_package_${flavor}`] = packageVal;
-        values[`google_services_json_${flavor}`] = servicesVal;
-    });
+        values.bundle_id = bundleVal;
+        values.bundle_id_prod = bundleVal;
+        values.android_package = packageVal;
+        values.android_package_prod = packageVal;
+        values.google_services_json = servicesVal;
+        values.google_services_json_prod = servicesVal;
+        values.google_service_info_plist = infoVal;
+        values.google_service_info_plist_prod = infoVal;
+    } else {
+        flavors.forEach(flavor => {
+            const bundleVal = document.getElementById(`cfgBundle_${flavor}`)?.value.trim() || '';
+            const packageVal = document.getElementById(`cfgAndroidPackage_${flavor}`)?.value.trim() || '';
+            const servicesVal = document.getElementById(`cfgGoogleServices_${flavor}`)?.value.trim() || '';
+            const infoVal = document.getElementById(`cfgGoogleServiceInfo_${flavor}`)?.value.trim() || '';
+
+            values[`bundle_id_${flavor}`] = bundleVal;
+            values[`android_package_${flavor}`] = packageVal;
+            values[`google_services_json_${flavor}`] = servicesVal;
+            values[`google_service_info_plist_${flavor}`] = infoVal;
+        });
+
+        const primary = flavors.includes('prod') ? 'prod' : flavors[0];
+        values.bundle_id = values[`bundle_id_${primary}`] || '';
+        values.bundle_id_prod = values[`bundle_id_${primary}`] || '';
+        values.android_package = values[`android_package_${primary}`] || '';
+        values.android_package_prod = values[`android_package_${primary}`] || '';
+        values.google_services_json = values[`google_services_json_${primary}`] || '';
+        values.google_services_json_prod = values[`google_services_json_${primary}`] || '';
+        values.google_service_info_plist = values[`google_service_info_plist_${primary}`] || '';
+        values.google_service_info_plist_prod = values[`google_service_info_plist_${primary}`] || '';
+    }
 
     return values;
 }
@@ -417,36 +505,84 @@ async function autoScanConfig() {
         }
 
         const d = res.discovered || {};
+        const detectedFlavors = d.flavors || [];
+
+        // If app had empty flavors but scan detected flavors, update
+        if (detectedFlavors.length > 0 && !setupEls.flavors.value.trim()) {
+            setupEls.flavors.value = detectedFlavors.join(', ');
+            renderDynamicFields(detectedFlavors, d);
+        }
+
         const flavors = getActiveFlavors();
         let filled = 0;
 
-        flavors.forEach(flavor => {
-            const bundleInput = document.getElementById(`cfgBundle_${flavor}`);
-            const packageInput = document.getElementById(`cfgAndroidPackage_${flavor}`);
-            const servicesInput = document.getElementById(`cfgGoogleServices_${flavor}`);
+        if (flavors.length === 0) {
+            const bundleInput = document.getElementById('cfgBundle_single');
+            const packageInput = document.getElementById('cfgAndroidPackage_single');
+            const servicesInput = document.getElementById('cfgGoogleServices_single');
+            const infoInput = document.getElementById('cfgGoogleServiceInfo_single');
 
-            const scanBundle = d[`bundle_id_${flavor}`] || d[`android_id_${flavor}`];
-            const scanPackage = d[`android_id_${flavor}`] || d[`bundle_id_${flavor}`];
-            const scanServices = d[`google_services_json_${flavor}`];
+            const scanBundle = d.bundle_id || d.bundle_id_prod;
+            const scanPackage = d.android_package || d.android_package_prod;
+            const scanServices = d.google_services_json || d.google_services_json_prod;
+            const scanInfo = d.google_service_info_plist || d.google_service_info_plist_prod;
 
-            if (bundleInput && scanBundle && !bundleInput.value.trim()) {
+            if (bundleInput && scanBundle && (!bundleInput.value.trim() || bundleInput.value !== scanBundle)) {
                 bundleInput.value = scanBundle;
                 filled++;
             }
-            if (packageInput && scanPackage && !packageInput.value.trim()) {
+            if (packageInput && scanPackage && (!packageInput.value.trim() || packageInput.value !== scanPackage)) {
                 packageInput.value = scanPackage;
                 filled++;
             }
-            if (servicesInput && scanServices && !servicesInput.value.trim()) {
+            if (servicesInput && scanServices && (!servicesInput.value.trim() || servicesInput.value !== scanServices)) {
                 servicesInput.value = scanServices;
                 filled++;
             }
-        });
+            if (infoInput && scanInfo && (!infoInput.value.trim() || infoInput.value !== scanInfo)) {
+                infoInput.value = scanInfo;
+                filled++;
+            }
+        } else {
+            flavors.forEach(flavor => {
+                const bundleInput = document.getElementById(`cfgBundle_${flavor}`);
+                const packageInput = document.getElementById(`cfgAndroidPackage_${flavor}`);
+                const servicesInput = document.getElementById(`cfgGoogleServices_${flavor}`);
+                const infoInput = document.getElementById(`cfgGoogleServiceInfo_${flavor}`);
+
+                const scanBundle = d[`bundle_id_${flavor}`] || d.bundle_id || d.bundle_id_prod;
+                const scanPackage = d[`android_package_${flavor}`] || d[`android_id_${flavor}`] || d.android_package || d.android_package_prod;
+                const scanServices = d[`google_services_json_${flavor}`] || d.google_services_json;
+                const scanInfo = d[`google_service_info_plist_${flavor}`] || d.google_service_info_plist;
+
+                if (bundleInput && scanBundle && (!bundleInput.value.trim() || bundleInput.value !== scanBundle)) {
+                    bundleInput.value = scanBundle;
+                    filled++;
+                }
+                if (packageInput && scanPackage && (!packageInput.value.trim() || packageInput.value !== scanPackage)) {
+                    packageInput.value = scanPackage;
+                    filled++;
+                }
+                if (servicesInput && scanServices && (!servicesInput.value.trim() || servicesInput.value !== scanServices)) {
+                    servicesInput.value = scanServices;
+                    filled++;
+                }
+                if (infoInput && scanInfo && (!infoInput.value.trim() || infoInput.value !== scanInfo)) {
+                    infoInput.value = scanInfo;
+                    filled++;
+                }
+            });
+        }
+
+        if (d.play_service_account_path && !setupEls.playService.value.trim()) {
+            setupEls.playService.value = d.play_service_account_path;
+            filled++;
+        }
 
         if (filled > 0) {
-            showToast(`Auto-filled ${filled} field(s) from workspace scan. Review and save.`);
+            showToast(`Auto-filled ${filled} field(s) from project scan (Android & iOS). Review and save.`);
         } else if (Object.keys(d).length > 0) {
-            showToast('Fields already filled — scan found data but kept your existing values.');
+            showToast('Fields matched project files — values are up to date.');
         } else {
             showToast('Scan complete — no configuration files found.');
         }
@@ -466,6 +602,7 @@ async function autoScanAllConfig() {
         if (res.success) {
             showToast(`Scanned and saved configuration for ${res.count} of ${res.total} app(s)!`);
             if (setupState.selectedAppId) {
+                await loadSetupData();
                 selectSetupApp(setupState.selectedAppId);
             }
         } else {
@@ -483,11 +620,88 @@ if (setupEls.scanAllBtn) {
     setupEls.scanAllBtn.addEventListener('click', autoScanAllConfig);
 }
 
+// ── Add App Path Detection & Registration ─────────────────────────────────────
+const newAppPath = document.getElementById('newAppPath');
+const detectAppPathBtn = document.getElementById('detectAppPathBtn');
+const pathDetectBadge = document.getElementById('pathDetectBadge');
+
+async function detectAppFromPath() {
+    if (!newAppPath) return;
+    const pathVal = newAppPath.value.trim();
+    if (!pathVal) {
+        if (pathDetectBadge) pathDetectBadge.style.display = 'none';
+        return;
+    }
+    if (pathDetectBadge) {
+        pathDetectBadge.style.display = 'block';
+        pathDetectBadge.dataset.status = 'unknown';
+        pathDetectBadge.textContent = 'Inspecting directory...';
+    }
+
+    try {
+        const res = await fetch(`/api/deployment/inspect-path?path=${encodeURIComponent(pathVal)}`).then(r => r.json());
+        if (!res.success || !res.exists) {
+            if (pathDetectBadge) {
+                pathDetectBadge.dataset.status = 'error';
+                pathDetectBadge.textContent = `❌ ${res.error || 'Directory does not exist'}`;
+            }
+            return;
+        }
+
+        const app = res.detectedApp || (res.apps && res.apps.length > 0 ? res.apps[0] : null);
+        if (app) {
+            if (pathDetectBadge) {
+                pathDetectBadge.dataset.status = 'valid';
+                pathDetectBadge.innerHTML = `✅ Found <strong>${escapeHtml(app.name)}</strong> (${escapeHtml(app.stack || 'app')}) • v${escapeHtml(app.version || '1.0.0 (1)')}`;
+            }
+            const idInput = document.getElementById('newAppId');
+            const nameInput = document.getElementById('newAppName');
+            const verInput = document.getElementById('newAppVersion');
+
+            if (idInput && (!idInput.value.trim() || idInput.dataset.autofilled === 'true')) {
+                idInput.value = app.id;
+                idInput.dataset.autofilled = 'true';
+            }
+            if (nameInput && (!nameInput.value.trim() || nameInput.dataset.autofilled === 'true')) {
+                nameInput.value = app.name;
+                nameInput.dataset.autofilled = 'true';
+            }
+            if (verInput && (!verInput.value.trim() || verInput.dataset.autofilled === 'true')) {
+                verInput.value = app.version || '1.0.0 (1)';
+                verInput.dataset.autofilled = 'true';
+            }
+        } else {
+            if (pathDetectBadge) {
+                pathDetectBadge.dataset.status = 'warning';
+                pathDetectBadge.textContent = 'ℹ️ Folder found, but no pubspec.yaml / package.json detected. Configure manually.';
+            }
+        }
+    } catch (err) {
+        if (pathDetectBadge) {
+            pathDetectBadge.dataset.status = 'error';
+            pathDetectBadge.textContent = `❌ Detection failed: ${err.message}`;
+        }
+    }
+}
+
+if (detectAppPathBtn) {
+    detectAppPathBtn.addEventListener('click', detectAppFromPath);
+}
+if (newAppPath) {
+    newAppPath.addEventListener('blur', () => {
+        if (newAppPath.value.trim() && !document.getElementById('newAppId')?.value.trim()) {
+            detectAppFromPath();
+        }
+    });
+}
+
 // Register App Actions
 addCustomAppBtn.addEventListener('click', () => {
     setupEls.form.classList.add('hidden');
     setupEls.noApp.classList.add('hidden');
     addAppForm.classList.remove('hidden');
+    if (newAppPath) newAppPath.value = '';
+    if (pathDetectBadge) pathDetectBadge.style.display = 'none';
     if (window.lucide && typeof lucide.createIcons === 'function') {
         lucide.createIcons();
     }
@@ -506,6 +720,7 @@ saveNewAppBtn.addEventListener('click', async () => {
     const id = document.getElementById('newAppId').value.trim();
     const name = document.getElementById('newAppName').value.trim();
     const version = document.getElementById('newAppVersion').value.trim() || '1.0.0 (1)';
+    const path = newAppPath ? newAppPath.value.trim() : '';
 
     if (!id || !name) {
         showToast('App ID and App Name are required!');
@@ -515,18 +730,20 @@ saveNewAppBtn.addEventListener('click', async () => {
     const res = await fetch('/api/deployment/apps/save', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id, name, version }),
+        body: JSON.stringify({ id, name, version, path }),
     }).then(r => r.json());
 
     if (res.success) {
-        showToast('App registered!');
+        showToast('App registered and auto-scanned from project!');
         addAppForm.classList.add('hidden');
         document.getElementById('newAppId').value = '';
         document.getElementById('newAppName').value = '';
         document.getElementById('newAppVersion').value = '';
+        if (newAppPath) newAppPath.value = '';
+        if (pathDetectBadge) pathDetectBadge.style.display = 'none';
         await loadSetupData();
         selectSetupApp(id);
-        
+
         if (typeof loadApps === 'function') { loadApps(); }
     } else {
         showToast('Failed to register app: ' + (res.error || 'unknown'));

@@ -2,6 +2,8 @@ import json
 import os
 import plistlib
 import re
+import shlex
+import shutil
 import signal
 import subprocess
 import threading
@@ -14,6 +16,7 @@ from config import (
     DASHBOARD_ROOT,
     FEATURE_DIR,
     TMP_DIR,
+    SAFE_ID_PATTERN,
     get_apps,
     get_workspace_root,
     load_deploy_config,
@@ -123,8 +126,17 @@ def execute_command(
     if not app or not command:
         return {"success": False, "error": "App and command are required"}
 
-    if env and command.rstrip().endswith(" any"):
-        command = command.rstrip()[: -len(" any")] + f" {env}"
+    if not SAFE_ID_PATTERN.match(app):
+        return {"success": False, "error": f"Invalid app ID '{app}'. Must match ^[A-Za-z0-9._-]+$"}
+
+    if flavor and not SAFE_ID_PATTERN.match(flavor):
+        return {"success": False, "error": f"Invalid flavor parameter '{flavor}'. Must match ^[A-Za-z0-9._-]+$"}
+
+    if env:
+        if not SAFE_ID_PATTERN.match(env):
+            return {"success": False, "error": f"Invalid env parameter '{env}'. Must match ^[A-Za-z0-9._-]+$"}
+        if command.rstrip().endswith(" any"):
+            command = command.rstrip()[: -len(" any")] + f" {shlex.quote(env)}"
 
     if _is_prod_store_deploy(command) and not confirmed:
         return {

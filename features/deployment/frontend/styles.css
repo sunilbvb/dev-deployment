@@ -273,9 +273,14 @@ body {
 
 .dynamic-inputs-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-    gap: 12px;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 14px;
     margin-top: 8px;
+}
+
+.dynamic-inputs-grid input {
+    font-family: 'JetBrains Mono', 'Fira Code', monospace;
+    font-size: 0.82rem;
 }
 
 .not-configured-badge {
@@ -331,9 +336,12 @@ body {
     background: rgba(255, 255, 255, 0.03);
     color: var(--ui-text-secondary, #cbd5e1);
 }
-.cert-status-box[data-status="ok"] { border-color: var(--ui-success-color, #10b981); }
+.cert-status-box[data-status="ok"],
+.cert-status-box[data-status="valid"] { border-color: var(--ui-success-color, #10b981); color: #34d399; }
 .cert-status-box[data-status="warning"] { border-color: var(--ui-warning-color, #f59e0b); color: var(--ui-warning-color, #f59e0b); }
-.cert-status-box[data-status="expired"] { border-color: var(--ui-danger-color, #ef4444); color: var(--ui-danger-color, #ef4444); }
+.cert-status-box[data-status="expired"],
+.cert-status-box[data-status="error"] { border-color: var(--ui-danger-color, #ef4444); color: var(--ui-danger-color, #ef4444); }
+.cert-status-box[data-status="info"] { border-color: #38bdf8; color: #7dd3fc; background: rgba(56, 189, 248, 0.06); }
 
 .cert-expiry-banner {
     margin-bottom: 12px;
