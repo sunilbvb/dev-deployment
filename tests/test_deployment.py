@@ -93,7 +93,8 @@ class TestDeploymentSecurityAndLogic(unittest.TestCase):
 
     def test_scan_android_segment_matching(self):
         """B1 fix: com.devstudio.app must NOT match 'dev'; com.app.dev must match 'dev'."""
-        import tempfile, pathlib
+        import tempfile
+        import pathlib
         with tempfile.TemporaryDirectory() as td:
             app_path = pathlib.Path(td)
             android_app = app_path / "android" / "app"
@@ -125,7 +126,8 @@ class TestDeploymentSecurityAndLogic(unittest.TestCase):
 
     def test_scan_xcconfig_segment_matching(self):
         """B2 fix: 'devstudio.xcconfig' must NOT match 'dev' flavor; 'Debug-dev.xcconfig' must match."""
-        import tempfile, pathlib
+        import tempfile
+        import pathlib
         with tempfile.TemporaryDirectory() as td:
             app_path = pathlib.Path(td)
             xcconfig_dir = app_path / "ios" / "Flutter"
@@ -155,7 +157,8 @@ class TestDeploymentSecurityAndLogic(unittest.TestCase):
 
     def test_detect_app_in_dir_empty_returns_none(self):
         """C1 fix: empty directory must return None, not a generic dict."""
-        import tempfile, pathlib
+        import tempfile
+        import pathlib
         with tempfile.TemporaryDirectory() as td:
             empty_dir = pathlib.Path(td) / "random_folder"
             empty_dir.mkdir()
@@ -165,7 +168,8 @@ class TestDeploymentSecurityAndLogic(unittest.TestCase):
     def test_detect_app_flutter_package_vs_app(self):
         """C2 fix: Flutter package (no android/ios/main.dart) should be is_package=True.
            Flutter app (has android/ or ios/ or lib/main.dart) should be is_package=False."""
-        import tempfile, pathlib
+        import tempfile
+        import pathlib
         # Pure package — has pubspec.yaml but no android/, ios/, or lib/main.dart
         with tempfile.TemporaryDirectory() as td:
             pkg_dir = pathlib.Path(td) / "my_utils"
@@ -286,7 +290,8 @@ class TestDeploymentSecurityAndLogic(unittest.TestCase):
 
     def test_b5_product_flavors_parsing(self):
         """B5 fix: real productFlavors block in build.gradle is parsed, not random src/ subfolders."""
-        import tempfile, pathlib
+        import tempfile
+        import pathlib
         with tempfile.TemporaryDirectory() as td:
             app_dir = pathlib.Path(td)
             gradle_file = app_dir / "android" / "app" / "build.gradle"
@@ -333,7 +338,8 @@ class TestDeploymentSecurityAndLogic(unittest.TestCase):
 
     def test_c10_allow_workspace(self):
         """C10 fix: allow_workspace adds a valid directory to workspaces_list.json."""
-        import tempfile, pathlib
+        import tempfile
+        import pathlib
         with tempfile.TemporaryDirectory() as td:
             res = config.allow_workspace(td)
             self.assertTrue(res["success"])
@@ -357,7 +363,8 @@ class TestDeploymentSecurityAndLogic(unittest.TestCase):
 
     def test_b7_gitignore_auto_added(self):
         """B7 fix: .dev-dashboard/ is auto-added to workspace .gitignore."""
-        import tempfile, pathlib
+        import tempfile
+        import pathlib
         with tempfile.TemporaryDirectory() as td:
             ws = pathlib.Path(td)
             gitignore = ws / ".gitignore"
@@ -388,7 +395,8 @@ class TestDeploymentSecurityAndLogic(unittest.TestCase):
 
     def test_c3_dart_pub_workspace(self):
         """C3 fix: Dart 3.5+ / Melos 7 pub workspaces (workspace: in pubspec.yaml) are discovered."""
-        import tempfile, pathlib
+        import tempfile
+        import pathlib
         with tempfile.TemporaryDirectory() as td:
             ws = pathlib.Path(td)
             (ws / "pubspec.yaml").write_text(
@@ -413,7 +421,8 @@ class TestDeploymentSecurityAndLogic(unittest.TestCase):
 
     def test_c4_melos_globs_and_ignore(self):
         """C4 fix: Melos parser expands globs (apps/**) and respects ignore patterns."""
-        import tempfile, pathlib
+        import tempfile
+        import pathlib
         with tempfile.TemporaryDirectory() as td:
             ws = pathlib.Path(td)
             (ws / "melos.yaml").write_text(
@@ -445,7 +454,8 @@ class TestDeploymentSecurityAndLogic(unittest.TestCase):
 
     def test_c5_multilevel_discovery(self):
         """C5 fix: multi-level discovery finds apps up to 3 levels deep."""
-        import tempfile, pathlib
+        import tempfile
+        import pathlib
         with tempfile.TemporaryDirectory() as td:
             ws = pathlib.Path(td)
             # App at level 2: repo/mobile/app
@@ -460,7 +470,8 @@ class TestDeploymentSecurityAndLogic(unittest.TestCase):
 
     def test_c6_duplicate_app_ids_disambiguated(self):
         """C6 fix: duplicate app IDs are disambiguated with path info instead of dropped."""
-        import tempfile, pathlib
+        import tempfile
+        import pathlib
         with tempfile.TemporaryDirectory() as td:
             ws = pathlib.Path(td)
             for parent in ("apps", "packages"):
@@ -476,7 +487,8 @@ class TestDeploymentSecurityAndLogic(unittest.TestCase):
 
     def test_c7_app_lock_scoped_to_workspace(self):
         """C7 fix: app locks are workspace-scoped."""
-        import tempfile, pathlib
+        import tempfile
+        import pathlib
         with tempfile.TemporaryDirectory() as td1, tempfile.TemporaryDirectory() as td2:
             ws1 = pathlib.Path(td1)
             ws2 = pathlib.Path(td2)
@@ -530,7 +542,8 @@ class TestDeploymentSecurityAndLogic(unittest.TestCase):
 
     def test_c9_request_scoped_workspace(self):
         """C9 fix: request-scoped workspace via set_request_workspace works without race conditions."""
-        import tempfile, pathlib
+        import tempfile
+        import pathlib
         with tempfile.TemporaryDirectory() as td:
             custom_ws = pathlib.Path(td)
             self.assertNotEqual(config.get_workspace_root(), custom_ws)
@@ -549,6 +562,48 @@ class TestDeploymentSecurityAndLogic(unittest.TestCase):
             self.assertEqual(res.get("workspaceMissing"), "/nonexistent/path/for/test")
         finally:
             config.WORKSPACE_MISSING = None
+
+    def test_history_entry_enrichment(self):
+        """Verify _record_history_entry populates completedAt, durationSeconds, errorExcerpt, outputExcerpt, and flavor."""
+        test_job_id = "job_test_enrichment_123"
+        with jobs._JOBS_LOCK:
+            jobs._JOBS[test_job_id] = {
+                "id": test_job_id,
+                "app": "dummy_app_alpha",
+                "command": "make test",
+                "status": "success",
+                "return_code": 0,
+                "started_at": 1000.0,
+                "finished_at": 1015.0,
+                "env": "prod",
+                "flavor": "prod",
+                "template_id": "deploy_aab",
+                "error": "line 1\nline 2\nwarning: something minor",
+                "output": "step 1\nstep 2\nSUCCESS: uploaded AAB",
+            }
+        try:
+            jobs._record_history_entry(test_job_id, chained_job_id="job_parent_001")
+            history = jobs.get_deployment_history(limit=5, app="dummy_app_alpha", flavor="prod")
+            self.assertTrue(history.get("success"))
+            entries = [e for e in history.get("entries", []) if e.get("id") == test_job_id]
+            self.assertTrue(len(entries) > 0)
+            entry = entries[0]
+            self.assertEqual(entry.get("completedAt"), 1015000)
+            self.assertEqual(entry.get("durationSeconds"), 15)
+            self.assertEqual(entry.get("chainedJobId"), "job_parent_001")
+            self.assertIn("uploaded AAB", entry.get("outputExcerpt", ""))
+            self.assertIn("something minor", entry.get("errorExcerpt", ""))
+        finally:
+            with jobs._JOBS_LOCK:
+                jobs._JOBS.pop(test_job_id, None)
+
+    def test_check_ios_expiry_timezone(self):
+        """Verify check_ios_expiry generates ISO 8601 UTC timestamp cleanly."""
+        res = jobs.check_ios_expiry("dummy_app_alpha", flavor="prod")
+        self.assertTrue(res.get("success"))
+        checked_at = res.get("checkedAt")
+        self.assertIsNotNone(checked_at)
+        self.assertTrue(checked_at.endswith("+00:00") or checked_at.endswith("Z"))
 
 
 if __name__ == "__main__":

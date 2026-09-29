@@ -82,7 +82,6 @@ def _ensure_gitignore_has_dashboard(ws_root: Path) -> None:
     """B7 fix: auto-add .dev-dashboard/ to .gitignore in the user's workspace."""
     try:
         gitignore = ws_root / ".gitignore"
-        entry = ".dev-dashboard/"
         if gitignore.exists():
             content = gitignore.read_text(encoding="utf-8", errors="replace")
             if ".dev-dashboard" not in content:
@@ -1247,7 +1246,6 @@ def rescan_workspace() -> dict[str, Any]:
     """
     apps_file = get_apps_config_file()
     cmds_file = get_commands_config_file()
-    deploy_file = get_deploy_config_file()
 
     # Reset discovery cache
     try:

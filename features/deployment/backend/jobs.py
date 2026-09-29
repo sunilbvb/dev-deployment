@@ -9,7 +9,7 @@ import signal
 import subprocess
 import threading
 import time
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
 
@@ -17,6 +17,7 @@ from config import (
     FEATURE_DIR,
     TMP_DIR,
     SAFE_ID_PATTERN,
+    _resolve_app_dir,
     get_apps,
     get_workspace_root,
     load_deploy_config,
@@ -79,21 +80,37 @@ def _append_job_log(job_id: str, field: str, text: str) -> None:
         job[field] = curr + text
 
 
-def _record_history_entry(job_id: str) -> None:
+def _record_history_entry(job_id: str, chained_job_id: Optional[str] = None) -> None:
     with _JOBS_LOCK:
         job = _JOBS.get(job_id)
         if not job:
             return
+        started_at = job.get("started_at")
+        finished_at = job.get("finished_at") or time.time()
+        duration_sec = int(finished_at - started_at) if started_at else None
+
+        # Build concise excerpts for frontend history view
+        err_raw = (job.get("error") or "").strip()
+        out_raw = (job.get("output") or "").strip()
+        error_excerpt = "\n".join(err_raw.splitlines()[-10:]) if err_raw else ""
+        output_excerpt = "\n".join(out_raw.splitlines()[-10:]) if out_raw else ""
+
         entry = {
             "id": job["id"],
             "app": job.get("app"),
             "command": job.get("command"),
             "status": job.get("status"),
             "returnCode": job.get("return_code"),
-            "startedAt": job.get("started_at"),
-            "finishedAt": time.time(),
+            "startedAt": started_at,
+            "finishedAt": finished_at,
+            "completedAt": int(finished_at * 1000) if finished_at else None,
+            "durationSeconds": duration_sec,
             "env": job.get("env"),
+            "flavor": job.get("flavor") or job.get("env"),
             "templateId": job.get("template_id"),
+            "chainedJobId": chained_job_id or job.get("chained_job_id"),
+            "errorExcerpt": error_excerpt,
+            "outputExcerpt": output_excerpt,
         }
 
     history_file = _get_history_file()
@@ -127,6 +144,7 @@ def _trigger_chained_release(app: str, env: str, action_id: str, parent_job_id: 
         _record_history_entry(parent_job_id)
         return
 
+    _record_history_entry(parent_job_id)
     execute_command(
         app=app,
         command=target_cmd["key"],
@@ -136,6 +154,7 @@ def _trigger_chained_release(app: str, env: str, action_id: str, parent_job_id: 
         flavor=env,
         confirmed=True,
         _assume_app_lock_held=True,
+        chained_parent_id=parent_job_id,
     )
 
 
@@ -148,6 +167,7 @@ def execute_command(
     flavor: str = "",
     confirmed: bool = False,
     _assume_app_lock_held: bool = False,
+    chained_parent_id: Optional[str] = None,
 ) -> dict[str, Any]:
     if not app or not command:
         return {"success": False, "error": "App and command are required"}
@@ -270,6 +290,8 @@ def execute_command(
             "app": app,
             "template_id": template_id,
             "env": env,
+            "flavor": flavor or env,
+            "chained_job_id": chained_parent_id,
             "started_at": time.time(),
             "workspace": str(ws_root.resolve()),
         }
@@ -440,7 +462,8 @@ def get_deployment_history(limit: int = 50, app: str = "", flavor: str = "", sta
                 continue
             if app and entry.get("app") != app:
                 continue
-            if flavor and entry.get("flavor") != flavor:
+            entry_flavor = entry.get("flavor") or entry.get("env")
+            if flavor and entry_flavor != flavor:
                 continue
             if status and entry.get("status") != status:
                 continue
@@ -507,7 +530,7 @@ def get_batch_deploy_plan(flavor: str, template_id: str = "auto") -> dict[str, A
 
 
 def _app_has_ios(app_id: str) -> bool:
-    app_dir = get_workspace_root() / "apps" / app_id
+    app_dir = _resolve_app_dir(app_id)
     return (app_dir / "ios").exists()
 
 
@@ -586,7 +609,8 @@ def _select_matching_profile(candidates: list[dict], app_id: str, flavor: str) -
 
 
 def _find_last_distribution_summary(app_id: str) -> Optional[Path]:
-    candidate = get_workspace_root() / "apps" / app_id / "build" / "ios" / "ipa" / "DistributionSummary.plist"
+    app_dir = _resolve_app_dir(app_id)
+    candidate = app_dir / "build" / "ios" / "ipa" / "DistributionSummary.plist"
     return candidate if candidate.exists() else None
 
 
@@ -617,7 +641,7 @@ def check_ios_expiry(app: str, flavor: str = "prod") -> dict[str, Any]:
         return {"success": True, "app": app, "flavor": flavor, "status": "not_ios_app"}
 
     warnings: list[str] = []
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
 
     def _status_for(expires_on: Optional[str]) -> str:
         if not expires_on:
@@ -652,7 +676,7 @@ def check_ios_expiry(app: str, flavor: str = "prod") -> dict[str, Any]:
             entry = summary[build_key][0]
             cert_parsed = _parse_distribution_summary_expiry(entry["certificate"]["dateExpires"])
             profile_parsed = _parse_distribution_summary_expiry(entry["profile"]["dateExpires"])
-            stale_days = (now - datetime.utcfromtimestamp(summary_path.stat().st_mtime)).days
+            stale_days = (now - datetime.fromtimestamp(summary_path.stat().st_mtime, timezone.utc)).days
             if cert_result is None:
                 cert_result = {**cert_parsed, "source": "last_build_summary", "confidence": "low", "bestEffort": True, "staleBuildDays": stale_days, "status": _status_for(cert_parsed["expiresOn"]) if cert_parsed["expiresOn"] else "unknown"}
             if profile_result is None:
@@ -667,7 +691,7 @@ def check_ios_expiry(app: str, flavor: str = "prod") -> dict[str, Any]:
         "app": app,
         "flavor": flavor,
         "thresholdDays": EXPIRY_WARNING_THRESHOLD_DAYS,
-        "checkedAt": now.isoformat() + "Z",
+        "checkedAt": now.isoformat(),
         "certificate": cert_result or {"status": "unknown", "source": "none"},
         "provisioningProfile": profile_result or {"status": "unknown", "source": "none"},
         "warnings": warnings,
