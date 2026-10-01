@@ -25,6 +25,10 @@ const state = {
     historyEntries: [],
     sentinelWorkspace: null,
     sentinelApp: null,
+    isServerOnline: null,
+    isDemoMode: false,
+    activeDocId: 'overview',
+    cachedDocs: {},
 };
 
 const els = {
@@ -131,6 +135,36 @@ const els = {
     bsDiffTableContainer: document.getElementById('bsDiffTableContainer'),
     bsLargestTableContainer: document.getElementById('bsLargestTableContainer'),
     bsModalFooterPath: document.getElementById('bsModalFooterPath'),
+    // Documentation Hub & Server Status Elements
+    serverStatusBadge: document.getElementById('serverStatusBadge'),
+    serverStatusDot: document.getElementById('serverStatusDot'),
+    serverStatusText: document.getElementById('serverStatusText'),
+    openDocsBtn: document.getElementById('openDocsBtn'),
+    serverOfflineBanner: document.getElementById('serverOfflineBanner'),
+    copyStartCommandBtn: document.getElementById('copyStartCommandBtn'),
+    startDemoModeBtn: document.getElementById('startDemoModeBtn'),
+    bannerOpenDocsBtn: document.getElementById('bannerOpenDocsBtn'),
+    demoModeBanner: document.getElementById('demoModeBanner'),
+    exitDemoModeBtn: document.getElementById('exitDemoModeBtn'),
+    docsModalOverlay: document.getElementById('docsModalOverlay'),
+    closeDocsModalBtn: document.getElementById('closeDocsModalBtn'),
+    closeDocsBtn: document.getElementById('closeDocsBtn'),
+    docsCurrentCategory: document.getElementById('docsCurrentCategory'),
+    docsCurrentTitle: document.getElementById('docsCurrentTitle'),
+    docsCurrentFilename: document.getElementById('docsCurrentFilename'),
+    docsContentArea: document.getElementById('docsContentArea'),
+    docsFooterPath: document.getElementById('docsFooterPath'),
+    serverConsoleModalOverlay: document.getElementById('serverConsoleModalOverlay'),
+    closeServerConsoleModalBtn: document.getElementById('closeServerConsoleModalBtn'),
+    closeServerConsoleBtn: document.getElementById('closeServerConsoleBtn'),
+    serverModalStatusTitle: document.getElementById('serverModalStatusTitle'),
+    serverModalStatusBadge: document.getElementById('serverModalStatusBadge'),
+    serverModalUrl: document.getElementById('serverModalUrl'),
+    serverModalPort: document.getElementById('serverModalPort'),
+    serverModalPid: document.getElementById('serverModalPid'),
+    serverModalPython: document.getElementById('serverModalPython'),
+    copyServerSnippetBtn: document.getElementById('copyServerSnippetBtn'),
+    testServerReconnectBtn: document.getElementById('testServerReconnectBtn'),
 };
 
 // C9: Tab-isolated workspace - attach X-Workspace header to all fetch requests
@@ -338,6 +372,10 @@ function renderEnvTabs() {
 }
 
 async function loadCommands(appId) {
+    if (state.isDemoMode) {
+        setupDemoCommands(appId);
+        return;
+    }
     els.commandGrid.innerHTML = '<div class="empty-state">Loading deployment commands...</div>';
     let data;
     try {
@@ -635,6 +673,11 @@ async function executeSelected(confirmed = false) {
     els.stopJobBtn.disabled = true;
     startTimer();
     writeTerminal(`Executing: ${els.selectedCommandPreview.textContent}`);
+
+    if (state.isDemoMode) {
+        runSimulatedDemoExecution(els.selectedCommandPreview.textContent);
+        return;
+    }
 
     try {
         const res = await fetch(api('/api/deployment/execute'), {
@@ -1056,6 +1099,11 @@ async function runDoctorDiagnostics() {
     els.doctorScorePills.innerHTML = '<span class="ui-badge" data-variant="secondary">Running...</span>';
     els.doctorChecklistContainer.innerHTML = '<div class="empty-state">Running diagnostics...</div>';
     if (els.recheckDoctorBtn) els.recheckDoctorBtn.disabled = true;
+
+    if (state.isDemoMode) {
+        renderDemoDoctorDiagnostics();
+        return;
+    }
 
     try {
         const queryApp = doctorState.appId ? `app=${encodeURIComponent(doctorState.appId)}&` : '';
@@ -2147,12 +2195,810 @@ if (els.bsTabLargestBtn) {
     els.bsTabLargestBtn.addEventListener('click', () => switchBuildSizeTab('largest'));
 }
 
+// ═══════════════════════════ Documentation & Knowledge Hub ═══════════════════════════
+
+const DEFAULT_EMBEDDED_DOCS = {
+    overview: {
+        title: "Console Overview & Quickstart",
+        category: "Getting Started",
+        filename: "Overview",
+        content: `# 🚀 Dev Deployment Console — Overview & Guide
+
+Welcome to the **Dev Deployment Console** — a lightweight, zero-dependency developer dashboard and automation tool for Flutter and mobile application deployments across multiple environments (Dev, QA, Production).
+
+---
+
+## ⚡ Core Capabilities & Features
+
+1. **Multi-App Flutter Deployments & Flavor Support**
+   - Automatically detects single apps, Melos monorepos, and multi-app workspaces.
+   - Generates and executes parameterized Fastlane & Flutter deployment commands.
+   - Clean separation of Dev, QA, and Production environments with production deploy confirmation guards.
+
+2. **Saved Pipelines (Chained Workflows)**
+   - Create and save multi-step deployment sequences (e.g. \`Pre-flight Diagnostics\` → \`Build AAB\` → \`Upload to Play Store\`).
+   - Stop-on-failure safety and live step-by-step progress tracking.
+
+3. **Pre-flight "App Doctor" (1-Click Diagnostics)**
+   - 1-click comprehensive system and project health evaluation before running long builds.
+   - Inspects Flutter SDK, Android SDK, CocoaPods, keystores, \`.p8\` Apple keys, provisioning profiles, Git clean status, and Firebase configurations.
+
+4. **Local APK Hosting & QR Code Scan-to-Install**
+   - Instantly hosts completed Android \`.apk\` builds over local HTTP (\`/api/deployment/download/<job_id>\`).
+   - Generates a terminal & UI QR code for instant phone camera scan-and-install over Wi-Fi without cables or Firebase App Distribution setup.
+
+5. **Outgoing Webhooks (Slack / Discord / Microsoft Teams)**
+   - Automated deployment notifications to team channels on build completion or failure.
+   - Rich card layouts with status badges, elapsed duration, commit logs, and direct APK download links.
+
+6. **Certificate & Keystore Expiry Sentinel**
+   - Proactive warnings on dashboard:
+     - Apple \`.p8\` API keys and distribution certificates expiring within 30 days.
+     - Android upload keys nearing validity limits.
+     - Cross-platform Firebase project ID mismatches (e.g. dev config in a production build).
+
+7. **Build Size Inspector & Diff**
+   - Fast archive size comparison against previous successful runs (\`AAB: 24.2 MB (+3.8 MB, +18%) ⚠️\`).
+   - Deep zip central directory inspection without extracting files to disk.
+   - Alerts developers if huge uncompressed raw assets (\`ZIP_STORED\` ≥ 500 KB) are accidentally packaged into production bundles.
+
+---
+
+## 🏁 Starting the Deployment Server
+
+To connect this web console to your real local projects, start the backend server from your terminal:
+
+\`\`\`bash
+# 1. From repository root:
+./start.sh
+
+# Or directly with Python:
+python3 features/deployment/backend/server.py --port 18112
+\`\`\`
+
+- **Default Port:** \`http://localhost:18112\`
+- **Security:** Protected by local bearer auth token (\`~/.config/dev-deployment/auth_token.txt\`).
+- **Zero Third-Party Dependencies:** Written in 100% Python standard library.
+`
+    },
+    readme: {
+        title: "README — Dev Deployment",
+        category: "Repository Docs",
+        filename: "README.md",
+        content: `# Dev Deployment Console
+
+A zero-dependency, local-first developer dashboard for automating Flutter & mobile builds, Fastlane scripts, diagnostics, and team delivery.
+
+## Key Highlights
+- **Zero Third-Party Python Dependencies**: Runs purely on Python standard library (\`http.server\`, \`zipfile\`, \`json\`, \`subprocess\`).
+- **Monorepo & Single-App Support**: Auto-detects Flutter apps with or without Melos.
+- **Local APK Server & QR Code**: Scan phone camera to download test builds over local Wi-Fi.
+- **Pre-flight App Doctor**: Prevents failed 20-minute CI builds by diagnosing environment issues upfront.
+- **Build Size Inspector**: Compares APK/AAB size deltas and detects uncompressed assets.
+`
+    },
+    architecture: {
+        title: "ARCHITECTURE & Design Decisions",
+        category: "Repository Docs",
+        filename: "ARCHITECTURE.md",
+        content: `# System Architecture & Principles
+
+## 1. Zero External Dependencies (ADR 0001)
+No \`pip install\`, no Node.js runtime for backend. Anyone with Python 3.10+ can clone and run immediately via \`./start.sh\`.
+
+## 2. Local-First Execution
+All commands are generated as transparent shell / Fastlane commands executed locally under user privileges.
+
+## 3. Tab-Isolated Workspaces (C9)
+Every browser tab carries an \`X-Workspace\` header so multiple monorepos can be monitored independently without race conditions.
+
+## 4. Security Guards
+- Localhost only (DNS rebinding rejected).
+- CSRF Origin check on all mutating endpoints.
+- Path traversal sanitization on all artifact and credential downloads.
+`
+    },
+    faq: {
+        title: "FAQ & Troubleshooting",
+        category: "Repository Docs",
+        filename: "FAQ.md",
+        content: `# Frequently Asked Questions
+
+### Q: Why do I see "Server Offline" when opening index.html?
+A: Web browsers run \`file://\` in a strict sandbox. To communicate with local Flutter projects, start the Python server using \`./start.sh\`.
+
+### Q: How do I scan the QR code from my phone?
+A: Make sure your phone is connected to the same Wi-Fi network as your development computer. The console automatically detects your LAN IP (e.g. \`http://192.168.1.50:18112\`).
+
+### Q: How do I configure Slack or Discord webhooks?
+A: Open the **Configure** dialog (top right), navigate to the **Notifications** tab, and enter your webhook URL.
+`
+    },
+    api: {
+        title: "REST API Documentation",
+        category: "API & Technical",
+        filename: "docs/API.md",
+        content: `# REST API Specification
+
+### GET /api/deployment/server-status
+Returns heartbeat, port, process PID, and uptime. Public health ping.
+
+### GET /api/deployment/workspaces
+Returns all configured and discovered workspace paths.
+
+### GET /api/deployment/apps
+Returns detected Flutter apps in active workspace.
+
+### GET /api/deployment/doctor?app=<app>&flavor=<flavor>
+Runs comprehensive 6-category pre-flight diagnostics.
+
+### GET /api/deployment/build-size?app=<app>&flavor=<flavor>
+Returns build artifact size delta and uncompressed assets diff.
+
+### GET /api/deployment/docs?doc=<id>
+Returns rendered markdown content for repository documentation.
+`
+    }
+};
+
+function renderSimpleMarkdown(md) {
+    if (!md) return '';
+    let html = escapeHtml(md);
+
+    // Fenced code blocks ```lang ... ```
+    html = html.replace(/```([a-zA-Z0-9_\-\+]*)\n([\s\S]*?)```/g, (_, lang, code) => {
+        const langLabel = lang ? `<span style="font-size:0.7rem; text-transform:uppercase; opacity:0.6; margin-bottom:4px; display:block;">${lang}</span>` : '';
+        return `<div class="code-block-container" style="background:#0f172a; padding:12px 14px; border-radius:8px; margin:12px 0; border:1px solid rgba(255,255,255,0.08); font-family:monospace; font-size:0.82rem; overflow-x:auto;">${langLabel}<pre style="margin:0; color:#e2e8f0; white-space:pre-wrap;">${code}</pre></div>`;
+    });
+
+    // Inline code `...`
+    html = html.replace(/`([^`\n]+)`/g, '<code style="background:rgba(255,255,255,0.08); padding:2px 6px; border-radius:4px; font-family:monospace; font-size:0.85em; color:var(--ui-primary, #6366f1);">$1</code>');
+
+    // Headers
+    html = html.replace(/^### (.*$)/gim, '<h4 style="font-size:1.05rem; font-weight:700; margin:16px 0 6px; color:var(--ui-text-primary);">$1</h4>');
+    html = html.replace(/^## (.*$)/gim, '<h3 style="font-size:1.25rem; font-weight:700; margin:22px 0 10px; border-bottom:1px solid var(--ui-border-color); padding-bottom:6px; color:var(--ui-text-primary);">$1</h3>');
+    html = html.replace(/^# (.*$)/gim, '<h2 style="font-size:1.5rem; font-weight:800; margin:0 0 14px; color:var(--ui-text-primary);">$1</h2>');
+
+    // Horizontal Rules
+    html = html.replace(/^---$/gim, '<hr style="border:0; border-top:1px solid var(--ui-border-color); margin:18px 0;">');
+
+    // Bold & Italics
+    html = html.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+    html = html.replace(/\*([^*]+)\*/g, '<em>$1</em>');
+
+    // Links [text](url)
+    html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" style="color:var(--ui-primary, #6366f1); text-decoration:underline;">$1</a>');
+
+    // Unordered lists
+    html = html.replace(/^\s*-\s+(.*$)/gim, '<li style="margin:4px 0;">$1</li>');
+    html = html.replace(/(<li style="margin:4px 0;">.*<\/li>\s*)+/g, '<ul style="padding-left:20px; margin:8px 0 12px;">$&</ul>');
+
+    // Blockquotes
+    html = html.replace(/^>\s+(.*$)/gim, '<blockquote style="border-left:4px solid var(--ui-primary, #6366f1); padding:8px 14px; margin:12px 0; background:rgba(99,102,241,0.06); border-radius:0 6px 6px 0; font-size:0.85rem;">$1</blockquote>');
+
+    // Paragraphs (lines separated by double breaks)
+    return html.split(/\n\n+/).map(p => {
+        p = p.trim();
+        if (!p) return '';
+        if (p.startsWith('<h') || p.startsWith('<div') || p.startsWith('<ul') || p.startsWith('<hr') || p.startsWith('<blockquote')) {
+            return p;
+        }
+        return `<p style="margin:8px 0; line-height:1.6;">${p.replace(/\n/g, '<br>')}</p>`;
+    }).join('\n');
+}
+
+async function openDocsModal(docId = 'overview') {
+    state.activeDocId = docId;
+    if (els.docsModalOverlay) {
+        els.docsModalOverlay.classList.add('ui-active');
+    }
+    await loadDoc(docId);
+    refreshIcons();
+}
+
+function closeDocsModal() {
+    if (els.docsModalOverlay) {
+        els.docsModalOverlay.classList.remove('ui-active');
+    }
+}
+
+async function loadDoc(docId) {
+    state.activeDocId = docId;
+
+    // Update active state in sidebar
+    if (els.docsModalOverlay) {
+        els.docsModalOverlay.querySelectorAll('.docs-nav-item').forEach(btn => {
+            btn.classList.toggle('active', btn.getAttribute('data-doc') === docId);
+        });
+    }
+
+    if (els.docsContentArea) {
+        els.docsContentArea.innerHTML = '<div style="padding:20px; color:var(--ui-muted); text-align:center;">Loading document...</div>';
+    }
+
+    let docData = state.cachedDocs[docId];
+
+    if (!docData) {
+        try {
+            const res = await fetch(api(`/api/deployment/docs?doc=${encodeURIComponent(docId)}`));
+            const data = await res.json();
+            if (data.success && data.content) {
+                docData = data;
+                state.cachedDocs[docId] = data;
+            }
+        } catch (_) {
+            // Server offline or fetch failed - fall back to embedded docs
+        }
+    }
+
+    if (!docData) {
+        docData = DEFAULT_EMBEDDED_DOCS[docId] || DEFAULT_EMBEDDED_DOCS['overview'];
+    }
+
+    if (els.docsCurrentTitle) els.docsCurrentTitle.textContent = docData.title || docId;
+    if (els.docsCurrentCategory) els.docsCurrentCategory.textContent = docData.category || 'Documentation';
+    if (els.docsCurrentFilename) els.docsCurrentFilename.textContent = docData.filename || `${docId}.md`;
+    if (els.docsFooterPath) els.docsFooterPath.textContent = docData.filePath || `Doc: ${docData.filename || docId}`;
+
+    if (els.docsContentArea) {
+        els.docsContentArea.innerHTML = renderSimpleMarkdown(docData.content);
+    }
+}
+
+// ═══════════════════════════ Server Status & Console Controller ═══════════════════════════
+
+function updateServerStatusUI(isOnline, info = {}) {
+    state.isServerOnline = isOnline;
+
+    if (els.serverStatusDot && els.serverStatusText && els.serverStatusBadge) {
+        if (isOnline) {
+            els.serverStatusDot.style.background = 'var(--ui-success, #22c55e)';
+            const portText = info.port ? ` (${info.port})` : '';
+            els.serverStatusText.textContent = `Server: Online${portText}`;
+            els.serverStatusBadge.setAttribute('data-variant', 'success');
+            els.serverStatusBadge.title = `Connected to local server on port ${info.port || 18112}. Click for server console.`;
+
+            // Hide offline banner if online
+            if (els.serverOfflineBanner) {
+                els.serverOfflineBanner.style.display = 'none';
+                els.serverOfflineBanner.classList.add('hidden');
+            }
+        } else {
+            els.serverStatusDot.style.background = 'var(--ui-warning, #f59e0b)';
+            els.serverStatusText.textContent = 'Server: Offline';
+            els.serverStatusBadge.setAttribute('data-variant', 'warning');
+            els.serverStatusBadge.title = 'Server offline. Click to view launch commands.';
+
+            // Show offline banner unless demo mode is active
+            if (els.serverOfflineBanner && !state.isDemoMode) {
+                els.serverOfflineBanner.style.display = 'block';
+                els.serverOfflineBanner.classList.remove('hidden');
+            }
+        }
+    }
+
+    // Update Server Console Modal details if present
+    if (els.serverModalStatusTitle && els.serverModalStatusBadge) {
+        if (isOnline) {
+            els.serverModalStatusTitle.textContent = '🟢 Server Online & Connected';
+            els.serverModalStatusBadge.setAttribute('data-variant', 'success');
+            els.serverModalStatusBadge.textContent = 'ONLINE';
+            if (els.serverModalUrl) els.serverModalUrl.textContent = `http://localhost:${info.port || 18112}`;
+            if (els.serverModalPort) els.serverModalPort.textContent = info.port || 18112;
+            if (els.serverModalPid) els.serverModalPid.textContent = info.pid || 'Active';
+            if (els.serverModalPython) els.serverModalPython.textContent = info.pythonVersion || 'Python 3';
+        } else {
+            els.serverModalStatusTitle.textContent = '🟠 Server Offline';
+            els.serverModalStatusBadge.setAttribute('data-variant', 'warning');
+            els.serverModalStatusBadge.textContent = 'OFFLINE';
+            if (els.serverModalUrl) els.serverModalUrl.textContent = 'http://localhost:18112 (not responding)';
+            if (els.serverModalPort) els.serverModalPort.textContent = '18112 (default)';
+            if (els.serverModalPid) els.serverModalPid.textContent = 'Not running';
+            if (els.serverModalPython) els.serverModalPython.textContent = 'Requires Python 3.10+';
+        }
+    }
+}
+
+async function checkServerStatus(silent = false) {
+    try {
+        const res = await fetch(api('/api/deployment/server-status'), {
+            headers: { 'Cache-Control': 'no-cache' },
+            signal: AbortSignal.timeout(2200),
+        });
+        const data = await res.json();
+        if (data && data.status === 'online') {
+            const wasOffline = state.isServerOnline === false;
+            updateServerStatusUI(true, data);
+            if (wasOffline && !state.isDemoMode) {
+                showToast('Connected to local deployment server!');
+                await loadWorkspaceInfo();
+                await loadApps();
+                await loadWorkspaceSentinel();
+            }
+            return true;
+        }
+    } catch (_) {}
+
+    updateServerStatusUI(false);
+    return false;
+}
+
+let serverHeartbeatTimer = null;
+function startServerHeartbeat() {
+    if (serverHeartbeatTimer) clearInterval(serverHeartbeatTimer);
+    serverHeartbeatTimer = setInterval(() => {
+        checkServerStatus(true);
+    }, 3000);
+}
+
+function openServerConsoleModal() {
+    if (els.serverConsoleModalOverlay) {
+        els.serverConsoleModalOverlay.classList.add('ui-active');
+        checkServerStatus();
+    }
+}
+
+function closeServerConsoleModal() {
+    if (els.serverConsoleModalOverlay) {
+        els.serverConsoleModalOverlay.classList.remove('ui-active');
+    }
+}
+
+// ═══════════════════════════ Interactive Demo Mode ═══════════════════════════
+
+function setupDemoCommands(appId) {
+    state.commands = [
+        {
+            id: 'build_apk',
+            key: 'flutter build apk --flavor dev -t lib/main_dev.dart',
+            name: 'Build Android APK',
+            category: 'android',
+            flavor: 'dev',
+            platform: 'android',
+            command: 'flutter build apk --flavor dev -t lib/main_dev.dart',
+            description: 'Compile debug APK with development backend credentials.',
+            configured: true,
+        },
+        {
+            id: 'build_apk_qa',
+            key: 'flutter build apk --flavor qa -t lib/main_qa.dart',
+            name: 'Build Android APK (QA)',
+            category: 'android',
+            flavor: 'qa',
+            platform: 'android',
+            command: 'flutter build apk --flavor qa -t lib/main_qa.dart',
+            description: 'Compile testing APK for QA team distribution.',
+            configured: true,
+        },
+        {
+            id: 'build_aab_prod',
+            key: 'flutter build appbundle --flavor prod -t lib/main.dart',
+            name: 'Build App Bundle (AAB)',
+            category: 'android',
+            flavor: 'prod',
+            platform: 'android',
+            command: 'flutter build appbundle --flavor prod -t lib/main.dart',
+            description: 'Compile release bundle with production signing.',
+            templateId: 'build_aab',
+            configured: true,
+        },
+        {
+            id: 'deploy_play_store_prod',
+            key: 'bundle exec fastlane android deploy_play_store flavor:prod',
+            name: 'Upload to Google Play',
+            category: 'android',
+            flavor: 'prod',
+            platform: 'android',
+            command: 'bundle exec fastlane android deploy_play_store flavor:prod',
+            description: 'Build and ship release AAB to Play Console track.',
+            templateId: 'deploy_aab',
+            configured: true,
+        },
+        {
+            id: 'build_ipa_dev',
+            key: 'flutter build ipa --flavor dev --export-method development',
+            name: 'Build iOS IPA',
+            category: 'ios',
+            flavor: 'dev',
+            platform: 'ios',
+            command: 'flutter build ipa --flavor dev --export-method development',
+            description: 'Build development iOS IPA for local device testing.',
+            configured: true,
+        },
+        {
+            id: 'deploy_testflight_prod',
+            key: 'bundle exec fastlane ios deploy_testflight flavor:prod',
+            name: 'Upload to TestFlight',
+            category: 'ios',
+            flavor: 'prod',
+            platform: 'ios',
+            command: 'bundle exec fastlane ios deploy_testflight flavor:prod',
+            description: 'Build and ship release IPA to App Store Connect / TestFlight.',
+            templateId: 'deploy_ipa',
+            configured: true,
+        },
+    ];
+
+    state.pipelines = [
+        {
+            id: 'pipe_release_prod',
+            name: 'Full Store Release (Doctor → Build AAB → Upload)',
+            app: appId,
+            flavor: 'prod',
+            steps: [
+                { name: 'App Doctor Pre-flight', command: 'doctor run', continueOnFailure: false },
+                { name: 'Build Production Bundle', command: 'flutter build appbundle --flavor prod', continueOnFailure: false },
+                { name: 'Upload to Google Play', command: 'fastlane android upload_aab', continueOnFailure: false }
+            ]
+        }
+    ];
+
+    renderEnvTabs();
+    renderCommands();
+}
+
+function runSimulatedDemoExecution(cmdText) {
+    state.activeJobId = 'demo_job_42';
+    els.runButton.disabled = true;
+    els.stopJobBtn.disabled = false;
+    startTimer();
+    writeTerminal(`[DEMO] Starting: ${cmdText}`);
+
+    setTimeout(() => writeTerminal('Resolving dependencies (flutter pub get)...'), 400);
+    setTimeout(() => writeTerminal('✓ Dependencies up to date.'), 800);
+    setTimeout(() => writeTerminal('Compiling release app bundle with target lib/main.dart...'), 1200);
+    setTimeout(() => writeTerminal('✓ Built build/app/outputs/bundle/prodRelease/app-release.aab (24.2 MB)'), 1800);
+    setTimeout(() => {
+        writeTerminal('\n📦 Build Size Inspector: AAB: 24.2 MB (+3.8 MB, +18.0%) ⚠️');
+        writeTerminal('⚠️  Size Warning: Build increased by +18.0% (+3.8 MB)!');
+        writeTerminal('Completed successfully (demo mode)', 'success');
+        showToast('Demo deployment command completed!');
+
+        const mockBuildSize = {
+            success: true,
+            hasBaseline: true,
+            artifactType: 'AAB',
+            currentSizeBytes: 25375539,
+            currentSizeFormatted: '24.2 MB',
+            currentFilename: 'app-release.aab',
+            currentArtifactPath: '/demo/flutter_monorepo/apps/customer_app/build/app/outputs/bundle/prodRelease/app-release.aab',
+            previousBuild: { sizeFormatted: '20.4 MB', jobId: 'job_baseline' },
+            deltaBytes: 3984588,
+            deltaFormatted: '+3.8 MB',
+            deltaPercent: 18.0,
+            deltaPercentFormatted: '+18.0%',
+            severity: 'warning',
+            badgeVariant: 'warning',
+            summary: 'AAB: 24.2 MB (+3.8 MB, +18.0%) ⚠️',
+            warnings: ['Size Warning: Build increased by +18.0% (+3.8 MB)!'],
+            inspection: {
+                compressionRatio: 68.2,
+                totalUncompressedFormatted: '76.1 MB',
+                uncompressedAssets: [
+                    { name: 'base/assets/videos/hero_walkthrough.mp4', sizeFormatted: '2.8 MB', warning: 'Raw uncompressed asset (STORED)' }
+                ],
+                largestFiles: [
+                    { name: 'base/assets/videos/hero_walkthrough.mp4', compressedSizeFormatted: '2.8 MB', uncompressedSizeFormatted: '2.8 MB', compressType: 'stored' },
+                    { name: 'base/lib/arm64-v8a/libapp.so', compressedSizeFormatted: '8.4 MB', uncompressedSizeFormatted: '22.1 MB', compressType: 'deflated' },
+                    { name: 'base/dex/classes.dex', compressedSizeFormatted: '4.2 MB', uncompressedSizeFormatted: '11.8 MB', compressType: 'deflated' }
+                ]
+            },
+            diff: {
+                hasDiff: true,
+                grownAssets: [
+                    { name: 'base/lib/arm64-v8a/libapp.so', deltaBytes: 1048576, deltaFormatted: '+1.0 MB', currSizeFormatted: '8.4 MB', prevSizeFormatted: '7.4 MB' }
+                ],
+                addedAssets: [
+                    { name: 'base/assets/videos/hero_walkthrough.mp4', sizeBytes: 2936012, sizeFormatted: '2.8 MB' }
+                ],
+                removedAssets: []
+            }
+        };
+        currentBuildSizeInfo = mockBuildSize;
+        renderBuildSizeBanner(mockBuildSize);
+
+        const mockApk = {
+            success: true,
+            hasApk: true,
+            filename: 'app-qa-release.apk',
+            sizeFormatted: '18.6 MB',
+            path: '/demo/flutter_monorepo/apps/customer_app/build/app/outputs/apk/app-qa-release.apk',
+            downloadUrl: 'http://192.168.1.50:18112/api/deployment/download/demo_job_42',
+            qrText: 'http://192.168.1.50:18112/api/deployment/download/demo_job_42',
+            lanIp: '192.168.1.50'
+        };
+        currentApkInfo = mockApk;
+        renderApkBanner(mockApk);
+
+        state.historyEntries.unshift({
+            id: 'demo_job_42',
+            app: state.selectedApp,
+            flavor: state.selectedEnv,
+            templateId: 'build_aab',
+            status: 'success',
+            completedAt: Date.now(),
+            durationSeconds: 2,
+            buildSize: mockBuildSize,
+            artifact: { type: 'AAB', sizeFormatted: '24.2 MB' }
+        });
+
+        finishExecution();
+    }, 2000);
+}
+
+function renderDemoDoctorDiagnostics() {
+    setTimeout(() => {
+        if (!els.doctorStatusBanner) return;
+        const data = {
+            success: true,
+            overallStatus: 'warn',
+            passCount: 10,
+            warnCount: 2,
+            failCount: 0,
+            summary: 'Pre-flight check passed with 2 minor warnings. Ready to build.',
+            durationSeconds: 0.6,
+            checks: [
+                { category: 'toolchain', name: 'Flutter SDK Toolchain', status: 'pass', details: 'Flutter 3.24.3 • channel stable' },
+                { category: 'toolchain', name: 'Dart SDK', status: 'pass', details: 'Dart 3.5.3' },
+                { category: 'toolchain', name: 'Fastlane Installation', status: 'pass', details: 'Fastlane 2.222.0 detected' },
+                { category: 'project', name: 'Pubspec Dependencies', status: 'pass', details: 'All dependencies resolved cleanly' },
+                { category: 'android', name: 'Android SDK & Build Tools', status: 'pass', details: 'API 34, compileSdkVersion 34' },
+                { category: 'android', name: 'Android Keystore Validity', status: 'pass', details: 'upload.jks valid until 2051' },
+                { category: 'ios', name: 'CocoaPods Dependencies', status: 'pass', details: 'Podfile and Podfile.lock in sync' },
+                { category: 'ios', name: 'Apple Distribution Certificate', status: 'warn', details: 'Certificate expires in 18 days. Consider renewing soon.' },
+                { category: 'credentials', name: 'App Store Connect API Key (.p8)', status: 'pass', details: 'AuthKey_ABCD1234.p8 configured' },
+                { category: 'credentials', name: 'Google Play Service Account', status: 'pass', details: 'play-account.json verified' },
+                { category: 'credentials', name: 'Firebase Project Match', status: 'pass', details: 'google-services.json matches flavor' },
+                { category: 'git', name: 'Git Release Readiness', status: 'warn', details: 'Working tree has uncommitted files in assets/' },
+            ]
+        };
+
+        els.doctorStatusBanner.dataset.status = 'warn';
+        els.doctorOverallIcon.textContent = '⚠️';
+        els.doctorOverallTitle.textContent = 'Environment Warnings Detected';
+        els.doctorOverallSummary.textContent = data.summary;
+        els.doctorScorePills.innerHTML = `
+            <span class="ui-badge" data-variant="success">${data.passCount} Passed</span>
+            <span class="ui-badge" data-variant="warning">${data.warnCount} Warnings</span>
+        `;
+
+        const categories = [
+            { key: 'toolchain', title: 'SDK & Core Toolchain' },
+            { key: 'project', title: 'Project Structure & Dependencies' },
+            { key: 'android', title: 'Android Build Environment' },
+            { key: 'ios', title: 'iOS Environment & Signing' },
+            { key: 'credentials', title: 'Store Deployment Credentials' },
+            { key: 'git', title: 'Git & Release Readiness' },
+        ];
+
+        let html = '';
+        categories.forEach(cat => {
+            const catChecks = data.checks.filter(c => c.category === cat.key);
+            if (!catChecks.length) return;
+            html += `
+                <div class="doctor-category-card">
+                    <div class="doctor-category-header">
+                        <span>${escapeHtml(cat.title)}</span>
+                        <span style="font-size: 0.72rem; opacity: 0.8;">${catChecks.length} checks</span>
+                    </div>
+                    <div>
+            `;
+            catChecks.forEach(c => {
+                const badgeVariant = c.status === 'pass' ? 'success' : 'warning';
+                const statusIcon = c.status === 'pass' ? 'check-circle' : 'alert-triangle';
+                html += `
+                    <div class="doctor-check-item">
+                        <div class="doctor-check-icon ${c.status}"><i data-lucide="${statusIcon}"></i></div>
+                        <div style="flex: 1;">
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2px;">
+                                <span class="doctor-check-name">${escapeHtml(c.name)}</span>
+                                <span class="ui-badge" data-variant="${badgeVariant}">${escapeHtml(c.status.toUpperCase())}</span>
+                            </div>
+                            <div class="doctor-check-details">${escapeHtml(c.details)}</div>
+                        </div>
+                    </div>
+                `;
+            });
+            html += '</div></div>';
+        });
+
+        els.doctorChecklistContainer.innerHTML = html;
+        if (els.doctorFooterDuration) els.doctorFooterDuration.textContent = 'Completed in 0.6s (demo mode)';
+        if (els.recheckDoctorBtn) els.recheckDoctorBtn.disabled = false;
+        refreshIcons();
+    }, 600);
+}
+
+function startDemoMode() {
+    state.isDemoMode = true;
+
+    if (els.serverOfflineBanner) {
+        els.serverOfflineBanner.style.display = 'none';
+        els.serverOfflineBanner.classList.add('hidden');
+    }
+    if (els.demoModeBanner) {
+        els.demoModeBanner.style.display = 'block';
+        els.demoModeBanner.classList.remove('hidden');
+    }
+
+    // Sample Flutter Monorepo Apps
+    state.apps = [
+        {
+            id: 'customer_app',
+            name: 'Customer Store App',
+            path: '/demo/flutter_monorepo/apps/customer_app',
+            package_name: 'com.example.customer_app',
+            bundle_id: 'com.example.customerApp',
+            platforms: ['android', 'ios'],
+            flavors: ['dev', 'qa', 'prod'],
+            version: '2.4.1+42',
+        },
+        {
+            id: 'driver_app',
+            name: 'Driver Logistics App',
+            path: '/demo/flutter_monorepo/apps/driver_app',
+            package_name: 'com.example.driver_app',
+            bundle_id: 'com.example.driverApp',
+            platforms: ['android', 'ios'],
+            flavors: ['dev', 'qa', 'prod'],
+            version: '1.8.0+15',
+        },
+        {
+            id: 'internal_pos',
+            name: 'Store POS Terminal',
+            path: '/demo/flutter_monorepo/apps/internal_pos',
+            package_name: 'com.example.pos',
+            platforms: ['android'],
+            flavors: ['qa', 'prod'],
+            version: '3.1.0+9',
+        },
+    ];
+
+    currentWorkspacesList = [
+        { path: '/demo/flutter_monorepo', name: 'flutter_monorepo (Demo)', isDefault: true }
+    ];
+    state.activeWorkspace = '/demo/flutter_monorepo';
+    renderActiveProject();
+    renderApps();
+
+    // Select first app
+    selectApp('customer_app');
+
+    // Mock Sentinel Data
+    if (els.sentinelHeaderBadge && els.sentinelHeaderBadgeText) {
+        els.sentinelHeaderBadge.style.display = 'inline-flex';
+        els.sentinelHeaderBadge.classList.remove('hidden');
+        els.sentinelHeaderBadgeText.textContent = '1 Expiry Alert';
+        els.sentinelHeaderBadge.setAttribute('data-variant', 'warning');
+    }
+
+    showToast('Entered Interactive Demo Mode. Enjoy exploring features!');
+    writeTerminal('🧪 Interactive Demo Mode initialized. Select an app, review commands, or run App Doctor.');
+    refreshIcons();
+}
+
+function exitDemoMode() {
+    state.isDemoMode = false;
+    if (els.demoModeBanner) {
+        els.demoModeBanner.style.display = 'none';
+        els.demoModeBanner.classList.add('hidden');
+    }
+    checkServerStatus();
+    showToast('Exited Demo Mode');
+}
+
+window.startDemoMode = startDemoMode;
+window.exitDemoMode = exitDemoMode;
+
+// Event Listeners for Documentation & Server Status
+if (els.openDocsBtn) {
+    els.openDocsBtn.addEventListener('click', () => openDocsModal('overview'));
+}
+if (els.bannerOpenDocsBtn) {
+    els.bannerOpenDocsBtn.addEventListener('click', () => openDocsModal('overview'));
+}
+if (els.closeDocsModalBtn) {
+    els.closeDocsModalBtn.addEventListener('click', closeDocsModal);
+}
+if (els.closeDocsBtn) {
+    els.closeDocsBtn.addEventListener('click', closeDocsModal);
+}
+if (els.docsModalOverlay) {
+    els.docsModalOverlay.addEventListener('click', (e) => {
+        if (e.target === els.docsModalOverlay) closeDocsModal();
+        const navBtn = e.target.closest('.docs-nav-item');
+        if (navBtn) {
+            loadDoc(navBtn.getAttribute('data-doc'));
+        }
+    });
+}
+
+if (els.serverStatusBadge) {
+    els.serverStatusBadge.addEventListener('click', openServerConsoleModal);
+}
+if (els.closeServerConsoleModalBtn) {
+    els.closeServerConsoleModalBtn.addEventListener('click', closeServerConsoleModal);
+}
+if (els.closeServerConsoleBtn) {
+    els.closeServerConsoleBtn.addEventListener('click', closeServerConsoleModal);
+}
+if (els.serverConsoleModalOverlay) {
+    els.serverConsoleModalOverlay.addEventListener('click', (e) => {
+        if (e.target === els.serverConsoleModalOverlay) closeServerConsoleModal();
+    });
+}
+if (els.copyStartCommandBtn) {
+    els.copyStartCommandBtn.addEventListener('click', async () => {
+        try {
+            await navigator.clipboard.writeText('./start.sh');
+            showToast('Start command copied to clipboard!');
+        } catch (_) {
+            showToast('Start command: ./start.sh');
+        }
+    });
+}
+if (els.copyServerSnippetBtn) {
+    els.copyServerSnippetBtn.addEventListener('click', async () => {
+        try {
+            await navigator.clipboard.writeText('./start.sh');
+            showToast('Launch command copied!');
+        } catch (_) {
+            showToast('Launch command: ./start.sh');
+        }
+    });
+}
+if (els.testServerReconnectBtn) {
+    els.testServerReconnectBtn.addEventListener('click', async () => {
+        showToast('Checking connection...');
+        const ok = await checkServerStatus();
+        if (ok) showToast('Server is online and responding!');
+        else showToast('Server is still offline', 'warning');
+    });
+}
+if (els.startDemoModeBtn) {
+    els.startDemoModeBtn.addEventListener('click', startDemoMode);
+}
+if (els.exitDemoModeBtn) {
+    els.exitDemoModeBtn.addEventListener('click', exitDemoMode);
+}
+
+// ═══════════════════════════ Application Initialization ═══════════════════════════
+
 (async () => {
-    await loadWorkspaceInfo();
-    await loadApps();
-    await loadWorkspaceSentinel();
+    const isOnline = await checkServerStatus(true);
+    if (isOnline) {
+        try {
+            await loadWorkspaceInfo();
+            await loadApps();
+            await loadWorkspaceSentinel();
+        } catch (err) {
+            console.warn('Initial project load error:', err);
+        }
+    } else {
+        if (els.appGrid && !state.isDemoMode) {
+            els.appGrid.innerHTML = `
+                <div class="empty-state" style="padding: 24px 16px; text-align: center;">
+                    <div style="font-size: 1.6rem; margin-bottom: 8px;">🖥️</div>
+                    <div style="font-weight: 700; font-size: 0.92rem; margin-bottom: 4px;">Server Not Connected</div>
+                    <p style="font-size: 0.78rem; color: var(--ui-text-muted); margin-bottom: 14px; line-height: 1.4;">
+                        Start backend via <code>./start.sh</code> or explore interactive demo mode.
+                    </p>
+                    <div style="display: flex; gap: 8px; justify-content: center;">
+                        <button type="button" class="ui-button" data-variant="primary" data-size="xs" onclick="startDemoMode()">
+                            <span>Launch Demo</span>
+                        </button>
+                        <button type="button" class="ui-button" data-variant="secondary" data-size="xs" onclick="openDocsModal('overview')">
+                            <span>Open Docs</span>
+                        </button>
+                    </div>
+                </div>
+            `;
+        }
+    }
+    startServerHeartbeat();
+    refreshIcons();
 })().catch(error => {
-    els.appGrid.innerHTML = `<div class="empty-state">Failed to load apps: ${escapeHtml(error.message)}</div>`;
+    console.warn('Startup error:', error);
 });
-refreshIcons();
+
 

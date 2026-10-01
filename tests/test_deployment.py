@@ -2275,3 +2275,109 @@ class TestBuildSizeInspectorAndDiff(unittest.TestCase):
         finally:
             httpd.shutdown()
             httpd.server_close()
+
+
+class TestDocumentationAndServerStatus(unittest.TestCase):
+
+    def test_list_available_docs(self):
+        import docs_provider
+
+        docs = docs_provider.list_available_docs()
+        self.assertIsInstance(docs, list)
+        doc_ids = [d["id"] for d in docs]
+        self.assertIn("overview", doc_ids)
+        self.assertIn("readme", doc_ids)
+        self.assertIn("architecture", doc_ids)
+        self.assertIn("faq", doc_ids)
+        self.assertIn("api", doc_ids)
+
+    def test_get_overview_doc(self):
+        import docs_provider
+
+        res = docs_provider.get_doc_content("overview")
+        self.assertTrue(res["success"])
+        self.assertEqual(res["doc"], "overview")
+        self.assertIn("Dev Deployment Console", res["content"])
+        self.assertIn("Saved Pipelines", res["content"])
+        self.assertIn("App Doctor", res["content"])
+
+    def test_get_repository_markdown_docs(self):
+        import docs_provider
+
+        res = docs_provider.get_doc_content("readme")
+        self.assertTrue(res["success"])
+        self.assertEqual(res["filename"], "README.md")
+        self.assertGreater(len(res["content"]), 50)
+
+        res_arch = docs_provider.get_doc_content("architecture")
+        self.assertTrue(res_arch["success"])
+        self.assertEqual(res_arch["filename"], "ARCHITECTURE.md")
+
+        res_faq = docs_provider.get_doc_content("faq")
+        self.assertTrue(res_faq["success"])
+        self.assertEqual(res_faq["filename"], "FAQ.md")
+
+    def test_unknown_and_traversal_safety(self):
+        import docs_provider
+
+        res_unknown = docs_provider.get_doc_content("non_existent_doc_id_xyz")
+        self.assertFalse(res_unknown["success"])
+        self.assertIn("Unknown document", res_unknown["error"])
+
+        res_traversal = docs_provider.get_doc_content("../../etc/passwd")
+        self.assertFalse(res_traversal["success"])
+
+    def test_server_status_info(self):
+        import docs_provider
+
+        info = docs_provider.get_server_status_info(port=18112)
+        self.assertTrue(info["success"])
+        self.assertEqual(info["status"], "online")
+        self.assertEqual(info["port"], 18112)
+        self.assertIn("./start.sh", info["commandToStart"])
+        self.assertIsNotNone(info["pid"])
+
+    def test_http_server_status_and_docs_endpoints(self):
+        import http.client
+        import http.server
+        import server
+        import threading
+
+        httpd = http.server.ThreadingHTTPServer(("127.0.0.1", 0), server.DeploymentHandler)
+        port = httpd.server_address[1]
+        t = threading.Thread(target=httpd.serve_forever, daemon=True)
+        t.start()
+
+        try:
+            conn = http.client.HTTPConnection("127.0.0.1", port)
+
+            # 1. Unauthenticated heartbeat endpoint allows frontend health detection
+            conn.request("GET", "/api/deployment/server-status")
+            res_status = conn.getresponse()
+            self.assertEqual(res_status.status, 200)
+            data_status = json.loads(res_status.read().decode("utf-8"))
+            self.assertTrue(data_status["success"])
+            self.assertEqual(data_status["status"], "online")
+            self.assertEqual(data_status["port"], port)
+
+            # 2. Authenticated docs list endpoint
+            token = server._get_auth_token()
+            conn.request("GET", "/api/deployment/docs/list", headers={"X-API-Token": token})
+            res_list = conn.getresponse()
+            self.assertEqual(res_list.status, 200)
+            data_list = json.loads(res_list.read().decode("utf-8"))
+            self.assertTrue(data_list["success"])
+            self.assertIn("docs", data_list)
+
+            # 3. Authenticated doc content endpoint
+            conn.request("GET", "/api/deployment/docs?doc=overview", headers={"X-API-Token": token})
+            res_doc = conn.getresponse()
+            self.assertEqual(res_doc.status, 200)
+            data_doc = json.loads(res_doc.read().decode("utf-8"))
+            self.assertTrue(data_doc["success"])
+            self.assertEqual(data_doc["doc"], "overview")
+            self.assertIn("Dev Deployment Console", data_doc["content"])
+        finally:
+            httpd.shutdown()
+            httpd.server_close()
+
