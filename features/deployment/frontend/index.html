@@ -353,11 +353,69 @@
 
                     <div id="setupTabs" class="setup-tabs" role="tablist" aria-label="App configuration sections">
                         <button type="button" role="tab" class="setup-tab" data-tab="general" aria-selected="true">General</button>
+                        <button type="button" role="tab" class="setup-tab" data-tab="pipelines" aria-selected="false">Pipelines</button>
                         <button type="button" role="tab" class="setup-tab" data-tab="keys" aria-selected="false">Keys</button>
                         <button type="button" role="tab" class="setup-tab" data-tab="ios" aria-selected="false">iOS <span class="setup-tab-dot" data-tab-status="ios"></span></button>
                         <button type="button" role="tab" class="setup-tab" data-tab="android" aria-selected="false">Android <span class="setup-tab-dot" data-tab-status="android"></span></button>
                         <button type="button" role="tab" class="setup-tab" data-tab="firebase" aria-selected="false">Firebase</button>
                         <button type="button" role="tab" class="setup-tab" data-tab="release" aria-selected="false">Release</button>
+                    </div>
+
+                    <!-- Pipelines Configuration Card -->
+                    <div class="ui-card" data-setup-panel="pipelines" style="margin-bottom: 16px;">
+                        <div class="ui-card-header" style="display:flex; justify-content:space-between; align-items:center;">
+                            <div>
+                                <h4 class="ui-card-title">Saved Pipelines</h4>
+                                <p class="ui-help-text" style="margin:2px 0 0 0;">Chain multiple build, upload, and release actions into a 1-click automated workflow.</p>
+                            </div>
+                            <button id="newPipelineBtn" type="button" class="ui-button" data-variant="primary" data-size="sm">
+                                <i data-lucide="plus"></i>
+                                <span>New Pipeline</span>
+                            </button>
+                        </div>
+                        <div class="ui-card-body">
+                            <div id="setupPipelinesList" style="display:flex; flex-direction:column; gap:10px;"></div>
+
+                            <!-- Pipeline Editor Form (hidden when not editing) -->
+                            <div id="pipelineEditorCard" class="hidden" style="margin-top:16px; padding:16px; border:1px solid var(--ui-border-color); border-radius:8px; background:var(--ui-bg-subtle, rgba(255,255,255,0.02));">
+                                <h5 id="pipelineEditorTitle" style="margin:0 0 12px 0; font-size:1rem; font-weight:600;">Edit Pipeline</h5>
+                                <div class="ui-field">
+                                    <label class="ui-label">Pipeline Name</label>
+                                    <input id="pipelineEditName" class="ui-input" type="text" placeholder="e.g. QA Android Release" required>
+                                </div>
+                                <div class="ui-field">
+                                    <label class="ui-label">Target Flavor</label>
+                                    <select id="pipelineEditFlavor" class="ui-select"></select>
+                                    <span class="ui-help-text">Leave as 'Any / Selected' to run on whichever flavor tab is active, or bind to a specific flavor.</span>
+                                </div>
+                                <div class="ui-field">
+                                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                                        <label class="ui-label" style="margin:0;">Steps (executed sequentially, stops on first failure)</label>
+                                        <div style="display:flex; gap:6px;">
+                                            <button id="addStepBtn" type="button" class="ui-button" data-variant="secondary" data-size="sm">
+                                                <i data-lucide="plus"></i>
+                                                <span>Add Template Step</span>
+                                            </button>
+                                            <button id="addCustomStepBtn" type="button" class="ui-button" data-variant="ghost" data-size="sm">
+                                                <i data-lucide="terminal"></i>
+                                                <span>Add Custom Shell Step</span>
+                                            </button>
+                                        </div>
+                                    </div>
+                                    <div id="pipelineEditStepsContainer" style="display:flex; flex-direction:column; gap:8px;"></div>
+                                </div>
+                                <div class="cert-status-box" data-status="info" style="margin-bottom:16px; font-size:0.8rem;">
+                                    💡 <strong>Ordering Advice:</strong> Put build &amp; upload steps before version bump &amp; git release push steps so a failed build never creates an unwanted git release tag.
+                                </div>
+                                <div style="display:flex; gap:8px; justify-content:flex-end;">
+                                    <button id="cancelPipelineEditBtn" type="button" class="ui-button" data-variant="ghost">Cancel</button>
+                                    <button id="savePipelineBtn" type="button" class="ui-button" data-variant="primary">
+                                        <i data-lucide="check"></i>
+                                        <span>Save Pipeline</span>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
                     </div>
 
                     <!-- Flavor Configuration Card -->

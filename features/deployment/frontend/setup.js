@@ -340,6 +340,7 @@ function selectSetupApp(appId) {
     renderP8KeyInfo(null);
     credEls.scanResults.innerHTML = '';
     loadCredentialStatus(appId);
+    renderSetupPipelines(appId);
 
     fetchAndRenderCertStatus(appId);
 
@@ -396,6 +397,7 @@ function readFormValues() {
         auto_release_flavors: setupEls.autoReleaseFlavors.value.trim()
             ? setupEls.autoReleaseFlavors.value.split(',').map(s => s.trim().toLowerCase()).filter(Boolean)
             : ['prod'],
+        pipelines: existingCfg.pipelines || [],
     };
 
     if (flavors.length === 0) {
@@ -942,6 +944,382 @@ function setTabStatus(tab, ok) {
 let initialTab = 'general';
 try { initialTab = sessionStorage.getItem(SETUP_TAB_KEY) || 'general'; } catch (_) { /* ignore */ }
 showSetupTab(initialTab);
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Pipelines: list, create, edit, duplicate, delete
+// ─────────────────────────────────────────────────────────────────────────────
+
+const pipelineEls = {
+    list: document.getElementById('setupPipelinesList'),
+    newBtn: document.getElementById('newPipelineBtn'),
+    card: document.getElementById('pipelineEditorCard'),
+    title: document.getElementById('pipelineEditorTitle'),
+    name: document.getElementById('pipelineEditName'),
+    flavor: document.getElementById('pipelineEditFlavor'),
+    addStepBtn: document.getElementById('addStepBtn'),
+    addCustomStepBtn: document.getElementById('addCustomStepBtn'),
+    stepsContainer: document.getElementById('pipelineEditStepsContainer'),
+    cancelBtn: document.getElementById('cancelPipelineEditBtn'),
+    saveBtn: document.getElementById('savePipelineBtn'),
+};
+
+let currentEditingPipeline = null;
+let currentEditingSteps = [];
+let availableAppCommands = [];
+
+async function renderSetupPipelines(appId) {
+    if (!appId || !pipelineEls.list) return;
+    const cfg = setupState.deployConfig.apps?.[appId] || {};
+    const pipelines = cfg.pipelines || [];
+
+    if (!pipelines.length) {
+        pipelineEls.list.innerHTML = `
+            <div style="padding: 16px; text-align: center; color: var(--ui-text-muted); font-size: 0.85rem; border: 1px dashed var(--ui-border-color); border-radius: 6px;">
+                No pipelines created for this app yet. Click <strong>New Pipeline</strong> above to create your first automated workflow.
+            </div>
+        `;
+        return;
+    }
+
+    pipelineEls.list.innerHTML = pipelines.map(pipe => {
+        const stepCount = (pipe.steps || []).length;
+        const flavorLabel = pipe.flavor ? `<span class="ui-badge" data-variant="info">${escapeHtml(pipe.flavor.toUpperCase())}</span>` : '<span class="ui-badge" data-variant="ghost">ANY FLAVOR</span>';
+        const stepsPreview = (pipe.steps || []).map(s => escapeHtml(s.name || s.templateId || 'Custom')).join(' → ');
+
+        return `
+            <div style="display: flex; align-items: center; justify-content: space-between; padding: 12px; background: var(--ui-card-bg, #1e293b); border: 1px solid var(--ui-border-color); border-radius: 8px;">
+                <div style="min-width: 0; flex: 1; margin-right: 12px;">
+                    <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px;">
+                        <strong style="font-size: 0.95rem;">${escapeHtml(pipe.name)}</strong>
+                        ${flavorLabel}
+                        <span style="font-size: 0.75rem; color: var(--ui-text-muted);">${stepCount} step${stepCount === 1 ? '' : 's'}</span>
+                    </div>
+                    <div style="font-size: 0.78rem; color: var(--ui-text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${stepsPreview}">
+                        ${stepsPreview || 'No steps configured'}
+                    </div>
+                </div>
+                <div style="display: flex; gap: 6px; flex-shrink: 0;">
+                    <button type="button" class="ui-button" data-variant="secondary" data-size="sm" data-pipe-edit="${escapeHtml(pipe.id)}">Edit</button>
+                    <button type="button" class="ui-button" data-variant="ghost" data-size="sm" data-pipe-dup="${escapeHtml(pipe.id)}" title="Duplicate">Duplicate</button>
+                    <button type="button" class="ui-button" data-variant="danger" data-size="sm" data-pipe-del="${escapeHtml(pipe.id)}" title="Delete">Delete</button>
+                </div>
+            </div>
+        `;
+    }).join('');
+
+    pipelineEls.list.querySelectorAll('[data-pipe-edit]').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const p = pipelines.find(x => x.id === btn.dataset.pipeEdit);
+            if (p) openPipelineEditor(p);
+        });
+    });
+
+    pipelineEls.list.querySelectorAll('[data-pipe-dup]').forEach(btn => {
+        btn.addEventListener('click', () => duplicatePipeline(btn.dataset.pipeDup));
+    });
+
+    pipelineEls.list.querySelectorAll('[data-pipe-del]').forEach(btn => {
+        btn.addEventListener('click', () => deletePipeline(btn.dataset.pipeDel));
+    });
+
+    if (window.lucide) window.lucide.createIcons();
+}
+
+async function openPipelineEditor(pipe = null) {
+    currentEditingPipeline = pipe ? JSON.parse(JSON.stringify(pipe)) : null;
+    currentEditingSteps = pipe ? (pipe.steps || []).map(s => ({...s})) : [];
+
+    pipelineEls.title.textContent = pipe ? `Edit Pipeline: ${pipe.name}` : 'New Pipeline';
+    pipelineEls.name.value = pipe ? pipe.name : '';
+
+    // Populate flavors
+    const flavors = getActiveFlavors();
+    pipelineEls.flavor.innerHTML = '<option value="">Any / Selected Flavor</option>' +
+        flavors.map(f => `<option value="${escapeHtml(f)}" ${pipe && pipe.flavor === f ? 'selected' : ''}>${escapeHtml(f.toUpperCase())}</option>`).join('');
+
+    // Fetch available commands for template picker
+    try {
+        const cmdRes = await fetch(`/api/deployment/commands?app=${encodeURIComponent(setupState.selectedAppId)}`).then(r => r.json());
+        availableAppCommands = cmdRes.commands || [];
+    } catch (_) {
+        availableAppCommands = [];
+    }
+
+    renderPipelineEditingSteps();
+    pipelineEls.card.classList.remove('hidden');
+    pipelineEls.name.focus();
+}
+
+function closePipelineEditor() {
+    currentEditingPipeline = null;
+    currentEditingSteps = [];
+    pipelineEls.card.classList.add('hidden');
+}
+
+function renderPipelineEditingSteps() {
+    if (!currentEditingSteps.length) {
+        pipelineEls.stepsContainer.innerHTML = `
+            <div style="padding: 12px; text-align: center; color: var(--ui-text-muted); font-size: 0.8rem; border: 1px dashed var(--ui-border-color); border-radius: 6px;">
+                No steps added yet. Click <strong>Add Template Step</strong> or <strong>Add Custom Shell Step</strong> above.
+            </div>
+        `;
+        return;
+    }
+
+    pipelineEls.stepsContainer.innerHTML = currentEditingSteps.map((step, idx) => {
+        const isCustom = !!step.command;
+        const title = step.name || (isCustom ? step.command : step.templateId);
+        const subtitle = isCustom ? `Custom: ${escapeHtml(step.command)}` : `Template: ${escapeHtml(step.templateId)}`;
+        const badge = isCustom ? '<span class="ui-badge" data-variant="warning" style="margin-left:6px;">Custom</span>' : '';
+
+        return `
+            <div class="pipeline-step-item" data-step-idx="${idx}">
+                <div class="pipeline-step-index">${idx + 1}</div>
+                <div style="min-width: 0; flex: 1;">
+                    <div style="font-weight: 600; display:flex; align-items:center;">
+                        ${escapeHtml(title)} ${badge}
+                    </div>
+                    <div style="font-size: 0.72rem; color: var(--ui-text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                        ${subtitle}
+                    </div>
+                </div>
+                <label class="ui-control" style="font-size: 0.75rem; margin: 0; display: flex; align-items: center; gap: 4px;" title="Continue running later steps even if this step fails">
+                    <input type="checkbox" class="ui-checkbox" data-step-continue="${idx}" ${step.continueOnFailure ? 'checked' : ''}>
+                    <span>Continue on fail</span>
+                </label>
+                <div class="step-actions">
+                    <button type="button" class="ui-button" data-variant="ghost" data-size="sm" data-step-up="${idx}" ${idx === 0 ? 'disabled' : ''} title="Move Up">↑</button>
+                    <button type="button" class="ui-button" data-variant="ghost" data-size="sm" data-step-down="${idx}" ${idx === currentEditingSteps.length - 1 ? 'disabled' : ''} title="Move Down">↓</button>
+                    <button type="button" class="ui-button" data-variant="ghost" data-size="sm" data-step-rm="${idx}" title="Remove Step">×</button>
+                </div>
+            </div>
+        `;
+    }).join('');
+
+    pipelineEls.stepsContainer.querySelectorAll('[data-step-continue]').forEach(chk => {
+        chk.addEventListener('change', () => {
+            const idx = Number(chk.dataset.stepContinue);
+            if (currentEditingSteps[idx]) currentEditingSteps[idx].continueOnFailure = chk.checked;
+        });
+    });
+
+    pipelineEls.stepsContainer.querySelectorAll('[data-step-up]').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const idx = Number(btn.dataset.stepUp);
+            if (idx > 0) {
+                const temp = currentEditingSteps[idx];
+                currentEditingSteps[idx] = currentEditingSteps[idx - 1];
+                currentEditingSteps[idx - 1] = temp;
+                renderPipelineEditingSteps();
+            }
+        });
+    });
+
+    pipelineEls.stepsContainer.querySelectorAll('[data-step-down]').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const idx = Number(btn.dataset.stepDown);
+            if (idx < currentEditingSteps.length - 1) {
+                const temp = currentEditingSteps[idx];
+                currentEditingSteps[idx] = currentEditingSteps[idx + 1];
+                currentEditingSteps[idx + 1] = temp;
+                renderPipelineEditingSteps();
+            }
+        });
+    });
+
+    pipelineEls.stepsContainer.querySelectorAll('[data-step-rm]').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const idx = Number(btn.dataset.stepRm);
+            currentEditingSteps.splice(idx, 1);
+            renderPipelineEditingSteps();
+        });
+    });
+}
+
+function promptAddTemplateStep() {
+    const seenTemplates = new Map();
+    availableAppCommands.forEach(c => {
+        if (c.templateId && !seenTemplates.has(c.templateId)) {
+            seenTemplates.set(c.templateId, c.name || c.templateId);
+        }
+    });
+
+    if (!seenTemplates.size) {
+        showToast('No configured commands found to add as steps.');
+        return;
+    }
+
+    const options = Array.from(seenTemplates.entries())
+        .map(([id, name]) => `${id}: ${name}`)
+        .join('\n');
+
+    const chosenId = prompt(`Choose a step template by ID:\n\n${options}\n\nEnter template ID:`);
+    if (!chosenId) return;
+    const cleanId = chosenId.trim();
+    if (!seenTemplates.has(cleanId)) {
+        showToast(`Template '${cleanId}' not recognized.`);
+        return;
+    }
+
+    currentEditingSteps.push({
+        templateId: cleanId,
+        name: seenTemplates.get(cleanId),
+        continueOnFailure: false,
+    });
+    renderPipelineEditingSteps();
+}
+
+function promptAddCustomStep() {
+    const cmd = prompt('Enter the custom shell command to run in the app folder (e.g. "flutter test", "dart run build_runner build"):');
+    if (!cmd || !cmd.trim()) return;
+    const name = prompt('Enter a short label for this step (or leave empty):') || cmd.trim();
+
+    currentEditingSteps.push({
+        command: cmd.trim(),
+        name: name.trim(),
+        continueOnFailure: false,
+    });
+    renderPipelineEditingSteps();
+}
+
+async function savePipelineFromEditor() {
+    const name = pipelineEls.name.value.trim();
+    if (!name || name.length > 60) {
+        showToast('Pipeline name is required (1–60 characters).', 'error');
+        return;
+    }
+
+    if (!currentEditingSteps.length) {
+        showToast('Pipeline must have at least 1 step.', 'error');
+        return;
+    }
+    if (currentEditingSteps.length > 20) {
+        showToast('Maximum 20 steps allowed per pipeline.', 'error');
+        return;
+    }
+
+    const appId = setupState.selectedAppId;
+    if (!appId) return;
+
+    const cfg = (setupState.deployConfig.apps[appId] = setupState.deployConfig.apps[appId] || {});
+    cfg.pipelines = cfg.pipelines || [];
+
+    const flavor = pipelineEls.flavor.value || undefined;
+    let pipeId = currentEditingPipeline?.id;
+    if (!pipeId) {
+        pipeId = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+        if (!pipeId) pipeId = 'pipeline-' + Date.now();
+        let suffix = 1;
+        let candidate = pipeId;
+        while (cfg.pipelines.some(p => p.id === candidate)) {
+            candidate = `${pipeId}-${suffix++}`;
+        }
+        pipeId = candidate;
+    }
+
+    const pipelineObj = {
+        id: pipeId,
+        name,
+        flavor,
+        steps: currentEditingSteps,
+    };
+
+    const existingIdx = cfg.pipelines.findIndex(p => p.id === pipeId);
+    if (existingIdx >= 0) {
+        cfg.pipelines[existingIdx] = pipelineObj;
+    } else {
+        cfg.pipelines.push(pipelineObj);
+    }
+
+    pipelineEls.saveBtn.disabled = true;
+    try {
+        const res = await fetch('/api/deployment/deploy-config/save', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(setupState.deployConfig),
+        }).then(r => r.json());
+
+        if (res.success) {
+            showToast('Pipeline saved successfully!');
+            closePipelineEditor();
+            renderSetupPipelines(appId);
+            if (typeof loadCommands === 'function') {
+                loadCommands(appId);
+            }
+        } else {
+            showToast('Failed to save pipeline: ' + (res.error || 'unknown error'), 'error');
+        }
+    } finally {
+        pipelineEls.saveBtn.disabled = false;
+    }
+}
+
+async function duplicatePipeline(pipeId) {
+    const appId = setupState.selectedAppId;
+    if (!appId) return;
+    const cfg = setupState.deployConfig.apps?.[appId];
+    if (!cfg || !cfg.pipelines) return;
+
+    const source = cfg.pipelines.find(p => p.id === pipeId);
+    if (!source) return;
+
+    const copy = JSON.parse(JSON.stringify(source));
+    copy.id = `${source.id}-copy`;
+    let suffix = 1;
+    while (cfg.pipelines.some(p => p.id === copy.id)) {
+        copy.id = `${source.id}-copy-${suffix++}`;
+    }
+    copy.name = `${source.name} (Copy)`;
+
+    cfg.pipelines.push(copy);
+
+    const res = await fetch('/api/deployment/deploy-config/save', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(setupState.deployConfig),
+    }).then(r => r.json());
+
+    if (res.success) {
+        showToast('Pipeline duplicated!');
+        renderSetupPipelines(appId);
+        if (typeof loadCommands === 'function') loadCommands(appId);
+    } else {
+        showToast('Duplicate failed: ' + (res.error || ''), 'error');
+    }
+}
+
+async function deletePipeline(pipeId) {
+    if (!confirm('Are you sure you want to delete this pipeline?')) return;
+    const appId = setupState.selectedAppId;
+    if (!appId) return;
+    const cfg = setupState.deployConfig.apps?.[appId];
+    if (!cfg || !cfg.pipelines) return;
+
+    cfg.pipelines = cfg.pipelines.filter(p => p.id !== pipeId);
+
+    const res = await fetch('/api/deployment/deploy-config/save', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(setupState.deployConfig),
+    }).then(r => r.json());
+
+    if (res.success) {
+        showToast('Pipeline deleted.');
+        if (currentEditingPipeline && currentEditingPipeline.id === pipeId) {
+            closePipelineEditor();
+        }
+        renderSetupPipelines(appId);
+        if (typeof loadCommands === 'function') loadCommands(appId);
+    } else {
+        showToast('Delete failed: ' + (res.error || ''), 'error');
+    }
+}
+
+if (pipelineEls.newBtn) pipelineEls.newBtn.addEventListener('click', () => openPipelineEditor(null));
+if (pipelineEls.cancelBtn) pipelineEls.cancelBtn.addEventListener('click', closePipelineEditor);
+if (pipelineEls.saveBtn) pipelineEls.saveBtn.addEventListener('click', savePipelineFromEditor);
+if (pipelineEls.addStepBtn) pipelineEls.addStepBtn.addEventListener('click', promptAddTemplateStep);
+if (pipelineEls.addCustomStepBtn) pipelineEls.addCustomStepBtn.addEventListener('click', promptAddCustomStep);
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Credentials: status, Play key upload, folder scan & import

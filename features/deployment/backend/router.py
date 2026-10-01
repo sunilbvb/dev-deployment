@@ -1,5 +1,6 @@
 import credentials
 import picker
+import pipelines
 from config import (
     add_app as config_add_app,
     allow_workspace as config_allow_workspace,
@@ -62,3 +63,8 @@ get_workspace_root = config_get_workspace_root
 rescan_workspace = config_rescan_workspace
 allow_workspace = config_allow_workspace
 remove_workspace = config_remove_workspace
+get_pipelines = pipelines.get_pipelines
+resolve_pipeline = pipelines.resolve_pipeline
+run_pipeline = pipelines.run_pipeline
+stop_pipeline_run = pipelines.stop_pipeline_run
+get_pipeline_run = pipelines.get_pipeline_run

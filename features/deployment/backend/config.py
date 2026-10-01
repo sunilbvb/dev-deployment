@@ -183,6 +183,54 @@ def save_deploy_config(data: dict[str, Any]) -> dict[str, Any]:
                                 "success": False,
                                 "error": f"Invalid item '{f}' in list '{key}' for app '{app_id}'. Must match ^[A-Za-z0-9._-]+$",
                             }
+                elif key == "pipelines":
+                    if len(val) > 50:
+                        return {"success": False, "error": f"Too many pipelines for app '{app_id}' (max 50)"}
+                    seen_pipe_ids = set()
+                    for pipe in val:
+                        if not isinstance(pipe, dict):
+                            return {"success": False, "error": f"Each pipeline in app '{app_id}' must be an object"}
+                        p_id = pipe.get("id")
+                        p_name = pipe.get("name")
+                        p_flavor = pipe.get("flavor")
+                        steps = pipe.get("steps")
+
+                        if not p_id or not isinstance(p_id, str) or not re.match(r"^[a-z0-9-]+$", p_id) or len(p_id) > 60:
+                            return {
+                                "success": False,
+                                "error": f"Invalid pipeline id '{p_id}' in app '{app_id}'. Must match ^[a-z0-9-]+$ and be 1-60 chars",
+                            }
+                        if p_id in seen_pipe_ids:
+                            return {"success": False, "error": f"Duplicate pipeline id '{p_id}' in app '{app_id}'"}
+                        seen_pipe_ids.add(p_id)
+
+                        if not p_name or not isinstance(p_name, str) or len(p_name.strip()) == 0 or len(p_name) > 60:
+                            return {"success": False, "error": f"Invalid pipeline name in app '{app_id}'. Must be 1-60 characters"}
+
+                        if p_flavor is not None and p_flavor != "":
+                            if not isinstance(p_flavor, str) or not SAFE_ID_PATTERN.match(p_flavor):
+                                return {"success": False, "error": f"Invalid flavor '{p_flavor}' for pipeline '{p_id}' in app '{app_id}'"}
+
+                        if not isinstance(steps, list) or len(steps) == 0:
+                            return {"success": False, "error": f"Pipeline '{p_id}' in app '{app_id}' must contain at least 1 step"}
+                        if len(steps) > 20:
+                            return {"success": False, "error": f"Pipeline '{p_id}' in app '{app_id}' has {len(steps)} steps; maximum is 20"}
+
+                        for s_idx, step in enumerate(steps):
+                            if not isinstance(step, dict):
+                                return {"success": False, "error": f"Step #{s_idx + 1} in pipeline '{p_id}' must be an object"}
+                            t_id = step.get("templateId")
+                            custom_cmd = step.get("command")
+                            if not t_id and not custom_cmd:
+                                return {"success": False, "error": f"Step #{s_idx + 1} in pipeline '{p_id}' must specify templateId or command"}
+                            if t_id and (not isinstance(t_id, str) or not SAFE_ID_PATTERN.match(t_id)):
+                                return {"success": False, "error": f"Invalid templateId '{t_id}' in pipeline '{p_id}' step #{s_idx + 1}"}
+                            if custom_cmd and (not isinstance(custom_cmd, str) or len(custom_cmd.strip()) == 0 or len(custom_cmd) > 1000):
+                                return {"success": False, "error": f"Invalid custom command in pipeline '{p_id}' step #{s_idx + 1}"}
+                            s_flavor = step.get("flavor")
+                            if s_flavor is not None and s_flavor != "":
+                                if not isinstance(s_flavor, str) or not SAFE_ID_PATTERN.match(s_flavor):
+                                    return {"success": False, "error": f"Invalid flavor '{s_flavor}' in pipeline '{p_id}' step #{s_idx + 1}"}
 
     cfg = get_deploy_config_file()
     try:
