@@ -708,6 +708,7 @@
                         <button type="button" role="tab" class="setup-tab" data-tab="android" aria-selected="false">Android <span class="setup-tab-dot" data-tab-status="android"></span></button>
                         <button type="button" role="tab" class="setup-tab" data-tab="firebase" aria-selected="false">Firebase</button>
                         <button type="button" role="tab" class="setup-tab" data-tab="release" aria-selected="false">Release</button>
+                        <button type="button" role="tab" class="setup-tab" data-tab="server" aria-selected="false">Server</button>
                     </div>
 
                     <!-- Pipelines Configuration Card -->
@@ -1054,6 +1055,71 @@
                         </div>
                     </div>
 
+                    <!-- Server Management & Configuration Panel -->
+                    <div class="ui-card" data-setup-panel="server" style="margin-bottom: 20px;">
+                        <div class="ui-card-header" style="display:flex; justify-content:space-between; align-items:center;">
+                            <div>
+                                <h4 class="ui-card-title">Deployment Server Lifecycle &amp; Configuration</h4>
+                                <p class="ui-help-text" style="margin:2px 0 0 0;">Control local Python backend process, auto-start service, and desktop integration.</p>
+                            </div>
+                            <span id="cfgServerStatusBadge" class="ui-badge" data-variant="secondary">Checking...</span>
+                        </div>
+                        <div class="ui-card-body">
+                            <!-- Server Telemetry Box -->
+                            <div style="background: rgba(0,0,0,0.2); padding: 14px; border-radius: 8px; border: 1px solid var(--ui-border-color); margin-bottom: 16px; font-size: 0.82rem; display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px;">
+                                <div><span style="color:var(--ui-text-muted); display:block; font-size:0.7rem; font-weight:700;">STATUS</span><strong id="cfgServerStatusText">Checking...</strong></div>
+                                <div><span style="color:var(--ui-text-muted); display:block; font-size:0.7rem; font-weight:700;">PORT</span><span id="cfgServerPortText">18112</span></div>
+                                <div><span style="color:var(--ui-text-muted); display:block; font-size:0.7rem; font-weight:700;">PROCESS ID</span><span id="cfgServerPidText">-</span></div>
+                                <div><span style="color:var(--ui-text-muted); display:block; font-size:0.7rem; font-weight:700;">UPTIME</span><span id="cfgServerUptimeText">-</span></div>
+                            </div>
+
+                            <!-- Server Action Buttons -->
+                            <div class="ui-field">
+                                <label class="ui-label" style="font-weight:600; margin-bottom:8px;">Server Lifecycle Controls</label>
+                                <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px;">
+                                    <button id="cfgServerStartBtn" type="button" class="ui-button" data-variant="primary" data-size="sm">
+                                        <i data-lucide="play"></i>
+                                        <span>Start</span>
+                                    </button>
+                                    <button id="cfgServerRestartBtn" type="button" class="ui-button" data-variant="secondary" data-size="sm">
+                                        <i data-lucide="refresh-cw"></i>
+                                        <span>Restart</span>
+                                    </button>
+                                    <button id="cfgServerStopBtn" type="button" class="ui-button" data-variant="secondary" data-size="sm">
+                                        <i data-lucide="square"></i>
+                                        <span>Stop</span>
+                                    </button>
+                                    <button id="cfgServerEndBtn" type="button" class="ui-button" data-variant="danger" data-size="sm">
+                                        <i data-lucide="power"></i>
+                                        <span>End</span>
+                                    </button>
+                                </div>
+                            </div>
+
+                            <!-- 1-Click No Terminal Integration -->
+                            <div class="ui-card" style="padding: 14px; background: rgba(99, 102, 241, 0.05); border: 1px solid rgba(99, 102, 241, 0.2); margin-top: 16px;">
+                                <div style="font-weight: 600; font-size: 0.84rem; margin-bottom: 4px; display: flex; align-items: center; gap: 6px;">
+                                    <i data-lucide="sparkles" style="color: var(--ui-primary, #6366f1); width: 15px; height: 15px;"></i>
+                                    <span>1-Click Launchers (Never Type ./start.sh)</span>
+                                </div>
+                                <p style="font-size: 0.78rem; color: var(--ui-text-muted); margin-bottom: 10px; line-height: 1.4;">
+                                    Install desktop icon or auto-start background service to launch seamlessly without opening the terminal:
+                                </p>
+                                <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                                    <button id="cfgServerInstallDesktopBtn" class="ui-button" data-variant="secondary" data-size="xs" type="button">
+                                        <i data-lucide="monitor"></i>
+                                        <span>Create Desktop Shortcut</span>
+                                    </button>
+                                    <button id="cfgServerInstallServiceBtn" class="ui-button" data-variant="secondary" data-size="xs" type="button">
+                                        <i data-lucide="cpu"></i>
+                                        <span>Auto-Start on Login (systemd)</span>
+                                    </button>
+                                </div>
+                                <div id="cfgLauncherStatusMsg" style="margin-top: 8px; font-size: 0.75rem; color: var(--ui-success, #22c55e); display: none;"></div>
+                            </div>
+                        </div>
+                    </div>
+
                     <!-- Footer Action Toolbar -->
                     <div class="setup-actions-toolbar" style="display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 28px; padding-top: 20px; border-top: 1px solid var(--ui-border-color, #334155);">
                         <div style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center;">
@@ -1190,12 +1256,57 @@
                     <div><strong>Port:</strong> <span id="serverModalPort">18112</span></div>
                     <div><strong>PID:</strong> <span id="serverModalPid">-</span></div>
                     <div><strong>Python:</strong> <span id="serverModalPython">-</span></div>
+                    <div id="serverModalUptimeRow" style="display: none;"><strong>Uptime:</strong> <span id="serverModalUptime">-</span></div>
                 </div>
             </div>
 
+            <!-- Server Control Actions -->
             <div>
-                <label class="ui-label" style="font-weight: 600; margin-bottom: 6px; display: block;">Terminal Launch Command</label>
-                <p style="font-size: 0.78rem; color: var(--ui-text-muted); margin-bottom: 8px;">Run this command in your repository terminal to launch the backend server:</p>
+                <label class="ui-label" style="font-weight: 600; margin-bottom: 8px; display: block;">Server Lifecycle Controls</label>
+                <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px;">
+                    <button id="serverStartBtn" class="ui-button" data-variant="primary" data-size="sm" type="button" title="Start or reconnect server">
+                        <i data-lucide="play"></i>
+                        <span>Start</span>
+                    </button>
+                    <button id="serverRestartBtn" class="ui-button" data-variant="secondary" data-size="sm" type="button" title="Restart server in-place">
+                        <i data-lucide="refresh-cw"></i>
+                        <span>Restart</span>
+                    </button>
+                    <button id="serverStopBtn" class="ui-button" data-variant="secondary" data-size="sm" type="button" title="Gracefully stop server">
+                        <i data-lucide="square"></i>
+                        <span>Stop</span>
+                    </button>
+                    <button id="serverEndBtn" class="ui-button" data-variant="danger" data-size="sm" type="button" title="Terminate server process">
+                        <i data-lucide="power"></i>
+                        <span>End</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- 1-Click Launchers (No Terminal Ever) -->
+            <div class="ui-card" style="padding: 14px; background: rgba(99, 102, 241, 0.05); border: 1px solid rgba(99, 102, 241, 0.2);">
+                <div style="font-weight: 600; font-size: 0.84rem; margin-bottom: 4px; display: flex; align-items: center; gap: 6px;">
+                    <i data-lucide="sparkles" style="color: var(--ui-primary, #6366f1); width: 15px; height: 15px;"></i>
+                    <span>1-Click Launchers (Never Type ./start.sh)</span>
+                </div>
+                <p style="font-size: 0.78rem; color: var(--ui-text-muted); margin-bottom: 10px; line-height: 1.4;">
+                    Install desktop icon or auto-start background service to launch seamlessly without opening the terminal:
+                </p>
+                <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                    <button id="serverInstallDesktopBtn" class="ui-button" data-variant="secondary" data-size="xs" type="button">
+                        <i data-lucide="monitor"></i>
+                        <span>Create Desktop Shortcut</span>
+                    </button>
+                    <button id="serverInstallServiceBtn" class="ui-button" data-variant="secondary" data-size="xs" type="button">
+                        <i data-lucide="cpu"></i>
+                        <span>Auto-Start on Login (systemd)</span>
+                    </button>
+                </div>
+                <div id="launcherStatusMsg" style="margin-top: 8px; font-size: 0.75rem; color: var(--ui-success, #22c55e); display: none;"></div>
+            </div>
+
+            <div>
+                <label class="ui-label" style="font-weight: 600; margin-bottom: 6px; display: block;">Terminal Launch Command (Alternative)</label>
                 <div style="display: flex; align-items: center; justify-content: space-between; background: #0f172a; padding: 10px 14px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.1); font-family: monospace; font-size: 0.85rem; color: #38bdf8;">
                     <code id="serverConsoleSnippet">./start.sh</code>
                     <button id="copyServerSnippetBtn" class="ui-button" data-variant="secondary" data-size="xs" type="button">Copy</button>

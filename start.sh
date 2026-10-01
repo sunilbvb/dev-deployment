@@ -65,4 +65,26 @@ echo "🌐 URL: http://localhost:$PORT"
 echo "🔑 Auth Token: $TOKEN_MASKED"
 echo ""
 
-exec python3 "features/deployment/backend/server.py" --port "$PORT" "$@"
+# Auto-open browser in background if --open or AUTO_OPEN=1 is set
+OPEN_BROWSER=0
+ARGS=()
+for arg in "$@"; do
+    if [ "$arg" = "--open" ] || [ "$arg" = "--browser" ]; then
+        OPEN_BROWSER=1
+    else
+        ARGS+=("$arg")
+    fi
+done
+
+if [ "$OPEN_BROWSER" = "1" ] || [ "${AUTO_OPEN:-0}" = "1" ]; then
+    (
+        sleep 1
+        if command -v xdg-open >/dev/null 2>&1; then
+            xdg-open "http://localhost:$PORT/" >/dev/null 2>&1 || true
+        elif command -v open >/dev/null 2>&1; then
+            open "http://localhost:$PORT/" >/dev/null 2>&1 || true
+        fi
+    ) &
+fi
+
+exec python3 "features/deployment/backend/server.py" --port "$PORT" "${ARGS[@]}"

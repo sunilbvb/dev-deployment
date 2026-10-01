@@ -1,0 +1,11 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Dev Deployment Console
+Comment=Flutter & Mobile Deployment Automation Dashboard
+Exec="/home/sunil-bakale/IdeaProjects/dev-deployment/start.sh" --open
+Path=/home/sunil-bakale/IdeaProjects/dev-deployment
+Icon=utilities-terminal
+Terminal=false
+Categories=Development;Building;
+StartupNotify=true
