@@ -7,6 +7,8 @@ import shlex
 import shutil
 import signal
 import subprocess
+import sys
+import contextvars
 import threading
 import time
 from datetime import date, datetime, timezone
@@ -18,10 +20,10 @@ from config import (
     TMP_DIR,
     SAFE_ID_PATTERN,
     _resolve_app_dir,
-    get_apps,
     get_workspace_root,
     load_deploy_config,
 )
+from credentials import job_env as credentials_job_env
 from commands import (
     STORE_UPLOAD_TEMPLATE_IDS,
     _is_prod_store_deploy,
@@ -33,6 +35,12 @@ _JOBS_LOCK = threading.Lock()
 _APP_LOCKS: dict[str, dict[str, Any]] = {}
 _HISTORY_LOCK = threading.Lock()
 EXPIRY_WARNING_THRESHOLD_DAYS = 30
+
+
+def _start_in_context(target, *args) -> None:
+    """Run a job thread with the request's context so it keeps the request's workspace."""
+    ctx = contextvars.copy_context()
+    threading.Thread(target=ctx.run, args=(target, *args), daemon=True).start()
 
 
 def _prune_jobs() -> None:
@@ -127,10 +135,20 @@ def _record_history_entry(job_id: str, chained_job_id: Optional[str] = None) -> 
 
 
 def _release_auto_chain_configured(app: str, env: str) -> tuple[bool, str]:
-    deploy_cfg = load_deploy_config()
-    app_cfg = deploy_cfg.get("apps", {}).get(app, {})
-    chain_enabled = bool(app_cfg.get("auto_release_tag", False))
-    return chain_enabled, "release_full" if chain_enabled else ""
+    """Settings from Configure → Release: run a release action after a successful upload."""
+    app_cfg = load_deploy_config().get("apps", {}).get(app, {})
+    enabled = bool(app_cfg.get("auto_release_on_success") or app_cfg.get("auto_release_tag"))
+    if not enabled:
+        return False, ""
+    flavors = [str(f).lower() for f in (app_cfg.get("auto_release_flavors") or ["prod"])]
+    # Apps without flavors build as "default"; treat them as their production flavor.
+    env_l = (env or "").lower()
+    if env_l not in flavors and not (env_l in ("default", "any", "") and "prod" in flavors):
+        return False, ""
+    action = str(app_cfg.get("auto_release_action") or "release_push")
+    if not action.startswith("release_"):
+        return False, ""
+    return True, action
 
 
 def _trigger_chained_release(app: str, env: str, action_id: str, parent_job_id: str) -> None:
@@ -244,6 +262,9 @@ def execute_command(
     child_env["TMP"] = str(TMP_DIR)
     child_env["TEMP"] = str(TMP_DIR)
     child_env["DASHBOARD_SCRIPTS_PATH"] = str(FEATURE_DIR / "scripts")
+    child_env["DEPLOYMENT_PYTHON"] = sys.executable
+    child_env["WORKSPACE_ROOT"] = str(get_workspace_root())
+    child_env.update(credentials_job_env(app))
 
     if runner == "custom":
         shell_bin = shutil.which("bash") or shutil.which("zsh") or os.environ.get("SHELL") or "/bin/sh"
@@ -331,8 +352,8 @@ def execute_command(
             except Exception:
                 logging.exception("Failed to close process stream pipe")
 
-    threading.Thread(target=stream_pipe, args=(process.stdout, "output"), daemon=True).start()
-    threading.Thread(target=stream_pipe, args=(process.stderr, "error"), daemon=True).start()
+    _start_in_context(stream_pipe, process.stdout, "output")
+    _start_in_context(stream_pipe, process.stderr, "error")
 
     def finish_job() -> None:
         process.wait()
@@ -368,7 +389,7 @@ def execute_command(
 
         _prune_jobs()
 
-    threading.Thread(target=finish_job, daemon=True).start()
+    _start_in_context(finish_job)
     return {"success": True, "jobId": job_id, "command": cmd_str}
 
 
@@ -476,57 +497,6 @@ def get_deployment_history(limit: int = 50, app: str = "", flavor: str = "", sta
             scan_file(history_file.parent / (history_file.name + ".1"))
 
     return {"success": True, "entries": results, "count": len(results)}
-
-
-BATCH_ELIGIBLE_TEMPLATE_IDS = {
-    "deploy_both", "deploy_aab", "deploy_ipa", "upload_aab", "upload_ipa",
-    "build_aab", "build_ipa", "build_apk", "build_ipa_device",
-}
-
-
-def get_batch_deploy_plan(flavor: str, template_id: str = "auto") -> dict[str, Any]:
-    if not flavor:
-        return {"success": False, "error": "flavor is required"}
-    if template_id and template_id != "auto" and template_id not in BATCH_ELIGIBLE_TEMPLATE_IDS:
-        return {"success": False, "error": f"Unsupported batch template: {template_id}"}
-
-    plan: list[dict[str, Any]] = []
-    for app in get_apps().get("apps", []):
-        app_id = app["id"]
-        by_template = {
-            c["templateId"]: c
-            for c in get_commands(app_id).get("commands", [])
-            if c.get("flavor") == flavor
-        }
-        entry: dict[str, Any] = {"appId": app_id, "appName": app.get("name", app_id), "color": app.get("color", "#6366f1")}
-
-        def _use(cmd: dict[str, Any]) -> None:
-            entry.update({
-                "templateId": cmd["templateId"], "templateName": cmd["name"],
-                "command": cmd["key"], "runner": cmd["runner"],
-                "willRun": True, "skipReason": None
-            })
-
-        if template_id and template_id != "auto":
-            cmd = by_template.get(template_id)
-            if cmd:
-                _use(cmd)
-            else:
-                entry.update({"templateId": template_id, "templateName": template_id, "command": None, "runner": None, "willRun": False, "skipReason": f"No command configured for {flavor}"})
-        else:
-            if "deploy_both" in by_template:
-                _use(by_template["deploy_both"])
-            elif "deploy_ipa" in by_template and "deploy_aab" not in by_template:
-                _use(by_template["deploy_ipa"])
-            elif "deploy_aab" in by_template and "deploy_ipa" not in by_template:
-                _use(by_template["deploy_aab"])
-            elif "build_aab" in by_template:
-                _use(by_template["build_aab"])
-            else:
-                entry.update({"templateId": "none", "templateName": "None", "command": None, "runner": None, "willRun": False, "skipReason": f"No deploy commands available for {flavor}"})
-        plan.append(entry)
-
-    return {"success": True, "flavor": flavor, "templateId": template_id, "plan": plan, "appCount": len(plan), "runnableCount": sum(1 for e in plan if e.get("willRun"))}
 
 
 def _app_has_ios(app_id: str) -> bool:

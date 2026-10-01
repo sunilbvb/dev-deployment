@@ -103,11 +103,12 @@ uploadIPARaw() {
     cd "$MELOS_ROOT_PATH" || return 1
     
     # Export Apple API credentials
-    local env_file=""
-    if [ -f "apps/$app_name/env/$env_name.json" ]; then
-        env_file="apps/$app_name/env/$env_name.json"
-    elif [ -f "apps/$app_name/env/env.json" ]; then
-        env_file="apps/$app_name/env/env.json"
+    local env_file="" app_dir
+    app_dir="$(resolveAppDir "$app_name")"
+    if [ -f "$app_dir/env/$env_name.json" ]; then
+        env_file="$app_dir/env/$env_name.json"
+    elif [ -f "$app_dir/env/env.json" ]; then
+        env_file="$app_dir/env/env.json"
     elif [ -f "env/$env_name.json" ]; then
         env_file="env/$env_name.json"
     elif [ -f "env/env.json" ]; then
@@ -139,7 +140,7 @@ uploadIPARaw() {
     print_apple_creds_debug "${APPLE_API_KEY:-}" "${APPLE_API_ISSUER:-}" "${APPLE_API_KEY_PATH}"
     
     # Locate IPA file (from app directory)
-    cd "$MELOS_ROOT_PATH/apps/$app_name" || return 1
+    cd "$(resolveAppDir "$app_name")" || return 1
     local raw_ipa_path
     raw_ipa_path="$(findIpaFile)" || exit 2
     IOS_IPA_PATH="$(pwd)/$raw_ipa_path"

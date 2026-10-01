@@ -8,6 +8,8 @@ import tempfile
 from pathlib import Path
 from typing import Any, Optional
 
+import picker
+
 FEATURE_DIR = Path(__file__).resolve().parents[1]
 DASHBOARD_ROOT = FEATURE_DIR.parents[1]
 
@@ -200,6 +202,18 @@ def load_templates() -> dict[str, list[dict[str, Any]]]:
         return {}
 
 
+def _is_flutter_plugin(pubspec_text: str) -> bool:
+    in_flutter = False
+    for line in pubspec_text.splitlines():
+        if not line.strip() or line.lstrip().startswith("#"):
+            continue
+        if not line[0].isspace():
+            in_flutter = line.rstrip() == "flutter:"
+        elif in_flutter and line.strip() == "plugin:":
+            return True
+    return False
+
+
 def _detect_app_in_dir(path: Path) -> Optional[dict[str, Any]]:
     if not path.is_dir():
         return None
@@ -243,10 +257,10 @@ def _detect_app_in_dir(path: Path) -> Optional[dict[str, Any]]:
                 else:
                     version = raw_ver
 
-            # C2: a Flutter repo is a deployable app only if it has android/, ios/, or lib/main.dart
-            # Pure Dart/Flutter packages won't have those (they just have lib/ with no main.dart).
-            has_main = (path / "lib" / "main.dart").exists()
-            if not (has_android or has_ios or has_main):
+            # Plugins ship android/ and ios/ folders but are packages, not apps.
+            is_plugin = _is_flutter_plugin(content)
+            has_entrypoint = any((path / "lib").glob("main*.dart"))
+            if is_plugin or not (has_android or has_ios or has_entrypoint):
                 is_package = True
         except Exception:
             logging.exception("Failed to parse pubspec.yaml in %s", path)
@@ -263,7 +277,8 @@ def _detect_app_in_dir(path: Path) -> Optional[dict[str, Any]]:
     elif has_native:
         stack = "native"
 
-    app_id = re.sub(r"[^a-zA-Z0-9_-]", "_", app_name.lower())
+    # Folder names are stabler than package names, so saved configs keep matching.
+    app_id = re.sub(r"[^a-zA-Z0-9_-]", "_", path.name.lower())
     return {
         "id": app_id,
         "name": app_name,
@@ -313,33 +328,39 @@ def _parse_yaml_list_field(content: str, field_name: str) -> list[str]:
 SKIP_DIR_NAMES = {
     ".git", ".dart_tool", "build", "dist", "node_modules", "Pods",
     ".idea", ".vscode", ".dev-dashboard", ".gradle", "ios/Pods",
-    "target", ".bundle"
+    "target", ".bundle", "example", "examples", ".symlinks", "ephemeral",
 }
+
+# Folders inside a project that never contain sibling projects worth deploying.
+PROJECT_INTERNAL_DIRS = {
+    "android", "ios", "macos", "linux", "windows", "web", "lib", "test",
+    "integration_test", "test_driver", "assets", "fonts", "bin", "src",
+}
+
+MAX_SCAN_DEPTH = 4
+MANIFEST_FILES = ("pubspec.yaml", "package.json")
+
+
+def _has_manifest(path: Path) -> bool:
+    return any((path / m).is_file() for m in MANIFEST_FILES)
 
 
 def _discover_apps_in_workspace(candidate: Path) -> tuple[list[dict[str, Any]], bool, bool]:
-    """Discover all apps in a workspace directory.
+    """Discover apps and packages under a workspace root.
 
-    Fixes:
-    - C3: Dart 3.5+ / Melos 7 pub workspaces ('workspace:' in root pubspec.yaml)
-    - C4: Melos glob expansion (e.g. apps/**, packages/*) and ignore patterns
-    - C5: Multi-level discovery (2-3 levels deep) skipping non-project dirs
-    - C6: Disambiguation of duplicate app IDs with path info
+    Handles Melos (melos.yaml or `melos:` in pubspec), Dart pub workspaces,
+    a single project at the root (optionally with local packages), and plain
+    folders holding several projects with or without shared packages.
     """
-    discovered_apps: list[dict[str, Any]] = []
-    is_monorepo = False
     has_melos = False
-
-    melos_file = candidate / "melos.yaml"
-    pubspec_file = candidate / "pubspec.yaml"
-
+    is_workspace_root = False
     package_globs: list[str] = []
     ignore_globs: list[str] = []
 
-    # 1. Melos configuration (melos.yaml)
+    melos_file = candidate / "melos.yaml"
     if melos_file.exists():
         has_melos = True
-        is_monorepo = True
+        is_workspace_root = True
         try:
             m_text = melos_file.read_text(encoding="utf-8", errors="replace")
             package_globs.extend(_parse_yaml_list_field(m_text, "packages"))
@@ -347,29 +368,19 @@ def _discover_apps_in_workspace(candidate: Path) -> tuple[list[dict[str, Any]], 
         except Exception:
             logging.exception("Failed to parse melos.yaml in %s", candidate)
 
-    # 2. Dart pub workspace / Melos in pubspec.yaml (C3)
+    pubspec_file = candidate / "pubspec.yaml"
     if pubspec_file.exists():
         try:
             p_text = pubspec_file.read_text(encoding="utf-8", errors="replace")
-            if "melos:" in p_text:
+            if re.search(r"^melos:", p_text, re.MULTILINE):
                 has_melos = True
-                is_monorepo = True
+                is_workspace_root = True
             ws_entries = _parse_yaml_list_field(p_text, "workspace")
             if ws_entries:
-                is_monorepo = True
+                is_workspace_root = True
                 package_globs.extend(ws_entries)
         except Exception:
             logging.exception("Failed to parse pubspec.yaml in %s", candidate)
-
-    # Standard monorepo folders if present
-    standard_monorepo_folders = ["apps", "packages", "modules"]
-    has_standard_mono_folder = any((candidate / f).is_dir() for f in standard_monorepo_folders)
-    if has_standard_mono_folder:
-        is_monorepo = True
-        if not package_globs:
-            for f in standard_monorepo_folders:
-                if (candidate / f).is_dir():
-                    package_globs.append(f"{f}/**")
 
     def _is_ignored(rel_p: Path) -> bool:
         rel_str = str(rel_p).replace("\\", "/")
@@ -383,76 +394,75 @@ def _discover_apps_in_workspace(candidate: Path) -> tuple[list[dict[str, Any]], 
                 return True
         return False
 
+    def _is_skipped_path(rel_p: Path) -> bool:
+        return any(part in SKIP_DIR_NAMES or part.startswith(".") for part in rel_p.parts)
+
     found_dirs: list[Path] = []
 
-    # Case A: Monorepo with package globs (C3, C4)
-    if package_globs:
-        for glob_pat in package_globs:
-            clean_glob = glob_pat.strip().strip("'\"")
-            direct_p = candidate / clean_glob
-            if direct_p.is_dir():
-                try:
-                    rel = direct_p.relative_to(candidate)
-                    if not _is_ignored(rel) and direct_p not in found_dirs:
-                        found_dirs.append(direct_p)
-                except ValueError:
-                    pass
-                continue
-            try:
-                for matched in candidate.glob(clean_glob):
-                    if matched.is_dir() and matched != candidate:
-                        try:
-                            rel = matched.relative_to(candidate)
-                            if not _is_ignored(rel) and matched not in found_dirs:
-                                found_dirs.append(matched)
-                        except ValueError:
-                            pass
-            except Exception:
-                logging.exception("Failed globbing %s in %s", clean_glob, candidate)
+    def _add(path: Path) -> None:
+        if path in found_dirs or path == candidate:
+            return
+        rel = path.relative_to(candidate)
+        if _is_skipped_path(rel) or _is_ignored(rel):
+            return
+        found_dirs.append(path)
 
-    # Case B: Multi-level search fallback (C5) - search up to 3 levels deep
+    # Explicit membership lists (melos packages / pub workspace) win when present.
+    for glob_pat in package_globs:
+        clean_glob = glob_pat.strip().strip("'\"").rstrip("/")
+        if not clean_glob:
+            continue
+        direct_p = candidate / clean_glob
+        if direct_p.is_dir():
+            if _has_manifest(direct_p):
+                _add(direct_p)
+            continue
+        try:
+            for matched in sorted(candidate.glob(clean_glob)):
+                if matched.is_dir() and _has_manifest(matched):
+                    _add(matched)
+        except Exception:
+            logging.exception("Failed globbing %s in %s", clean_glob, candidate)
+
+    # Otherwise walk the tree: every folder with a manifest is a project.
     if not found_dirs:
-        queue = [(candidate, 0)]
+        queue: list[tuple[Path, int]] = [(candidate, 0)]
         while queue:
             curr_dir, depth = queue.pop(0)
-            if depth > 0 and curr_dir != candidate:
-                if curr_dir.name in SKIP_DIR_NAMES or curr_dir.name.startswith("."):
+            curr_is_project = _has_manifest(curr_dir)
+            if curr_dir != candidate and curr_is_project:
+                _add(curr_dir)
+            elif curr_dir != candidate and depth > 0 and _detect_app_in_dir(curr_dir) is not None:
+                # Native-only project (no manifest, e.g. bare Xcode/Gradle app).
+                _add(curr_dir)
+                continue
+            if depth >= MAX_SCAN_DEPTH:
+                continue
+            try:
+                children = sorted(curr_dir.iterdir())
+            except OSError:
+                continue
+            for child in children:
+                if not child.is_dir() or child.name in SKIP_DIR_NAMES or child.name.startswith("."):
                     continue
-                try:
-                    rel = curr_dir.relative_to(candidate)
-                    if _is_ignored(rel):
-                        continue
-                except ValueError:
-                    pass
-                det = _detect_app_in_dir(curr_dir)
-                if det is not None:
-                    found_dirs.append(curr_dir)
+                if curr_is_project and child.name in PROJECT_INTERNAL_DIRS:
                     continue
-            if depth < 3:
-                try:
-                    for child in sorted(curr_dir.iterdir()):
-                        if child.is_dir() and child.name not in SKIP_DIR_NAMES and not child.name.startswith("."):
-                            queue.append((child, depth + 1))
-                except Exception:
-                    pass
+                queue.append((child, depth + 1))
 
-    # Check each found directory with _detect_app_in_dir
-    seen_paths = set()
+    discovered_apps: list[dict[str, Any]] = []
     for d in found_dirs:
-        if d in seen_paths or not d.is_dir():
-            continue
-        seen_paths.add(d)
         det = _detect_app_in_dir(d)
         if det is not None:
             discovered_apps.append(det)
 
-    # Case C: Candidate itself is a single app
-    if not discovered_apps:
-        detected_root = _detect_app_in_dir(candidate)
-        if detected_root is not None:
-            discovered_apps.append(detected_root)
+    # The root is itself a project unless it only aggregates members.
+    if not is_workspace_root:
+        root_det = _detect_app_in_dir(candidate)
+        if root_det is not None and (not root_det["is_package"] or not discovered_apps):
+            discovered_apps.insert(0, root_det)
 
-    # Case D: Disambiguate duplicate app IDs (C6)
+    discovered_apps.sort(key=lambda a: a["is_package"])
+
     seen_ids: dict[str, int] = {}
     for app in discovered_apps:
         orig_id = app["id"]
@@ -473,6 +483,7 @@ def _discover_apps_in_workspace(candidate: Path) -> tuple[list[dict[str, Any]], 
         else:
             seen_ids[orig_id] = 1
 
+    is_monorepo = is_workspace_root or len(discovered_apps) > 1
     return discovered_apps, is_monorepo, has_melos
 
 
@@ -775,6 +786,8 @@ def get_workspaces_list() -> dict[str, Any]:
     current_path = str(WORKSPACE_ROOT.resolve())
     if not any(w.get("path") == current_path for w in workspaces):
         workspaces.insert(0, {"name": WORKSPACE_ROOT.name or "Current", "path": current_path})
+    # The startup project (WORKSPACE_ROOT) is always shown and cannot be removed from the UI.
+    workspaces = [{**w, "isDefault": w.get("path") == current_path} for w in workspaces if isinstance(w, dict)]
 
     return {
         "success": True,
@@ -783,6 +796,28 @@ def get_workspaces_list() -> dict[str, Any]:
         "workspaces": workspaces,
         "workspaceMissing": WORKSPACE_MISSING,
     }
+
+
+def remove_workspace(path_str: str) -> dict[str, Any]:
+    """Remove a project from the added-projects list. The folder and its settings are not touched."""
+    if not path_str or not path_str.strip():
+        return {"success": False, "error": "No path provided"}
+    target = str(Path(path_str.strip()).resolve())
+    if target == str(WORKSPACE_ROOT.resolve()):
+        return {"success": False, "error": "This is the startup project (WORKSPACE_ROOT) and is always shown."}
+    ws_file = DASHBOARD_ROOT / "config" / "workspaces_list.json"
+    try:
+        workspaces = json.loads(ws_file.read_text(encoding="utf-8")) if ws_file.exists() else []
+    except Exception:
+        return {"success": False, "error": f"Could not read {ws_file}"}
+    kept = [w for w in workspaces if not (isinstance(w, dict) and str(Path(w.get("path", "")).resolve()) == target)]
+    if len(kept) == len(workspaces):
+        return {"success": False, "error": "This project is not in the list."}
+    try:
+        ws_file.write_text(json.dumps(kept, indent=2), encoding="utf-8")
+    except Exception as exc:
+        return {"success": False, "error": f"Could not write workspaces list: {exc}"}
+    return {"success": True, "path": target}
 
 
 def set_active_workspace(new_path: str) -> dict[str, Any]:
@@ -850,7 +885,7 @@ def inspect_workspace_path(path_str: str) -> dict[str, Any]:
     allowed_roots = _get_allowed_workspace_roots()
     is_safe = (candidate == root_res or root_res in candidate.parents) or any(
         candidate == allowed or allowed in candidate.parents for allowed in allowed_roots
-    )
+    ) or picker.was_picked(candidate)
     if not is_safe:
         return {
             "success": False,
@@ -862,19 +897,42 @@ def inspect_workspace_path(path_str: str) -> dict[str, Any]:
     discovered_apps, is_monorepo, has_melos = _discover_apps_in_workspace(candidate)
     detected_app = _detect_app_in_dir(candidate)
     stacks = list(set(a.get("stack", "generic") for a in discovered_apps))
+    apps = [a for a in discovered_apps if not a.get("is_package")]
+    packages = [a for a in discovered_apps if a.get("is_package")]
 
     return {
         "success": True,
         "exists": True,
         "path": str(candidate),
         "name": candidate.name or "Root",
-        "appCount": len(discovered_apps),
+        "appCount": len(apps),
+        "packageCount": len(packages),
         "apps": discovered_apps,
         "detectedApp": detected_app,
         "stacks": stacks,
         "isMonorepo": is_monorepo,
         "hasMelos": has_melos,
+        "layout": _describe_layout(candidate, apps, packages, has_melos),
     }
+
+
+def _describe_layout(root: Path, apps: list[dict[str, Any]], packages: list[dict[str, Any]], has_melos: bool) -> str:
+    """Human-readable name for how the workspace is organised."""
+    root_is_app = any(Path(a["path"]) == root for a in apps)
+    pubspec = root / "pubspec.yaml"
+    pub_workspace = pubspec.exists() and bool(_parse_yaml_list_field(
+        pubspec.read_text(encoding="utf-8", errors="replace"), "workspace"))
+    if has_melos:
+        return "Melos monorepo (apps + packages)"
+    if pub_workspace:
+        return "Dart pub workspace (apps + packages, no Melos)"
+    if root_is_app and len(apps) == 1:
+        return "Single app with local packages" if packages else "Single app"
+    if packages:
+        return "Multiple apps with shared packages (no Melos)"
+    if apps:
+        return "Multiple apps (no packages, no Melos)"
+    return "No apps found"
 
 
 def _scan_xcconfig_bundle_ids(app_dir: Path) -> dict[str, str]:

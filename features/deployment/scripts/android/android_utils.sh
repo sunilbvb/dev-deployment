@@ -141,6 +141,9 @@ buildAndUploadAndroid() {
         source "$tmp_json_utils"
         package_name="$(getProfileValueForApp "$app_name" "package_name" "$flavor")"
     fi
+    if [ -z "$package_name" ] || [ "$package_name" = "null" ]; then
+        package_name="$(resolveAndroidPackageName "$app_name" "$flavor")"
+    fi
 
     # Parameter validation
     if [ -z "$app_name" ] || [ -z "$flavor" ] || [ -z "$package_name" ]; then
@@ -156,8 +159,12 @@ buildAndUploadAndroid() {
     
     # Execute build command
     echo "Building Android AAB for $app_name ($flavor)..."
-    checkMelosScript "$build_command" || return 1
-    melos run "$build_command"
+    if melosScriptExists "$build_command"; then
+        melos run "$build_command"
+    else
+        echo "ℹ️  Melos script '$build_command' not defined; running buildAABRaw directly"
+        bash "$JSON_SCRIPT_DIR/run_build.sh" buildAABRaw "$app_name" "$flavor"
+    fi
     
     # Use uploadAndroid function to handle the upload
     uploadAndroid "$app_name" "$package_name"
@@ -264,15 +271,29 @@ runWithAndroidEnv() {
 #   - Provides clear error messages for debugging
 #------------------------------------------------------------------------------
 uploadAndroid() {
-    local app_name package_name
-    
+    local app_name package_name flavor=""
+
     if [ "$#" -eq 1 ]; then
         local profile="$1"
         app_name="$(getProfileValue "$profile" "app_name")"
         package_name="$(getProfileValue "$profile" "package_name")"
+        if [ -z "$app_name" ] || [ "$app_name" = "null" ]; then
+            # No bundled profile: treat APP_ID_FLAVOR (e.g. GYO_BUSINESS_QA) as app + flavor.
+            local lower
+            lower="$(printf '%s' "$profile" | tr '[:upper:]' '[:lower:]')"
+            app_name="${lower%_*}"
+            flavor="${lower##*_}"
+            package_name="$(resolveAndroidPackageName "$app_name" "$flavor")"
+            if [ -z "$package_name" ]; then
+                app_name="$lower"
+                flavor="default"
+                package_name="$(resolveAndroidPackageName "$app_name" "$flavor")"
+            fi
+        fi
     else
         app_name="${1:-}"
         package_name="${2:-}"
+        [[ "$package_name" != *.* ]] && flavor="$package_name"
     fi
 
     local tmp_json_utils="$JSON_UTILS_PATH"
@@ -284,7 +305,10 @@ uploadAndroid() {
             package_name="$resolved_pkg"
         fi
     fi
-    
+    if [ -n "$app_name" ] && [[ "$package_name" != *.* ]]; then
+        package_name="$(resolveAndroidPackageName "$app_name" "${flavor:-default}")"
+    fi
+
     # Validate parameters
     if [ -z "$app_name" ] || [ -z "$package_name" ]; then
         print_upload_android_validation_error
@@ -295,10 +319,10 @@ uploadAndroid() {
     source "$JSON_UTILS_PATH"
     
     # Setup service account JSON - use centralized workspace private_keys
-    export SERVICE_ACCOUNT_JSON="$MELOS_ROOT_PATH/private_keys/play-store-deployer.json"
+    export SERVICE_ACCOUNT_JSON="$(resolvePlayServiceAccount "$app_name")"
     
     # Change to app directory
-    cd "$MELOS_ROOT_PATH/apps/$app_name" || return 1
+    cd "$(resolveAppDir "$app_name")" || return 1
     
     # Check if service account file exists
     if [ ! -f "$SERVICE_ACCOUNT_JSON" ]; then
@@ -389,10 +413,10 @@ uploadAAB() {
         source "$tmp_json_utils"
         package_name="$(getProfileValueForApp "$app_name" "package_name" "$env_name")"
     fi
-    if [ "$package_name" = "null" ]; then
-        package_name=""
+    if [ -z "$package_name" ] || [ "$package_name" = "null" ]; then
+        package_name="$(resolveAndroidPackageName "$app_name" "$env_name")"
     fi
-    
+
     # Parameter validation
     if [ -z "$app_name" ] || [ -z "$env_name" ] || [ -z "$secret_file" ] || [ -z "$package_name" ]; then
         print_upload_aab_validation_error
@@ -406,7 +430,7 @@ uploadAAB() {
     cd "$MELOS_ROOT_PATH"
     
     # Setup service account JSON - use centralized workspace private_keys
-    export SERVICE_ACCOUNT_JSON="$MELOS_ROOT_PATH/private_keys/play-store-deployer.json"
+    export SERVICE_ACCOUNT_JSON="$(resolvePlayServiceAccount "$app_name")"
     if [ ! -f "$SERVICE_ACCOUNT_JSON" ]; then
         print_service_account_missing_error "$SERVICE_ACCOUNT_JSON" "$app_name"
         return 1
@@ -416,7 +440,7 @@ uploadAAB() {
     exportAppContents "$app_name" "$env_name" "$secret_file" "$internal_test_app_id"
     
     # Locate AAB file (from app directory)
-    cd "$MELOS_ROOT_PATH/apps/$app_name" || return 1
+    cd "$(resolveAppDir "$app_name")" || return 1
     local raw_aab_path
     raw_aab_path="$(findAabFile)" || exit 2
     ANDROID_AAB_PATH="$(pwd)/$raw_aab_path"
@@ -479,6 +503,9 @@ buildAAB() {
         source "$tmp_json_utils"
         package_name="$(getProfileValueForApp "$app_name" "package_name" "$env_name")"
     fi
+    if [ -z "$package_name" ] || [ "$package_name" = "null" ]; then
+        package_name="$(resolveAndroidPackageName "$app_name" "$env_name")"
+    fi
     if [ -z "$internal_test_app_id" ] && [ -f "$tmp_json_utils" ]; then
         source "$tmp_json_utils"
         internal_test_app_id="$(getProfileValueForApp "$app_name" "internal_test_app_id" "$env_name")"
@@ -495,7 +522,7 @@ buildAAB() {
     
     # Setup environment
     ROOT="${MELOS_ROOT_PATH:-}"
-    if [ -z "$ROOT" ] || [ ! -d "$ROOT/apps/$app_name" ]; then ROOT="$(pwd)"; fi
+    if [ -z "$ROOT" ]; then ROOT="$(pwd)"; fi
     cd "$ROOT"
     
     # Source utility functions with dynamic path resolution
@@ -505,11 +532,7 @@ buildAAB() {
     exportAppContents "$app_name" "$env_name" "$secret_file" "$internal_test_app_id"
     
     # Run the AAB build script with chat notifications
-    local script_env target_script
-    script_env="$(melosScriptEnv "$env_name" "$app_name")"
-    target_script="$(getMelosScriptName "$app_name" "build" "$script_env" "aab:raw")"
-    checkMelosScript "$target_script" || return 1
-    bash "$CHAT_NOTIFY_PATH" -- melos run "$target_script"
+    runMelosOrDirect --notify "$app_name" build "$env_name" aab:raw
 }
 
 #------------------------------------------------------------------------------
@@ -536,6 +559,10 @@ buildAABRaw() {
     if [ "$profile_env_name" = "null" ]; then
         env_name="null"
     fi
+    # The console passes "default"/"any"/"none" for apps without flavors (see commands.py).
+    case "$env_name" in
+        default|any|none) env_name="null" ;;
+    esac
     
     local secret_file
     secret_file="$(getProfileValueForApp "$app_name" "secret_file" "$env_name")"
@@ -561,8 +588,8 @@ buildAABRaw() {
     
     # Setup environment
     ROOT="${MELOS_ROOT_PATH:-}"
-    if [ -z "$ROOT" ] || [ ! -d "$ROOT/apps/$app_name" ]; then ROOT="$(pwd)"; fi
-    cd "$ROOT/apps/$app_name"
+    if [ -z "$ROOT" ]; then ROOT="$(pwd)"; fi
+    cd "$(resolveAppDir "$app_name")"
 
     # Resolve JDK version to prevent compilation failures on newer Java versions (like JDK 26)
     if [ -d "/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home" ]; then
@@ -687,6 +714,9 @@ deployAAB() {
         source "$tmp_json_utils"
         package_name="$(getProfileValueForApp "$app_name" "package_name" "$env_name")"
     fi
+    if [ -z "$package_name" ] || [ "$package_name" = "null" ]; then
+        package_name="$(resolveAndroidPackageName "$app_name" "$env_name")"
+    fi
     if [ -z "$internal_test_app_id" ] && [ -f "$tmp_json_utils" ]; then
         source "$tmp_json_utils"
         internal_test_app_id="$(getProfileValueForApp "$app_name" "internal_test_app_id" "$env_name")"
@@ -703,7 +733,7 @@ deployAAB() {
     
     # Setup environment
     ROOT="${MELOS_ROOT_PATH:-}"
-    if [ -z "$ROOT" ] || [ ! -d "$ROOT/apps/$app_name" ]; then ROOT="$(pwd)"; fi
+    if [ -z "$ROOT" ]; then ROOT="$(pwd)"; fi
     cd "$ROOT"
     
     # Source utility functions with dynamic path resolution
@@ -713,9 +743,5 @@ deployAAB() {
     exportAppContents "$app_name" "$env_name" "$secret_file" "$internal_test_app_id"
     
     # Run the AAB deploy script with chat notifications
-    local script_env target_script
-    script_env="$(melosScriptEnv "$env_name" "$app_name")"
-    target_script="$(getMelosScriptName "$app_name" "deploy" "$script_env" "aab:raw")"
-    checkMelosScript "$target_script" || return 1
-    bash "$CHAT_NOTIFY_PATH" -- melos run "$target_script"
+    runMelosOrDirect --notify "$app_name" deploy "$env_name" aab:raw
 }

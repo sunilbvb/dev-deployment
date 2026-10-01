@@ -228,6 +228,10 @@ buildIPARaw() {
     if [ "$profile_env_name" = "null" ]; then
         env_name="null"
     fi
+    # The console passes "default"/"any"/"none" for apps without flavors (see commands.py).
+    case "$env_name" in
+        default|any|none) env_name="null" ;;
+    esac
     
     local secret_file
     secret_file="$(getProfileValueForApp "$app_name" "secret_file" "$env_name")"
@@ -253,8 +257,8 @@ buildIPARaw() {
     
     # Setup environment
     ROOT="${MELOS_ROOT_PATH:-}"
-    if [ -z "$ROOT" ] || [ ! -d "$ROOT/apps/$app_name" ]; then ROOT="$(pwd)"; fi
-    cd "$ROOT/apps/$app_name" || return 1
+    if [ -z "$ROOT" ]; then ROOT="$(pwd)"; fi
+    cd "$(resolveAppDir "$app_name")" || return 1
     
     # Print environment config diagnostics
     logEnvironmentConfig "$secret_file"
@@ -299,14 +303,22 @@ buildIPARaw() {
     export TREE_SHAKE_ICONS=false
     
     # Extract API key if possible
-    local apple_key=""
-    local apple_issuer=""
+    # Credentials imported in the console arrive as env vars and win over env/<flavor>.json.
+    local apple_key="${APPLE_API_KEY:-}"
+    local apple_issuer="${APPLE_API_ISSUER:-}"
     local apple_key_path=""
-    
-    if [ -f "env/$secret_file" ]; then
-        apple_key="$(getValueByKey "APPLE_API_KEY" "env/$secret_file")"
-        apple_issuer="$(getValueByKey "APPLE_API_ISSUER" "env/$secret_file")"
-        if [ -n "$apple_key" ]; then
+    if [ -n "${APPLE_API_KEY_PATH:-}" ] && [ -f "$APPLE_API_KEY_PATH" ]; then
+        apple_key_path="$APPLE_API_KEY_PATH"
+    fi
+
+    if [ -f "env/$secret_file" ] || [ -n "$apple_key" ]; then
+        if [ -z "$apple_key" ]; then
+            apple_key="$(getValueByKey "APPLE_API_KEY" "env/$secret_file")"
+        fi
+        if [ -z "$apple_issuer" ] && [ -f "env/$secret_file" ]; then
+            apple_issuer="$(getValueByKey "APPLE_API_ISSUER" "env/$secret_file")"
+        fi
+        if [ -n "$apple_key" ] && [ -z "$apple_key_path" ]; then
             # Resolve key path: prefer industry-standard locations before legacy workspace path.
             # Priority:
             #   1. APPLE_API_KEY_BASE64 already set (in-memory — no file needed)

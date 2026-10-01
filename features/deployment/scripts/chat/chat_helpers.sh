@@ -33,7 +33,9 @@ derive_commit_sha() {
 derive_build_version() {
   local app="${APP_NAME:-}"
   local pubspec=""
-  if [ -n "$app" ] && [ -f "apps/${app}/pubspec.yaml" ]; then
+  if [ -n "${APP_DIR:-}" ] && [ -f "$APP_DIR/pubspec.yaml" ]; then
+    pubspec="$APP_DIR/pubspec.yaml"
+  elif [ -n "$app" ] && [ -f "apps/${app}/pubspec.yaml" ]; then
     pubspec="apps/${app}/pubspec.yaml"
   elif [ -f "pubspec.yaml" ]; then
     pubspec="pubspec.yaml"

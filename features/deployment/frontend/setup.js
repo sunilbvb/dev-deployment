@@ -1,6 +1,6 @@
 /**
  * setup.js — Deployment Setup Modal
- * Handles credential configuration, melos injection, and command regeneration.
+ * Handles credential configuration, and command regeneration.
  * Keeps all logic separate from the main deployment console (app.js).
  */
 
@@ -28,7 +28,6 @@ const setupEls = {
     iosCertStatus: document.getElementById('iosCertStatus'),
     iosCertRecheckBtn: document.getElementById('iosCertRecheckBtn'),
     saveBtn: document.getElementById('saveConfigBtn'),
-    injectBtn: document.getElementById('injectMelosBtn'),
     regenerateBtn: document.getElementById('regenerateBtn'),
     scanBtn: document.getElementById('autoScanBtn'),
     scanAllBtn: document.getElementById('scanAllBtn'),
@@ -64,7 +63,7 @@ async function loadSetupData() {
         fetch('/api/deployment/deploy-config').then(r => r.json()),
         fetch('/api/deployment/templates').then(r => r.json()),
     ]);
-    setupState.apps = appsRes.apps || [];
+    setupState.apps = (appsRes.apps || []).filter(a => !a.is_package);
     setupState.deployConfig = configRes.config || { apps: {} };
     renderReleaseActionOptions((templatesRes.templates || {}).release || []);
     renderSetupAppNav();
@@ -167,8 +166,8 @@ function renderSetupAppNav() {
         btn.className = 'ui-sidebar-item' + (app.id === setupState.selectedAppId ? ' ui-active' : '');
         btn.dataset.appId = app.id;
         btn.innerHTML = `
-            <span class="app-dot" style="background:${escapeHtml(app.color || '#3b82f6')}; margin-right: 8px;"></span>
-            <span>${escapeHtml(app.name || app.id)}</span>
+            <span class="app-dot" style="background:${escapeHtml(app.color || '#3b82f6')};"></span>
+            <span style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escapeHtml(app.name || app.id)}</span>
         `;
         btn.addEventListener('click', () => selectSetupApp(app.id));
         setupAppList.appendChild(btn);
@@ -338,8 +337,9 @@ function selectSetupApp(appId) {
     setupEls.autoReleaseAction.value = cfg.auto_release_action || 'release_push';
     setupEls.autoReleaseFlavors.value = (cfg.auto_release_flavors || ['prod']).join(', ');
 
-    // Show stored Key ID info in the dropzone area
-    renderP8KeyInfo(cfg);
+    renderP8KeyInfo(null);
+    credEls.scanResults.innerHTML = '';
+    loadCredentialStatus(appId);
 
     fetchAndRenderCertStatus(appId);
 
@@ -350,22 +350,23 @@ function selectSetupApp(appId) {
     }
 }
 
-/** Render stored .p8 key metadata beneath the dropzone. */
-function renderP8KeyInfo(cfg) {
-    const keyId = cfg.apple_key_id || '';
-    const hasKey = !!cfg.apple_p8_base64;
+/** Render the configured .p8 key (from /api/deployment/credentials) beneath the dropzone. */
+function renderP8KeyInfo(apple) {
+    const hasKey = !!(apple && apple.exists);
 
-    // Reset dropzone title
-    setupEls.p8DropzoneTitle.textContent =
-        hasKey
-            ? `✅ Key uploaded — drop a new file to replace`
+    setupEls.p8DropzoneTitle.textContent = hasKey
+        ? `✅ Key ${apple.key_id} configured (${scopeLabel(apple.source)}) — drop a new file to replace`
+        : apple
+            ? `⚠️ Key ${apple.key_id} is configured but its file is missing — drop it again`
             : 'Drag & drop AuthKey_XXXXXXXXXX.p8 or click to browse';
 
-    if (keyId) {
+    if (apple) {
         setupEls.p8CurrentKeyInfo.style.display = 'block';
-        setupEls.p8CurrentKeyId.textContent = keyId;
-        setupEls.p8CurrentKeyPath.textContent =
-            `~/.appstoreconnect/private_keys/AuthKey_${keyId}.p8`;
+        setupEls.p8CurrentKeyId.textContent = apple.key_id;
+        setupEls.p8CurrentKeyPath.textContent = apple.path;
+        if (apple.issuer_id && !setupEls.issuerId.value) {
+            setupEls.issuerId.value = apple.issuer_id;
+        }
     } else {
         setupEls.p8CurrentKeyInfo.style.display = 'none';
     }
@@ -389,7 +390,6 @@ function readFormValues() {
         apple_id: setupEls.appleId.value.trim(),
         apple_issuer_id: setupEls.issuerId.value.trim(),
         apple_key_id: existingCfg.apple_key_id || '',
-        apple_p8_base64: existingCfg.apple_p8_base64 || '',
         play_service_account_path: setupEls.playService.value.trim(),
         auto_release_on_success: setupEls.autoReleaseEnabled.checked,
         auto_release_action: setupEls.autoReleaseAction.value || 'release_push',
@@ -471,23 +471,6 @@ async function saveDeployConfig() {
         showToast('Config saved!');
     } else {
         showToast('Error saving config: ' + (res.error || 'unknown'));
-    }
-}
-
-async function injectMelosScripts() {
-    if (!setupState.selectedAppId) { return; }
-    await saveDeployConfig();
-
-    const res = await fetch('/api/deployment/inject-melos', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ app_id: setupState.selectedAppId }),
-    }).then(r => r.json());
-
-    if (res.success) {
-        showToast(`Injected ${res.injected} lines into pubspec.yaml!`);
-    } else {
-        showToast('Inject failed: ' + (res.error || 'unknown'));
     }
 }
 
@@ -817,7 +800,6 @@ setupEls.openBtn.addEventListener('click', openSetupModal);
 setupEls.closeBtn.addEventListener('click', closeSetupModal);
 setupEls.overlay.addEventListener('click', e => { if (e.target === setupEls.overlay) { closeSetupModal(); } });
 setupEls.saveBtn.addEventListener('click', saveDeployConfig);
-setupEls.injectBtn.addEventListener('click', injectMelosScripts);
 setupEls.regenerateBtn.addEventListener('click', regenerateAllCommands);
 setupEls.scanBtn.addEventListener('click', autoScanConfig);
 
@@ -872,29 +854,11 @@ async function uploadP8File(file) {
     setupEls.p8Dropzone.classList.remove('ui-dropzone--active');
 
     if (res.success) {
-        // Update in-memory config so Save Config preserves the new key
-        if (!setupState.deployConfig.apps) { setupState.deployConfig.apps = {}; }
-        if (!setupState.deployConfig.apps[setupState.selectedAppId]) {
-            setupState.deployConfig.apps[setupState.selectedAppId] = {};
-        }
-        // The backend already persisted these; sync them locally so readFormValues picks them up
-        setupState.deployConfig.apps[setupState.selectedAppId].apple_key_id = res.key_id;
-        // We don't get b64 back (too large), but the backend saved it — mark as present
-        setupState.deployConfig.apps[setupState.selectedAppId].apple_p8_base64 = '__uploaded__';
-
-        setupEls.p8DropzoneTitle.textContent = `✅ Key uploaded — drop a new file to replace`;
-
-        // Show status badge
+        await loadCredentialStatus(setupState.selectedAppId);
         setupEls.p8UploadStatus.dataset.status = 'valid';
         setupEls.p8UploadStatus.textContent =
             `✅ Key ID: ${res.key_id}  •  Stored at: ${res.stored_path}`;
         setupEls.p8UploadStatus.style.display = 'block';
-
-        // Show persistent key info line
-        setupEls.p8CurrentKeyInfo.style.display = 'block';
-        setupEls.p8CurrentKeyId.textContent = res.key_id;
-        setupEls.p8CurrentKeyPath.textContent = res.stored_path;
-
         showToast(`✅ Key ID ${res.key_id} uploaded and stored.`);
     } else {
         setupEls.p8DropzoneTitle.textContent = '❌ Upload failed — try again';
@@ -932,6 +896,302 @@ setupEls.p8Dropzone.addEventListener('drop', e => {
     const file = e.dataTransfer?.files?.[0];
     if (file) { uploadP8File(file); }
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Tabs: show one configuration section at a time
+// ─────────────────────────────────────────────────────────────────────────────
+
+const SETUP_TAB_KEY = 'setup_active_tab';
+const setupTabs = document.getElementById('setupTabs');
+
+function showSetupTab(tab) {
+    const buttons = [...setupTabs.querySelectorAll('.setup-tab')];
+    if (!buttons.some(b => b.dataset.tab === tab)) tab = 'general';
+    buttons.forEach(b => {
+        const active = b.dataset.tab === tab;
+        b.setAttribute('aria-selected', String(active));
+        b.tabIndex = active ? 0 : -1;
+    });
+    document.querySelectorAll('#setupForm [data-setup-panel]').forEach(panel => {
+        panel.hidden = panel.dataset.setupPanel !== tab;
+    });
+    try { sessionStorage.setItem(SETUP_TAB_KEY, tab); } catch (_) { /* storage may be blocked */ }
+}
+
+setupTabs.addEventListener('click', event => {
+    const btn = event.target.closest('.setup-tab');
+    if (btn) showSetupTab(btn.dataset.tab);
+});
+
+setupTabs.addEventListener('keydown', event => {
+    if (event.key !== 'ArrowRight' && event.key !== 'ArrowLeft') return;
+    const buttons = [...setupTabs.querySelectorAll('.setup-tab')];
+    const idx = buttons.findIndex(b => b.getAttribute('aria-selected') === 'true');
+    const next = buttons[(idx + (event.key === 'ArrowRight' ? 1 : buttons.length - 1)) % buttons.length];
+    showSetupTab(next.dataset.tab);
+    next.focus();
+});
+
+function setTabStatus(tab, ok) {
+    const dot = setupTabs.querySelector(`[data-tab-status="${tab}"]`);
+    if (!dot) return;
+    dot.dataset.state = ok ? 'ok' : 'missing';
+    dot.title = ok ? 'Upload credentials configured' : 'Upload credentials missing';
+}
+
+let initialTab = 'general';
+try { initialTab = sessionStorage.getItem(SETUP_TAB_KEY) || 'general'; } catch (_) { /* ignore */ }
+showSetupTab(initialTab);
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Credentials: status, Play key upload, folder scan & import
+// ─────────────────────────────────────────────────────────────────────────────
+
+const credEls = {
+    playStatus: document.getElementById('playKeyStatus'),
+    playChoose: document.getElementById('playKeyChooseBtn'),
+    playFile: document.getElementById('playKeyFileInput'),
+    playAllApps: document.getElementById('playKeyAllApps'),
+    playRemove: document.getElementById('playKeyRemoveBtn'),
+    scanFolder: document.getElementById('credScanFolder'),
+    scanBtn: document.getElementById('credScanBtn'),
+    pickFolderBtn: document.getElementById('credPickFolderBtn'),
+    scanWorkspaceBtn: document.getElementById('credScanWorkspaceBtn'),
+    scanManual: document.getElementById('credScanManual'),
+    scanResults: document.getElementById('credScanResults'),
+};
+
+const CRED_KIND_LABELS = {
+    play_service_account: 'Google Play service account',
+    apple_p8: 'App Store Connect API key (.p8)',
+    firebase_android: 'Firebase google-services.json',
+    firebase_ios: 'Firebase GoogleService-Info.plist',
+    apple_other_p8: 'Other Apple key (.p8) — not for uploads',
+};
+
+const PLAY_HINT_BADGES = {
+    likely: '<span class="ui-badge" data-variant="success" style="font-size:0.62rem;">likely Play uploader</span>',
+    unlikely: '<span class="ui-badge" data-variant="secondary" style="font-size:0.62rem;">likely Firebase / other service</span>',
+};
+
+async function postJson(url, body) {
+    const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+    });
+    return res.json();
+}
+
+function scopeLabel(source) {
+    if (source === 'workspace') return 'all apps';
+    if (source === 'deploy_config') return 'path from deploy config';
+    if (source === 'auto') return 'auto-detected';
+    if (source && source.startsWith('env file')) return `from app ${source}`;
+    return 'this app';
+}
+
+const IMPORTED_SOURCES = new Set(['app', 'workspace']);
+
+async function loadCredentialStatus(appId) {
+    if (!appId) return;
+    let status;
+    try {
+        status = await fetch(`/api/deployment/credentials?app=${encodeURIComponent(appId)}`).then(r => r.json());
+    } catch (err) {
+        credEls.playStatus.dataset.status = 'error';
+        credEls.playStatus.textContent = `Could not load credentials: ${err.message}`;
+        return;
+    }
+    if (appId !== setupState.selectedAppId) return;
+
+    const play = status.play;
+    if (!play) {
+        credEls.playStatus.dataset.status = 'warning';
+        credEls.playStatus.textContent = 'No key configured — Android uploads will fail until you choose or import one.';
+    } else if (!play.exists || !play.valid) {
+        credEls.playStatus.dataset.status = 'error';
+        credEls.playStatus.textContent = `${play.exists ? 'Not a service-account key' : 'File missing'}: ${play.path}`;
+    } else {
+        credEls.playStatus.dataset.status = 'valid';
+        credEls.playStatus.textContent = `✅ ${play.client_email} • ${scopeLabel(play.source)} • ${play.path}`;
+    }
+    credEls.playRemove.hidden = !play || !IMPORTED_SOURCES.has(play.source);
+    setTabStatus('android', !!(play && play.exists && play.valid));
+    setTabStatus('ios', !!(status.apple && status.apple.exists));
+    credEls.playRemove.dataset.app = play && play.source === 'workspace' ? '' : appId;
+
+    renderP8KeyInfo(status.apple);
+}
+
+async function uploadCredentialFile(file, { appId, issuerId = '' }) {
+    const buf = new Uint8Array(await file.arrayBuffer());
+    let binary = '';
+    for (let i = 0; i < buf.length; i += 0x8000) {
+        binary += String.fromCharCode.apply(null, buf.subarray(i, i + 0x8000));
+    }
+    return postJson('/api/deployment/credentials/upload', {
+        filename: file.name, contentBase64: btoa(binary), app: appId, issuerId,
+    });
+}
+
+credEls.playChoose.addEventListener('click', () => {
+    if (!setupState.selectedAppId) { showToast('Please select an app first.'); return; }
+    credEls.playFile.value = '';
+    credEls.playFile.click();
+});
+
+credEls.playFile.addEventListener('change', async () => {
+    const file = credEls.playFile.files?.[0];
+    if (!file) return;
+    const appId = credEls.playAllApps.checked ? '' : setupState.selectedAppId;
+    const res = await uploadCredentialFile(file, { appId });
+    if (res.success && res.kind === 'play_service_account') {
+        showToast(`✅ Play key for ${res.client_email} imported.`);
+    } else if (res.success) {
+        showToast(`That file is a ${CRED_KIND_LABELS[res.kind] || res.kind}, not a Play service account — imported as such.`);
+    } else {
+        showToast('Import failed: ' + (res.error || 'Unknown error'));
+    }
+    loadCredentialStatus(setupState.selectedAppId);
+});
+
+credEls.playRemove.addEventListener('click', async () => {
+    const res = await postJson('/api/deployment/credentials/remove', {
+        kind: 'play_service_account', app: credEls.playRemove.dataset.app || '',
+    });
+    showToast(res.success ? 'Play key removed (the file itself was not deleted).' : 'Remove failed: ' + res.error);
+    loadCredentialStatus(setupState.selectedAppId);
+});
+
+function describeFound(item) {
+    if (item.kind === 'play_service_account') return item.client_email;
+    if (item.kind === 'apple_p8') return item.key_id ? `Key ID ${item.key_id}` : 'Key ID unknown — rename to AuthKey_<KEYID>.p8';
+    if (item.kind === 'firebase_android') return (item.packages || []).join(', ') || item.project_id;
+    if (item.kind === 'firebase_ios') return item.bundle_id;
+    return item.note || '';
+}
+
+function renderScanResults(res) {
+    if (!res.success) {
+        credEls.scanResults.innerHTML = `<div class="cert-status-box" data-status="error">${escapeHtml(res.error || 'Scan failed')}</div>`;
+        return;
+    }
+    if (!res.found.length) {
+        credEls.scanResults.innerHTML = `<div class="cert-status-box" data-status="unknown">No keys found in ${escapeHtml(res.folder)}.</div>`;
+        return;
+    }
+    const appId = setupState.selectedAppId;
+    const rows = res.found.map((item, idx) => {
+        const forThisApp = (item.matches || []).filter(m => m.app === appId);
+        const matchText = (item.matches || []).length
+            ? item.matches.map(m => `${m.app}${m.flavor !== 'default' ? ` (${m.flavor})` : ''}`).join(', ')
+            : 'no matching app';
+        const isFirebase = item.kind.startsWith('firebase');
+        const flavorOptions = isFirebase
+            ? (forThisApp.length ? forThisApp.map(m => m.flavor) : ['default', ...getActiveFlavors()])
+                .filter((f, i, arr) => arr.indexOf(f) === i)
+                .map(f => `<option value="${escapeHtml(f)}">${escapeHtml(f)}</option>`).join('')
+            : '';
+        const importable = item.kind !== 'apple_other_p8';
+        const scopeControl = !importable ? '' : isFirebase
+            ? `<select class="ui-input" data-cred-flavor="${idx}" style="width:auto;">${flavorOptions}</select>`
+            : `<select class="ui-input" data-cred-scope="${idx}" style="width:auto;">
+                   <option value="app">This app</option>
+                   <option value="workspace">All apps</option>
+               </select>`;
+        const importBtn = importable
+            ? `<button type="button" class="ui-button" data-variant="secondary" data-size="sm" data-cred-import="${idx}">Import</button>`
+            : '';
+        return `
+            <div style="display:flex; gap:10px; align-items:center; padding:8px 0; border-top:1px solid var(--ui-border-color);${importable ? '' : ' opacity:0.6;'}">
+                <div style="flex:1; min-width:0;">
+                    <div style="font-size:0.82rem; font-weight:600;">${escapeHtml(CRED_KIND_LABELS[item.kind] || item.kind)} ${PLAY_HINT_BADGES[item.play_hint] || ''}</div>
+                    <div style="font-size:0.78rem;">${escapeHtml(describeFound(item))}</div>
+                    <div style="font-size:0.72rem; color:var(--ui-text-muted); overflow-wrap:anywhere;" title="${escapeHtml(item.path)}">${escapeHtml(item.path)}</div>
+                    ${isFirebase ? `<div style="font-size:0.72rem; color:var(--ui-text-muted);">Matches: ${escapeHtml(matchText)}</div>` : ''}
+                </div>
+                ${scopeControl}
+                ${importBtn}
+            </div>`;
+    }).join('');
+    credEls.scanResults.innerHTML = `
+        <div style="font-size:0.78rem; color:var(--ui-text-muted); margin-bottom:4px;">
+            Found ${res.found.length} in ${escapeHtml(res.folder)}${res.truncated ? ' (scan stopped early — choose a narrower folder)' : ''}
+        </div>${rows}`;
+    credEls.scanResults.querySelectorAll('[data-cred-import]').forEach(btn => {
+        btn.addEventListener('click', () => importScanned(res.found[Number(btn.dataset.credImport)], Number(btn.dataset.credImport), btn));
+    });
+}
+
+async function importScanned(item, idx, btn) {
+    const appId = setupState.selectedAppId;
+    if (!appId) { showToast('Please select an app first.'); return; }
+    const scope = credEls.scanResults.querySelector(`[data-cred-scope="${idx}"]`)?.value || 'app';
+    const flavor = credEls.scanResults.querySelector(`[data-cred-flavor="${idx}"]`)?.value || '';
+    btn.disabled = true;
+    const res = await postJson('/api/deployment/credentials/import', {
+        path: item.path,
+        app: item.kind.startsWith('firebase') || scope === 'app' ? appId : '',
+        flavor,
+        issuerId: item.kind === 'apple_p8' ? setupEls.issuerId.value.trim() : '',
+    });
+    btn.disabled = false;
+    if (res.success) {
+        btn.textContent = 'Imported ✓';
+        showToast(`✅ ${CRED_KIND_LABELS[res.kind]} imported.`);
+        if (res.field) {
+            const app = (setupState.deployConfig.apps[appId] = setupState.deployConfig.apps[appId] || {});
+            app[res.field] = res.stored_path;
+            renderDynamicFields(getActiveFlavors(), app);
+        }
+        loadCredentialStatus(appId);
+    } else {
+        showToast('Import failed: ' + (res.error || 'Unknown error'));
+    }
+}
+
+async function runCredentialScan(folder) {
+    const buttons = [credEls.scanBtn, credEls.pickFolderBtn, credEls.scanWorkspaceBtn];
+    buttons.forEach(b => { b.disabled = true; });
+    credEls.scanResults.innerHTML = `<div class="cert-status-box" data-status="unknown">Scanning ${escapeHtml(folder || 'workspace')}…</div>`;
+    try {
+        renderScanResults(await postJson('/api/deployment/credentials/scan', { folder }));
+    } catch (err) {
+        renderScanResults({ success: false, error: err.message });
+    } finally {
+        buttons.forEach(b => { b.disabled = false; });
+    }
+}
+
+/** Open the OS folder/file dialog via the local server; resolves to a path, or null if cancelled/unsupported. */
+async function pickNativePath({ kind = 'folder', prompt = '', extensions = [] } = {}) {
+    const res = await postJson('/api/deployment/pick', { kind, prompt, extensions });
+    if (res.success) return { path: res.path };
+    return { path: null, unsupported: res.supported === false, error: res.cancelled ? '' : res.error };
+}
+window.pickNativePath = pickNativePath;
+
+credEls.pickFolderBtn.addEventListener('click', async () => {
+    credEls.pickFolderBtn.disabled = true;
+    credEls.scanResults.innerHTML = '<div class="cert-status-box" data-status="unknown">Waiting for you to choose a folder in the dialog…</div>';
+    const picked = await pickNativePath({ kind: 'folder', prompt: 'Choose a folder to scan for signing keys' });
+    credEls.pickFolderBtn.disabled = false;
+    if (picked.path) {
+        credEls.scanFolder.value = picked.path;
+        runCredentialScan(picked.path);
+    } else if (picked.unsupported) {
+        credEls.scanManual.hidden = false;
+        credEls.scanResults.innerHTML = '<div class="cert-status-box" data-status="warning">No folder dialog is available on this system. Type the folder path below.</div>';
+        credEls.scanFolder.focus();
+    } else {
+        credEls.scanResults.innerHTML = picked.error
+            ? `<div class="cert-status-box" data-status="error">${escapeHtml(picked.error)}</div>` : '';
+    }
+});
+
+credEls.scanWorkspaceBtn.addEventListener('click', () => runCredentialScan(''));
+credEls.scanBtn.addEventListener('click', () => runCredentialScan(credEls.scanFolder.value.trim()));
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Utilities

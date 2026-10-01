@@ -1,6 +1,8 @@
 import shlex
 from typing import Any, Optional
 
+from credentials import job_env as credentials_job_env
+
 from config import (
     DASHBOARD_ROOT,
     _detect_app_flavors,
@@ -12,22 +14,27 @@ from config import (
 )
 
 ACTION_MAP = {
+    # Only actions implemented as run_build.sh functions belong here; anything else
+    # (e.g. build_apk, clean, pub_get) runs its direct command_template.
     "build_ipa": "buildIPA",
-    "build_ipa_device": "buildIPADevice",
     "deploy_ipa": "deployIPA",
     "upload_ipa": "uploadIPA",
     "build_aab": "buildAAB",
     "deploy_aab": "deployAAB",
     "upload_aab": "uploadAAB",
-    "build_apk": "buildAPK",
     "deploy_both": "deployBothPlatforms",
-    "clean": "cleanProject",
-    "pub_get": "pubGet",
     "release_preview": "releasePreview",
     "release_tag": "releaseTag",
     "release_push": "releasePush",
     "release_changelog": "releaseChangelog",
-    "release_full": "releaseFull",
+    "release_commit": "releaseCommit",
+    "release_bump_patch": "releaseBumpPatch",
+    "release_bump_minor": "releaseBumpMinor",
+    "release_bump_major": "releaseBumpMajor",
+    "release_store_notes": "releaseStoreNotes",
+    "release_verify": "releaseVerify",
+    "release_status": "releaseStatus",
+    "release_undo": "releaseUndo",
 }
 
 STORE_UPLOAD_TEMPLATE_IDS = {"upload_ipa", "upload_aab", "deploy_ipa", "deploy_aab", "deploy_both"}
@@ -97,10 +104,15 @@ def _build_commands_from_templates(app_id: str, app_path_prefix: str, use_melos:
             if tmpl_stacks and stack_lower and stack_lower not in [s.lower() for s in tmpl_stacks]:
                 continue
             action = ACTION_MAP.get(tmpl["id"], tmpl["id"])
-            is_direct = tmpl.get("runner") == "direct" or tmpl.get("direct") is True or not use_melos
+            is_direct = (
+                tmpl.get("runner") == "direct" or tmpl.get("direct") is True or not use_melos
+                or tmpl["id"] not in ACTION_MAP
+            )
 
             if platform in ("utility", "release"):
-                if is_direct and tmpl.get("command_template"):
+                # Release actions are workspace-level git operations whose script ships with this
+                # tool, so always route them through run_build.sh (it resolves script + workspace).
+                if platform != "release" and is_direct and tmpl.get("command_template"):
                     resolved = _resolve_command(tmpl["command_template"], app_id, "any", deploy_cfg)
                     full_cmd = f"{app_path_prefix} {resolved}".strip()
                 else:
@@ -171,7 +183,10 @@ def _is_flavor_configured(app_id: str, flavor: str, template_id: str = "", deplo
 
     # B8 fix: iOS store upload/deploy requires Apple credentials
     if template_id in ("upload_ipa", "deploy_ipa", "deploy_both"):
-        has_apple = bool(app_cfg.get("apple_id") or app_cfg.get("apple_key_id") or app_cfg.get("apple_p8_base64"))
+        has_apple = bool(
+            app_cfg.get("apple_id") or app_cfg.get("apple_key_id")
+            or credentials_job_env(app_id).get("APPLE_API_KEY")
+        )
         if not has_apple:
             return False
 

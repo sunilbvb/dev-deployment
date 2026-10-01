@@ -74,6 +74,27 @@ class TestSecurityGuards(unittest.TestCase):
         self.assertEqual(resp.status, 403)
         conn.close()
 
+    def _post_json(self, path, body):
+        conn = http.client.HTTPConnection("127.0.0.1", self.port)
+        conn.request("POST", path, body=json.dumps(body), headers={
+            "Host": f"localhost:{self.port}",
+            "Content-Type": "application/json",
+            "X-API-Token": self.test_token,
+        })
+        resp = conn.getresponse()
+        data = json.loads(resp.read() or b"{}")
+        conn.close()
+        return resp.status, data
+
+    def test_ui_routes_exist(self):
+        """Routes the dashboard UI calls must be served (not 404 / crash)."""
+        status, data = self._post_json("/api/deployment/job/stop", {"jobId": "job_does_not_exist"})
+        self.assertEqual(status, 200)
+        self.assertIn("success", data)
+        status, data = self._post_json("/api/deployment/regenerate-commands", {})
+        self.assertEqual(status, 200)
+        self.assertTrue(data.get("success"))
+
     def test_get_api_requires_auth(self):
         """GET /api/* endpoints must require X-API-Token header."""
         conn = http.client.HTTPConnection("127.0.0.1", self.port)

@@ -134,17 +134,26 @@ buildAndUploadIOS() {
     
     # Execute build command
     print_building_ios_ipa "$app_name" "$script_env"
-    checkMelosScript "$build_command" || return 1
-    melos run "$build_command"
+    if melosScriptExists "$build_command"; then
+        melos run "$build_command"
+    else
+        echo "ℹ️  Melos script '$build_command' not defined; running buildIPARaw directly"
+        bash "$JSON_SCRIPT_DIR/run_build.sh" buildIPARaw "$app_name" "$env_name"
+    fi
     
     # Change to app directory
-    cd "$MELOS_ROOT_PATH/apps/$app_name" || return 1
+    cd "$(resolveAppDir "$app_name")" || return 1
     
     # Extract Apple credentials from JSON
     print_extracting_apple_creds "$secret_file"
-    APPLE_API_KEY="$(getValueByKey "APPLE_API_KEY" "env/$secret_file")"
+    # Credentials imported in the console arrive as env vars and win over env/<flavor>.json.
+    if [ -z "${APPLE_API_KEY:-}" ]; then
+        APPLE_API_KEY="$(getValueByKey "APPLE_API_KEY" "env/$secret_file")"
+    fi
     export APPLE_API_KEY
-    APPLE_API_ISSUER="$(getValueByKey "APPLE_API_ISSUER" "env/$secret_file")"
+    if [ -z "${APPLE_API_ISSUER:-}" ]; then
+        APPLE_API_ISSUER="$(getValueByKey "APPLE_API_ISSUER" "env/$secret_file")"
+    fi
     export APPLE_API_ISSUER
 
     # Resolve key path: prefer industry-standard locations before legacy workspace path.
@@ -157,7 +166,9 @@ buildAndUploadIOS() {
     local _std_key_path_2="$HOME/.private_keys/AuthKey_${APPLE_API_KEY}.p8"
     local _legacy_key_path="$MELOS_ROOT_PATH/private_keys/AuthKey_${APPLE_API_KEY}.p8"
 
-    if [ -n "${APPLE_API_KEY_BASE64:-}" ]; then
+    if [ -n "${APPLE_API_KEY_PATH:-}" ] && [ -f "$APPLE_API_KEY_PATH" ]; then
+        export APPLE_API_KEY_PATH
+    elif [ -n "${APPLE_API_KEY_BASE64:-}" ]; then
         # In-memory path: write key to standard location so altool/notarytool can find it
         mkdir -p "$HOME/.appstoreconnect/private_keys"
         echo "$APPLE_API_KEY_BASE64" | base64 -d > "$_std_key_path_1"
@@ -244,7 +255,7 @@ buildIPA() {
     
     # Setup environment
     ROOT="${MELOS_ROOT_PATH:-}"
-    if [ -z "$ROOT" ] || [ ! -d "$ROOT/apps/$app_name" ]; then ROOT="$(pwd)"; fi
+    if [ -z "$ROOT" ]; then ROOT="$(pwd)"; fi
     cd "$ROOT" || return 1
     
     # Source utility functions with dynamic path resolution
@@ -254,11 +265,7 @@ buildIPA() {
     exportAppContents "$app_name" "$env_name" "$secret_file" "$internal_test_app_id"
     
     # Run the AAB build script with chat notifications
-    local script_env target_script
-    script_env="$(melosScriptEnv "$env_name" "$app_name")"
-    target_script="$(getMelosScriptName "$app_name" "build" "$script_env" "ipa:raw")"
-    checkMelosScript "$target_script" || return 1
-    bash "$CHAT_NOTIFY_PATH" -- melos run "$target_script"
+    runMelosOrDirect --notify "$app_name" build "$env_name" ipa:raw
 }
 
 #------------------------------------------------------------------------------
@@ -309,7 +316,7 @@ deployIPA() {
     
     # Setup environment
     ROOT="${MELOS_ROOT_PATH:-}"
-    if [ -z "$ROOT" ] || [ ! -d "$ROOT/apps/$app_name" ]; then ROOT="$(pwd)"; fi
+    if [ -z "$ROOT" ]; then ROOT="$(pwd)"; fi
     cd "$ROOT" || return 1
     
     # Source utility functions with dynamic path resolution
@@ -319,11 +326,7 @@ deployIPA() {
     exportAppContents "$app_name" "$env_name" "$secret_file" "$internal_test_app_id"
     
     # Run the IPA deploy script with chat notifications
-    local script_env target_script
-    script_env="$(melosScriptEnv "$env_name" "$app_name")"
-    target_script="$(getMelosScriptName "$app_name" "deploy" "$script_env" "ipa:raw")"
-    checkMelosScript "$target_script" || return 1
-    bash "$CHAT_NOTIFY_PATH" -- melos run "$target_script"
+    runMelosOrDirect --notify "$app_name" deploy "$env_name" ipa:raw
 }
 
 #------------------------------------------------------------------------------
@@ -374,7 +377,7 @@ uploadIPA() {
     
     # Setup environment
     ROOT="${MELOS_ROOT_PATH:-}"
-    if [ -z "$ROOT" ] || [ ! -d "$ROOT/apps/$app_name" ]; then ROOT="$(pwd)"; fi
+    if [ -z "$ROOT" ]; then ROOT="$(pwd)"; fi
     cd "$ROOT" || return 1
     
     # Source utility functions with dynamic path resolution
@@ -384,9 +387,5 @@ uploadIPA() {
     exportAppContents "$app_name" "$env_name" "$secret_file" "$internal_test_app_id"
     
     # Run the IPA upload script with chat notifications
-    local script_env target_script
-    script_env="$(melosScriptEnv "$env_name" "$app_name")"
-    target_script="$(getMelosScriptName "$app_name" "upload" "$script_env" "ipa:raw")"
-    checkMelosScript "$target_script" || return 1
-    bash "$CHAT_NOTIFY_PATH" -- melos run "$target_script"
+    runMelosOrDirect --notify "$app_name" upload "$env_name" ipa:raw
 }

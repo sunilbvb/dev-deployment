@@ -1,3 +1,4 @@
+import json
 import sys
 import tempfile
 import unittest
@@ -203,16 +204,6 @@ class TestDeploymentSecurityAndLogic(unittest.TestCase):
         self.assertFalse(res.get("success", True))
         self.assertIn("Path traversal restriction", res.get("error", ""))
 
-    def test_p8_upload_sanitization(self):
-        # Invalid AuthKey filename missing Key ID
-        res = p8.upload_p8_key("testapp", "invalid_file.p8", b"dummy")
-        self.assertFalse(res["success"])
-        self.assertIn("Cannot extract Key ID", res["error"])
-
-        # Valid AuthKey filename with path traversal in filename parameter
-        res_safe = p8.upload_p8_key("testapp", "../../AuthKey_1234567890.p8", b"dummy_content")
-        self.assertTrue(res_safe["success"])
-        self.assertEqual(res_safe["key_id"], "1234567890")
 
     def test_get_commands(self):
         res = commands.get_commands("app1")
@@ -449,8 +440,8 @@ class TestDeploymentSecurityAndLogic(unittest.TestCase):
             self.assertTrue(is_mono)
             self.assertTrue(has_melos)
             app_ids = [a["id"] for a in apps]
-            self.assertIn("mobile_client", app_ids)
-            self.assertNotIn("sample_example", app_ids, "Ignored example app should not be discovered")
+            self.assertIn("mobile", app_ids)
+            self.assertNotIn("sample", app_ids, "Ignored example app should not be discovered")
 
     def test_c5_multilevel_discovery(self):
         """C5 fix: multi-level discovery finds apps up to 3 levels deep."""
@@ -609,3 +600,314 @@ class TestDeploymentSecurityAndLogic(unittest.TestCase):
 if __name__ == "__main__":
     unittest.main()
 
+
+
+def _flutter_app(path: Path, name: str, entry: str = "main.dart") -> None:
+    (path / "lib").mkdir(parents=True, exist_ok=True)
+    (path / "lib" / entry).write_text("void main() {}\n", encoding="utf-8")
+    (path / "android" / "app").mkdir(parents=True, exist_ok=True)
+    (path / "ios" / "Runner.xcodeproj").mkdir(parents=True, exist_ok=True)
+    (path / "pubspec.yaml").write_text(f"name: {name}\nversion: 1.0.0+1\n", encoding="utf-8")
+
+
+def _flutter_package(path: Path, name: str, plugin: bool = False) -> None:
+    (path / "lib").mkdir(parents=True, exist_ok=True)
+    (path / "lib" / f"{name}.dart").write_text("library;\n", encoding="utf-8")
+    text = f"name: {name}\nversion: 0.1.0\n"
+    if plugin:
+        (path / "android").mkdir(exist_ok=True)
+        (path / "ios").mkdir(exist_ok=True)
+        text += "flutter:\n  plugin:\n    platforms:\n      android:\n        package: x\n"
+    (path / "pubspec.yaml").write_text(text, encoding="utf-8")
+
+
+class TestWorkspaceLayouts(unittest.TestCase):
+
+    def _discover(self, ws: Path) -> dict[str, bool]:
+        apps, _, _ = config._discover_apps_in_workspace(ws)
+        return {a["id"]: a["is_package"] for a in apps}
+
+    def test_melos_pub_workspace_with_nested_packages_and_plugin(self):
+        with tempfile.TemporaryDirectory() as td:
+            ws = Path(td)
+            (ws / "pubspec.yaml").write_text(
+                "name: ws\nworkspace:\n  - apps/shop\n  - packages/profile\n"
+                "  - packages/profile/profile_logic\n  - packages/tracker\n"
+                "melos:\n  scripts: {}\n", encoding="utf-8")
+            _flutter_app(ws / "apps" / "shop", "shop")
+            _flutter_package(ws / "packages" / "profile", "profile")
+            _flutter_package(ws / "packages" / "profile" / "profile_logic", "profile_logic")
+            _flutter_package(ws / "packages" / "tracker", "tracker", plugin=True)
+            _flutter_app(ws / "packages" / "tracker" / "example", "tracker_example")
+            found = self._discover(ws)
+            self.assertEqual(found, {"shop": False, "profile": True, "profile_logic": True, "tracker": True})
+
+    def test_melos_yaml_glob_does_not_pick_platform_folders(self):
+        with tempfile.TemporaryDirectory() as td:
+            ws = Path(td)
+            (ws / "melos.yaml").write_text("name: m\npackages:\n  - apps/**\n  - packages/*\n", encoding="utf-8")
+            _flutter_app(ws / "apps" / "a1", "a1")
+            _flutter_package(ws / "packages" / "core", "core")
+            self.assertEqual(self._discover(ws), {"a1": False, "core": True})
+
+    def test_single_flutter_project(self):
+        with tempfile.TemporaryDirectory() as td:
+            ws = Path(td)
+            _flutter_app(ws, "solo", entry="main_dev.dart")
+            self.assertEqual(self._discover(ws), {ws.name.lower(): False})
+
+    def test_single_project_with_local_packages(self):
+        with tempfile.TemporaryDirectory() as td:
+            ws = Path(td)
+            _flutter_app(ws, "solo")
+            _flutter_package(ws / "packages" / "ui_kit", "ui_kit")
+            self.assertEqual(self._discover(ws), {ws.name.lower(): False, "ui_kit": True})
+
+    def test_folder_of_independent_apps(self):
+        with tempfile.TemporaryDirectory() as td:
+            ws = Path(td)
+            _flutter_app(ws / "app_one", "app_one")
+            _flutter_app(ws / "app_two", "app_two")
+            self.assertEqual(self._discover(ws), {"app_one": False, "app_two": False})
+
+    def test_folders_with_shared_packages_without_melos(self):
+        with tempfile.TemporaryDirectory() as td:
+            ws = Path(td)
+            _flutter_app(ws / "mobile" / "customer", "customer")
+            _flutter_app(ws / "mobile" / "driver", "driver")
+            _flutter_package(ws / "shared" / "api_client", "api_client")
+            _flutter_package(ws / "shared" / "design", "design")
+            self.assertEqual(self._discover(ws), {
+                "customer": False, "driver": False, "api_client": True, "design": True})
+
+
+P8_PEM = b"-----BEGIN PRIVATE KEY-----\nMIGTAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBHkwdwIBAQQg\n-----END PRIVATE KEY-----\n"
+SERVICE_ACCOUNT = (
+    b'{"type": "service_account", "project_id": "demo-proj", "private_key": "-----BEGIN PRIVATE KEY-----\\nX\\n-----END PRIVATE KEY-----\\n",'
+    b' "client_email": "deployer@demo-proj.iam.gserviceaccount.com"}'
+)
+
+
+class TestCredentials(unittest.TestCase):
+
+    def setUp(self):
+        import credentials
+        self.cred = credentials
+        self.tmp = tempfile.TemporaryDirectory()
+        base = Path(self.tmp.name).resolve()
+        self.ws = base / "ws"
+        self.home = base / "home"
+        self._saved = (credentials.CONFIG_DIR, credentials.KEYS_DIR, credentials.STORE_FILE,
+                       credentials.APPLE_KEYS_DIR, config.WORKSPACE_ROOT)
+        credentials.CONFIG_DIR = self.home / "cfg"
+        credentials.KEYS_DIR = self.home / "cfg" / "keys"
+        credentials.STORE_FILE = self.home / "cfg" / "credentials.json"
+        credentials.APPLE_KEYS_DIR = self.home / "apple"
+        config.WORKSPACE_ROOT = self.ws
+        app = self.ws / "apps" / "shop"
+        (app / "lib").mkdir(parents=True)
+        (app / "lib" / "main.dart").write_text("void main() {}\n", encoding="utf-8")
+        (app / "pubspec.yaml").write_text("name: shop\n", encoding="utf-8")
+        (app / "android" / "app").mkdir(parents=True)
+        (app / "android" / "app" / "build.gradle").write_text(
+            'android { defaultConfig { applicationId "com.acme.shop" } }\n', encoding="utf-8")
+        self.downloads = base / "Downloads"
+        (self.downloads / "nested").mkdir(parents=True)
+        (self.downloads / "nested" / "random-name.json").write_bytes(SERVICE_ACCOUNT)
+        (self.downloads / "AuthKey_ABCDE12345.p8").write_bytes(P8_PEM)
+        (self.downloads / "google-services.json").write_text(
+            '{"project_info": {"project_id": "demo"}, "client": [{"client_info": {"android_client_info": {"package_name": "com.acme.shop"}}}]}',
+            encoding="utf-8")
+        (self.downloads / "package.json").write_text('{"name": "not-a-key"}', encoding="utf-8")
+
+    def tearDown(self):
+        c = self.cred
+        c.CONFIG_DIR, c.KEYS_DIR, c.STORE_FILE, c.APPLE_KEYS_DIR, config.WORKSPACE_ROOT = self._saved
+        self.tmp.cleanup()
+
+    def test_scan_identifies_keys_by_content_and_matches_apps(self):
+        res = self.cred.scan_credentials(str(self.downloads))
+        self.assertTrue(res["success"])
+        kinds = {f["kind"]: f for f in res["found"]}
+        self.assertEqual(set(kinds), {"play_service_account", "apple_p8", "firebase_android"})
+        self.assertEqual(kinds["play_service_account"]["client_email"], "deployer@demo-proj.iam.gserviceaccount.com")
+        self.assertEqual(kinds["apple_p8"]["key_id"], "ABCDE12345")
+        self.assertIn({"app": "shop", "flavor": "default"}, kinds["firebase_android"]["matches"])
+        self.assertNotIn("private_key", json.dumps(res))
+
+    def test_import_play_key_is_private_and_reaches_job_env(self):
+        res = self.cred.import_credential_path(str(self.downloads / "nested" / "random-name.json"))
+        self.assertTrue(res["success"], res)
+        stored = Path(res["stored_path"])
+        self.assertTrue(str(stored).startswith(str(self.home)))
+        self.assertEqual(stored.stat().st_mode & 0o777, 0o600)
+        self.assertEqual(self.cred.job_env("shop")["SERVICE_ACCOUNT_JSON"], str(stored))
+        self.assertFalse(any(self.ws.rglob("*play-*.json")), "key must not be copied into the workspace")
+
+    def test_app_level_p8_overrides_workspace_and_sets_apple_env(self):
+        self.cred.import_credential_path(str(self.downloads / "AuthKey_ABCDE12345.p8"),
+                                         issuer_id="11111111-2222-3333-4444-555555555555")
+        other = self.downloads / "AuthKey_ZZZZZ99999.p8"
+        other.write_bytes(P8_PEM)
+        self.cred.import_credential_path(str(other), app_id="shop")
+        env = self.cred.job_env("shop")
+        self.assertEqual(env["APPLE_API_KEY"], "ZZZZZ99999")
+        self.assertEqual(env["APPLE_API_ISSUER"], "11111111-2222-3333-4444-555555555555")
+        self.assertTrue(Path(env["APPLE_API_KEY_PATH"]).is_file())
+
+    def test_rejects_non_keys_and_bad_input(self):
+        self.assertFalse(self.cred.import_credential_path(str(self.downloads / "package.json"))["success"])
+        self.assertFalse(self.cred.import_credential_bytes("AuthKey_ABCDE12345.p8", b"not a key")["success"])
+        self.assertFalse(self.cred.import_credential_bytes("key.p8", P8_PEM)["success"], "key id required")
+        self.assertFalse(self.cred.import_credential_bytes("x.json", SERVICE_ACCOUNT, app_id="../evil")["success"])
+        res = p8.upload_p8_key("shop", "../../AuthKey_ABCDE12345.p8", P8_PEM)
+        self.assertTrue(res["success"])
+        self.assertEqual(Path(res["stored_path"]).parent, self.cred.APPLE_KEYS_DIR)
+
+    def test_inline_p8_is_migrated_out_of_deploy_config(self):
+        import base64
+        cfg_file = config.get_deploy_config_file()
+        cfg_file.write_text(json.dumps({"apps": {"shop": {
+            "apple_key_id": "ABCDE12345", "apple_p8_base64": base64.b64encode(P8_PEM).decode()}}}), encoding="utf-8")
+        self.cred.migrate_inline_p8()
+        self.assertNotIn("apple_p8_base64", cfg_file.read_text(encoding="utf-8"))
+        self.assertEqual(self.cred.job_env("shop")["APPLE_API_KEY"], "ABCDE12345")
+
+    def test_other_p8_keys_are_listed_but_not_importable(self):
+        (self.downloads / "SubscriptionKey_VSN447PHNL.p8").write_bytes(P8_PEM)
+        kinds = [f["kind"] for f in self.cred.scan_credentials(str(self.downloads))["found"]]
+        self.assertIn("apple_other_p8", kinds)
+        res = self.cred.import_credential_path(str(self.downloads / "SubscriptionKey_VSN447PHNL.p8"))
+        self.assertFalse(res["success"])
+
+    def test_conventional_play_key_is_auto_detected(self):
+        (self.ws / "private_keys").mkdir()
+        (self.ws / "private_keys" / "play-store-deployer.json").write_bytes(SERVICE_ACCOUNT)
+        status = self.cred.get_credentials_status("shop")
+        self.assertEqual(status["play"]["source"], "auto")
+        self.assertTrue(status["play"]["valid"])
+        self.assertIn("SERVICE_ACCOUNT_JSON", self.cred.job_env("shop"))
+
+
+class TestNativePicker(unittest.TestCase):
+
+    def test_applescript_quotes_are_escaped(self):
+        import picker
+        cmd = picker._mac_command("file", 'Pick "x" \\ now', "", ["p8"])
+        self.assertEqual(cmd[:2], ["osascript", "-e"])
+        self.assertIn('with prompt "Pick \\"x\\" \\\\ now"', cmd[2])
+        self.assertIn('of type {"p8"}', cmd[2])
+
+    def test_rejects_unknown_kind(self):
+        import picker
+        self.assertFalse(picker.pick_path("anything")["success"])
+
+
+class TestImportLayouts(unittest.TestCase):
+    """Import Project must classify every supported folder layout."""
+
+    def _inspect(self, ws: Path) -> dict:
+        import picker
+        picker._PICKED_PATHS.add(str(ws.resolve()))
+        return config.inspect_workspace_path(str(ws))
+
+    def test_all_layouts(self):
+        with tempfile.TemporaryDirectory() as td:
+            base = Path(td).resolve()
+            _flutter_app(base / "c1" / "app_a", "app_a")
+            _flutter_app(base / "c1" / "app_b", "app_b")
+            _flutter_app(base / "c2" / "app_a", "app_a")
+            _flutter_package(base / "c2" / "packages" / "core", "core")
+            _flutter_app(base / "c3" / "apps" / "app_a", "app_a")
+            _flutter_package(base / "c3" / "packages" / "core", "core")
+            (base / "c3" / "melos.yaml").write_text("name: ws\npackages:\n  - apps/*\n  - packages/*\n", encoding="utf-8")
+            _flutter_app(base / "c4" / "mobile" / "app_a", "app_a")
+            _flutter_package(base / "c4" / "shared" / "ui", "ui")
+            _flutter_app(base / "c5", "solo")
+            _flutter_package(base / "c5" / "packages" / "ui", "ui")
+            expected = {
+                "c1": ("Multiple apps (no packages, no Melos)", 2, 0),
+                "c2": ("Multiple apps with shared packages (no Melos)", 1, 1),
+                "c3": ("Melos monorepo (apps + packages)", 1, 1),
+                "c4": ("Multiple apps with shared packages (no Melos)", 1, 1),
+                "c5": ("Single app with local packages", 1, 1),
+            }
+            for name, (layout, n_apps, n_pkgs) in expected.items():
+                res = self._inspect(base / name)
+                self.assertTrue(res["success"], res)
+                self.assertEqual((res["layout"], res["appCount"], res["packageCount"]), (layout, n_apps, n_pkgs), name)
+
+    def test_unpicked_folder_outside_roots_is_refused(self):
+        with tempfile.TemporaryDirectory() as td:
+            res = config.inspect_workspace_path(td)
+            self.assertFalse(res["success"])
+
+
+class TestPerTabWorkspace(unittest.TestCase):
+
+    def test_job_threads_keep_the_request_workspace(self):
+        import threading
+        with tempfile.TemporaryDirectory() as td:
+            seen = {}
+            done = threading.Event()
+
+            def record():
+                seen["root"] = config.get_workspace_root()
+                done.set()
+
+            token = config.set_request_workspace(Path(td))
+            try:
+                jobs._start_in_context(record)
+            finally:
+                config.reset_request_workspace(token)
+            self.assertTrue(done.wait(5))
+            self.assertEqual(seen["root"], Path(td))
+
+
+class TestAutoRelease(unittest.TestCase):
+
+    def _decide(self, app_cfg, env):
+        with tempfile.TemporaryDirectory() as td:
+            token = config.set_request_workspace(Path(td))
+            try:
+                config.get_deploy_config_file().write_text(json.dumps({"apps": {"shop": app_cfg}}), encoding="utf-8")
+                return jobs._release_auto_chain_configured("shop", env)
+            finally:
+                config.reset_request_workspace(token)
+
+    def test_uses_the_settings_saved_by_the_release_tab(self):
+        cfg = {"auto_release_on_success": True, "auto_release_action": "release_tag", "auto_release_flavors": ["qa"]}
+        self.assertEqual(self._decide(cfg, "qa"), (True, "release_tag"))
+        self.assertEqual(self._decide(cfg, "prod"), (False, ""))
+        self.assertEqual(self._decide({"auto_release_on_success": False}, "prod"), (False, ""))
+
+    def test_defaults_and_flavorless_apps(self):
+        self.assertEqual(self._decide({"auto_release_on_success": True}, "default"), (True, "release_push"))
+        self.assertEqual(self._decide({"auto_release_tag": True}, "prod"), (True, "release_push"))
+        self.assertEqual(self._decide({"auto_release_on_success": True, "auto_release_action": "build_aab"}, "prod"), (False, ""))
+
+
+class TestRemoveWorkspace(unittest.TestCase):
+
+    def test_remove_only_drops_the_list_entry(self):
+        with tempfile.TemporaryDirectory() as td:
+            base = Path(td).resolve()
+            (base / "config").mkdir()
+            project = base / "proj"
+            _flutter_app(project, "proj")
+            saved_root, saved_ws = config.DASHBOARD_ROOT, config.WORKSPACE_ROOT
+            config.DASHBOARD_ROOT, config.WORKSPACE_ROOT = base, base / "default"
+            (base / "default").mkdir()
+            try:
+                self.assertTrue(config.allow_workspace(str(project))["success"])
+                listed = [w["path"] for w in config.get_workspaces_list()["workspaces"]]
+                self.assertIn(str(project), listed)
+                self.assertTrue(config.remove_workspace(str(project))["success"])
+                listed = config.get_workspaces_list()["workspaces"]
+                self.assertNotIn(str(project), [w["path"] for w in listed])
+                self.assertTrue(project.is_dir(), "the folder itself must stay")
+                self.assertTrue(all(w["isDefault"] for w in listed))
+                self.assertFalse(config.remove_workspace(str(base / "default"))["success"])
+                self.assertFalse(config.remove_workspace(str(project))["success"])
+            finally:
+                config.DASHBOARD_ROOT, config.WORKSPACE_ROOT = saved_root, saved_ws

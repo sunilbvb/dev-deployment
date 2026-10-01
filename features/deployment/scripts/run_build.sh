@@ -11,7 +11,11 @@ export PATH="$HOME/.rbenv/shims:$HOME/.rbenv/bin:$HOME/.rbenv/versions/3.2.0/bin
 # 1. Dynamically locate workspace root
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
 ROOT="${MELOS_ROOT_PATH:-}"
-if [ -z "$ROOT" ] || [ ! -f "$ROOT/pubspec.yaml" ]; then
+# The console passes WORKSPACE_ROOT; it is authoritative even without a root pubspec.yaml
+# (e.g. a plain folder holding several apps).
+if [ -z "$ROOT" ] && [ -n "${WORKSPACE_ROOT:-}" ] && [ -d "$WORKSPACE_ROOT" ]; then
+    ROOT="$WORKSPACE_ROOT"
+elif [ -z "$ROOT" ] || [ ! -f "$ROOT/pubspec.yaml" ]; then
     if [ -f "$(pwd)/pubspec.yaml" ]; then
         ROOT="$(pwd)"
     elif [ -f "$(cd "$SCRIPT_DIR/../../.." && pwd)/pubspec.yaml" ]; then

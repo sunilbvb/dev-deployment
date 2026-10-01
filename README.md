@@ -1,301 +1,353 @@
 # Dev Deployment Console 🚀
 
-A lightweight, self-hosted web dashboard to build, sign, and deploy mobile and web apps — without touching the terminal.
+A lightweight, self-hosted web console to build, sign, upload and release mobile apps — Flutter first, with React Native, native and web projects supported — without typing terminal commands.
 
-Open `http://localhost:18112` in your browser, pick your app, choose an environment (`dev`, `qa`, `prod`), click a button, and watch your build logs scroll in real-time.
+Open `http://localhost:18112`, pick a project tab, pick an app, choose an environment, click a command and watch the live log.
 
-> **Location of deployment subsystem:** `features/deployment/`
-> **Backend:** Modular architecture in `features/deployment/backend/` (`server.py`, `router.py`, `commands.py`, `config.py`, `jobs.py`, `p8.py`)
-> **Frontend:** `features/deployment/frontend/{index.html, app.js, setup.js, styles.css}`
-> **Default port:** `18112` (configurable via `DEPLOYMENT_PORT`)
+> **Backend:** `features/deployment/backend/` — Python standard library only
+> **Frontend:** `features/deployment/frontend/` — vanilla HTML/JS using the [`developer-dashboard-ui`](https://github.com/sunilbvb/developer-dashboard-ui) kit
+> **Build/release scripts:** `features/deployment/scripts/` — Bash + one Dart release tool
+> **Default port:** `18112` (`DEPLOYMENT_PORT`)
 
 ---
 
 ## 📑 Table of Contents
 
-1. [What Is This?](#-what-is-this)
-2. [Key Features](#-key-features)
-3. [Quick Start](#-quick-start)
-4. [Controlling the Server](#️-controlling-the-server)
-5. [How It Finds Your Apps](#-how-it-finds-your-apps)
-6. [Understanding the Web Interface](#-understanding-the-web-interface)
-7. [Configuring App Settings via the UI](#️-configuring-app-settings-via-the-ui)
-8. [iOS App Store Connect API Key (.p8) Management](#-ios-app-store-connect-api-key-p8-management)
-9. [Customizing Commands](#️-customizing-commands)
-10. [Usage Examples](#-usage-examples)
-11. [CI/CD Webhook Integration](#-cicd-webhook-integration)
-12. [System Architecture](#-system-architecture)
-13. [Directory Structure](#-directory-structure)
-14. [Execution & Job Lifecycle](#-execution--job-lifecycle)
-15. [Safety & Approval Gates](#-safety--approval-gates)
-16. [Script & Build Automation Layer](#-script--build-automation-layer)
-17. [Chat & Notification Integration](#-chat--notification-integration)
-18. [Deployment History](#-deployment-history)
-19. [REST API Reference](#-rest-api-reference)
-20. [Configuration Files Reference](#-configuration-files-reference)
-21. [Project Structure Overview](#-project-structure-overview)
-22. [Contributing & Roadmap](#-contributing--roadmap)
-23. [FAQ](#-frequently-asked-questions)
-24. [License](#-license)
+1. [What It Does](#-what-it-does)
+2. [Quick Start](#-quick-start)
+3. [Projects: Import & Tabs](#-projects-import--tabs)
+4. [How Apps and Packages Are Detected](#-how-apps-and-packages-are-detected)
+5. [The Home Screen](#️-the-home-screen)
+6. [Configure (Per-App Settings)](#️-configure-per-app-settings)
+7. [Credentials: Play Keys, Apple .p8, Firebase](#-credentials-play-keys-apple-p8-firebase)
+8. [Building & Uploading](#-building--uploading)
+9. [Releases: Changelog, Git Tags & Push](#️-releases-changelog-git-tags--push)
+10. [Safety & Security](#️-safety--security)
+11. [Customizing Commands](#️-customizing-commands)
+12. [CI/CD Webhook](#-cicd-webhook)
+13. [Deployment History](#-deployment-history)
+14. [Architecture & API](#️-architecture--api)
+15. [Configuration & Data Files](#-configuration--data-files)
+16. [Environment Variables](#-environment-variables)
+17. [Known Limitations](#️-known-limitations)
+18. [Contributing](#-contributing) · [FAQ](FAQ.md) · [Changelog](CHANGELOG.md) · [Security](SECURITY.md) · [License](#-license)
 
 ---
 
-## 💡 What Is This?
+## 💡 What It Does
 
-When building apps, you constantly run commands like:
-- *"Build iOS app for TestFlight"*
-- *"Upload Android App Bundle to Google Play Store"*
-- *"Run tests and clean the project"*
-- *"Tag a new release"*
+- **Finds your apps automatically** in any layout: single app, several apps, apps + shared packages, with or without Melos, Dart pub workspaces.
+- **One tab per project** on the home screen — several projects side by side, each browser tab independent.
+- **One-click commands**: Build IPA / AAB / APK, Build & Upload to TestFlight / Google Play, Clean, Pub Get, and 12 release actions.
+- **Live terminal** with every line streamed, plus a persistent **History** tab.
+- **Credentials handled by the tool**: scan any folder for Play service-account keys, App Store Connect `.p8` keys and Firebase configs, import them in one click. Keys are stored outside your project (`chmod 600`) and passed to builds automatically.
+- **Releases from git history**: changelog compiled from commits since the last tag, annotated tag, push — every git command and its result is shown in the log.
+- **Safety gates**: production-upload confirmation, one job per app at a time, localhost-only server with an auth token.
 
-**Dev Deployment Console** replaces those terminal sessions with a clean web page on your own machine that:
-1. Shows all your apps as visual cards — single projects or entire monorepos.
-2. Lets you click action buttons (like **Build IPA** or **Upload AAB**).
-3. Streams real terminal output live to your screen.
-4. Keeps persistent history of every build (success, failure, timestamps, logs).
-5. Protects you with safety gates (confirmation popup before any Production deploy).
-
-It is **zero-intrusion** — it lives completely separately from your apps. No rewriting your codebase, no foreign dependencies installed into your projects.
-
----
-
-## ✨ Key Features
-
-- **Standardized UI System** — Frontend strictly uses the [`developer-dashboard-ui`](https://github.com/sunilbvb/developer-dashboard-ui) design system via jsDelivr CDN (`.ui-card`, `.ui-field`, `.ui-button`, `.ui-dropzone`, `.ui-badge`). No custom or fragmented CSS.
-- **No Heavy Dependencies** — Built using Python's standard library. No databases, Redis, or heavy frameworks needed.
-- **Universal & Stack-Agnostic** — Works with Flutter, React Native, iOS Native, Android Native, Node.js, or any custom Bash script.
-- **Real-Time Live Logs** — Stdout and stderr stream live into the embedded browser terminal.
-- **Secure iOS Key Management** — Upload App Store Connect API keys (`.p8`) via drag-and-drop. Keys are Base64-encoded, stored per-app, and written to Apple's industry-standard path (`~/.appstoreconnect/private_keys/`) with `chmod 600`. No key files committed to source control.
-- **Accidental Deploy Protection** — Confirmation modal required before any Production store release.
-- **Concurrency Guard** — Rejects duplicate jobs on the same app (`APP_BUSY`).
-- **Deployment History** — Persistent audit trail with error excerpts and exit codes.
-- **Multi-Workspace Support** — Switch between project workspaces dynamically from the dashboard without restarting the server.
-- **Remote CI/CD Webhooks** — Trigger builds from GitHub Actions, GitLab CI, or Slack bots via HTTP POST.
-- **Chat Notifications** — Sends formatted build summary cards to Google Chat or any compatible webhook.
-- **Cross-Platform** — Works seamlessly on both **Linux** and **macOS**.
+The console never modifies your app code. It only writes its own settings into `<project>/.dev-dashboard/` and, for releases, `CHANGELOG.md` / `pubspec.yaml` version bumps plus git commits and tags.
 
 ---
 
 ## 🏁 Quick Start
 
 ### Prerequisites
-- **Python ≥ 3.10** (`python3 --version`)
-- **Bash 4+** (`bash --version`)
-- Your normal build tools (Flutter, Node, Xcode, Android Studio — depending on what you build)
 
-### Step 1 — Create your settings file
+| Tool | Needed for |
+|---|---|
+| **Python ≥ 3.10** | The console server (macOS ships 3.9 — install with `brew install python@3.12`) |
+| **Bash** | Build / upload scripts |
+| **Flutter SDK, Dart** | Flutter builds and the release tool |
+| **Xcode + CocoaPods** (macOS) | iOS builds |
+| **JDK 17 / Android SDK** | Android builds |
+| **fastlane** (via rbenv/bundler) | Store uploads |
+| **git** | Releases (uses your existing SSH keys / credential helper) |
+| **Melos** | Only for Melos workspaces that define their own deploy scripts |
 
-```bash
-cp .env.example .env
-```
-
-Open `.env` and set your workspace path:
-
-```ini
-# Path to the project or monorepo you want to deploy
-WORKSPACE_ROOT=/path/to/your/project
-
-# Port to access the dashboard (default: 18112)
-DEPLOYMENT_PORT=18112
-```
-
-> **Tip:** Leave `WORKSPACE_ROOT` blank to target the current directory automatically.
-
-### Step 2 — Start the server
+### Start
 
 ```bash
+git clone -b develop https://github.com/sunilbvb/dev-deployment.git
+cd dev-deployment
+cp .env.example .env          # optional: set WORKSPACE_ROOT / DEPLOYMENT_PORT
 ./start.sh
 ```
 
-### Step 3 — Open in your browser
-
-```
-http://localhost:18112
-```
-
-Your apps will appear on the left sidebar, ready to build and deploy.
-
----
-
-## 🛠️ Controlling the Server
-
-Run the server directly with Python:
+If `python3` on your machine is older than 3.10, put a newer one first on `PATH`:
 
 ```bash
-python3 features/deployment/backend/server.py --port 18112
+PATH="/opt/homebrew/opt/python@3.12/libexec/bin:$PATH" ./start.sh
 ```
 
-Or use the background service scripts:
+Open `http://localhost:18112`. The page receives the API auth token automatically; the token itself is stored in `~/.config/dev-deployment/auth_token.txt`.
+
+`WORKSPACE_ROOT` (in `.env` or the environment) only picks the project shown first. Every other project is added from the UI with **+ Import Project**.
+
+### Background service
 
 | Action | Command |
-|:---|:---|
-| **Start in background** | `./features/deployment/bin/start-deployment.sh` |
-| **Stop background server** | `./features/deployment/bin/stop-deployment.sh` |
-| **Check server status** | `./features/deployment/bin/status-deployment.sh` |
-| **Restart** | `./features/deployment/bin/restart-deployment.sh` |
-
----
-
-## 📱 How It Finds Your Apps
-
-The console features a zero-configuration discovery engine that inspects your `WORKSPACE_ROOT`:
-
-1. **Dart 3.5+ & Melos 7 Pub Workspaces** — Reads the `workspace:` manifest from root `pubspec.yaml` and maps every declared package path or glob.
-2. **Melos Monorepos** — Parses `packages:` patterns (e.g. `apps/**`, `packages/*`) and respects `ignore:` exclusion rules from `melos.yaml`.
-3. **Standard Monorepos & Multi-Level Repositories** — Automatically traverses up to 3 levels deep across `apps/`, `packages/`, `modules/`, and subdirectories, skipping internal folders like `build/`, `.dart_tool/`, `node_modules/`, `Pods/`, and `dist/`.
-4. **Single Projects** — If `WORKSPACE_ROOT` targets a standalone app (with or without flavors), it is detected immediately as the primary application tile.
-5. **Duplicate App ID Disambiguation** — When multiple packages in different folders share the same manifest name (e.g. `apps/core` and `packages/core`), unique IDs and labeled names are assigned so all apps appear distinctly.
-6. **Package vs. App Differentiation** — Pure libraries and packages (without `android/`, `ios/`, or `lib/main.dart`) are recognized as packages, omitting unnecessary store deploy buttons.
-7. **Manual Registration** — Register any app manually via the **Configure** modal (⚙️) or by editing `.dev-dashboard/apps_config.json`.
-
-**Project type detection:**
-
-| Manifest file | Detected as |
 |---|---|
-| `pubspec.yaml` (with `android/`, `ios/`, or `lib/main.dart`) | Flutter App |
-| `pubspec.yaml` (library only) | Dart/Flutter Package |
-| `package.json` (with mobile dirs) | React Native |
-| `package.json` (without mobile dirs) | Node.js / Web |
-| `build.gradle` / `build.gradle.kts` | Android Native |
-| `*.xcworkspace` / `*.xcodeproj` | iOS Native |
-| Custom scripts / no manifest | Generic / Script |
+| Start in background | `./features/deployment/bin/start-deployment.sh` |
+| Stop | `./features/deployment/bin/stop-deployment.sh` |
+| Status | `./features/deployment/bin/status-deployment.sh` |
+| Restart | `./features/deployment/bin/restart-deployment.sh` |
 
 ---
 
-## 🖥️ Understanding the Web Interface
+## 📂 Projects: Import & Tabs
 
-```
-┌─────────────────┬────────────────────────────────────────────────────────┐
-│  SELECT APP     │  COMMANDS & TERMINAL                                   │
-├─────────────────┼────────────────────────────────────────────────────────┤
-│                 │  Target Environment: [ Dev ] [ QA ] [ Prod ]           │
-│  📱 My Mobile   │                                                        │
-│  🌐 Web Portal  │  [ 🚀 Build IPA ]   [ 📦 Build AAB ]   [ 🧹 Clean ]   │
-│  ⚙️ Backend API │                                                        │
-│                 ├────────────────────────────────────────────────────────┤
-│                 │  Live Terminal Output:                                 │
-│                 │  > Executing command...                                │
-│                 │  > Running build task [SUCCESS]                        │
-│                 │                                                        │
-│                 │  [ Stop Job ]   [ Clear Output ]   [ History Tab ]    │
-└─────────────────┴────────────────────────────────────────────────────────┘
-```
+### Import a project
+
+1. Click **+ Import Project** (top right).
+2. Click **Choose project folder…** — the native Finder dialog opens (Linux: `zenity`; systems without a dialog show a path field instead).
+3. The dialog shows what was detected: folder name, **layout type**, the **apps** and the **packages**.
+4. Click **Add project**. It appears as a new tab and opens.
+
+Choosing a folder that is already added shows **Already added — open it** and simply opens its tab. A folder without any app shows a message and cannot be added.
+
+### Project tabs
+
+Every added project is a tab in the **Projects** bar. Clicking a tab shows that project — there is no separate "switch" step:
+
+- The choice is **per browser tab**: two windows can show two different projects at the same time.
+- Running builds keep running; a job's log, history entry and any chained release always belong to the project it was started from.
+- **Remove a project**: hover its tab and click **×**. Only the tab is removed — the folder and its `.dev-dashboard/` settings stay, so importing it again restores everything. Projects with a running build cannot be removed; the startup project (`WORKSPACE_ROOT`) has no **×**.
+- The list of added projects is stored in `config/workspaces_list.json` (local, not committed).
+
+---
+
+## 🔍 How Apps and Packages Are Detected
+
+Detection runs on the chosen folder with no configuration.
+
+| Folder layout | Shown as |
+|---|---|
+| One Flutter app at the root | **Single app** |
+| One app at the root with local `packages/` | **Single app with local packages** |
+| Several apps, no packages, no Melos | **Multiple apps (no packages, no Melos)** |
+| Several apps plus shared packages, no Melos (any folder names, e.g. `mobile/`, `shared/`) | **Multiple apps with shared packages (no Melos)** |
+| `melos.yaml` or `melos:` in the root `pubspec.yaml` | **Melos monorepo (apps + packages)** |
+| `workspace:` list in the root `pubspec.yaml`, no Melos | **Dart pub workspace (apps + packages, no Melos)** |
+
+**Rules**
+
+- **Melos / pub workspace members** come from their `packages:` / `workspace:` lists; only folders with a `pubspec.yaml` or `package.json` count, and Melos `ignore:` patterns apply.
+- **Otherwise** every folder with a `pubspec.yaml` or `package.json` up to 4 levels deep is a project. Inside a project, platform and source folders (`android/`, `ios/`, `lib/`, `test/`, `build/`, …) are never searched, but nested packages (e.g. `profile/profile_logic`) are found.
+- Skipped everywhere: `example/`, `build/`, `.dart_tool/`, `node_modules/`, `Pods/`, hidden folders.
+- **App vs package**: a Flutter project is an **app** if it has `android/`, `ios/` or an entry point `lib/main*.dart` (so `main_dev.dart` flavor entry points count). Flutter **plugins** (`flutter: plugin:`) and libraries are **packages**. Packages are listed under the app grid as *not deployable*.
+- **App IDs are folder names** (`apps/pim` → `pim`); the display name comes from `pubspec.yaml`. Folder names are stable, so saved settings keep matching.
+- Other stacks: `package.json` → React Native (with mobile folders) or Node; Gradle / Xcode projects without a manifest → native.
+
+**Flavors** come from Android `productFlavors { … }` in `android/app/build.gradle(.kts)` (falling back to `android/app/src/<flavor>/`) and from iOS `ios/Flutter/*.xcconfig` names. Apps without flavors get no environment tabs and no `--flavor` flags.
+
+Detected apps are cached in `<project>/.dev-dashboard/apps_config.json`. After moving apps around, use **Configure → Rescan Workspace**, or delete that file to regenerate it (custom names, colors and icons are not kept automatically).
+
+---
+
+## 🖥️ The Home Screen
 
 | Area | What it does |
 |---|---|
-| **Left Panel (App Grid)** | All detected apps. Click to select one. |
-| **Environment Tabs** | Switch flavors: `dev`, `qa`, `prod`, etc. |
-| **Command Cards** | Clickable action buttons: Build, Upload, Clean, Release. |
-| **Live Terminal** | Real-time log streaming as the build runs. |
-| **History Tab** | Past builds — status, timestamps, error excerpts, full logs. |
-| **Configure (⚙️)** | Setup modal for credentials, bundle IDs, and app settings. |
-| **Switch / Add Project** | Switch between workspaces without restarting the server. |
+| **Header** | **Configure** opens per-app settings; **+ Import Project** adds a project. |
+| **Projects bar** | One tab per added project. |
+| **Select App** | Deployable apps as cards. *N packages (not deployable)* expands to the package list. |
+| **Environment tabs** | Dev / QA / Prod / … — only for apps that have flavors. |
+| **Commands** | Grouped into **iOS**, **Android**, **Combined Deploy**, **Release** and **Utilities**. Cards marked **LOCKED** need credentials (see below). |
+| **Ready to execute** | The exact command that will run, with **Run** and **Stop**. |
+| **Live Terminal** | Real-time output of the running job, including error output. If the server is unreachable it says so instead of showing an empty list. |
+| **History** | Past jobs with status, duration, command and log excerpts; filter by app, flavor and status. |
 
 ---
 
-## ⚙️ Configuring App Settings via the UI
+## ⚙️ Configure (Per-App Settings)
 
-1. Click **Configure** (⚙️) in the top-right header.
-2. Select your app from the left sidebar of the modal.
-3. Fill in the details for each section:
+**Configure** opens the setup dialog. Pick an app on the left, then a tab:
 
-   **App Identifiers** — iOS Bundle IDs and Android Package Names per flavor (`dev`, `qa`, `prod`).
+| Tab | Contents |
+|---|---|
+| **General** | Flavors (leave empty for a single app) and per-flavor iOS bundle IDs / Android package names. |
+| **Keys** | **Find & Import Keys** — scan a folder for credentials (see next section). |
+| **iOS** • | Apple ID, App Store Connect Issuer ID, `.p8` API key (drop file or click), certificate/profile status. |
+| **Android** • | Google Play service-account key: status, **Choose JSON key…**, *Use for all apps*, **Remove**; optional manual path. |
+| **Firebase** | `google-services.json` / `GoogleService-Info.plist` paths per flavor. |
+| **Release** | Auto-run a release action after a successful deploy/upload. |
 
-   **iOS Credentials** — Apple ID email, App Store Connect Issuer ID, and API Key (.p8) upload.
+The dot on **iOS** / **Android** is green when upload credentials are configured and amber when they are missing. The tab you used last is remembered.
 
-   **Android Credentials** — Google Play Service Account JSON path.
+Buttons below every tab: **Auto-Scan App** and **Scan All Apps** (fill bundle IDs, package names, flavors and Firebase paths from the source), **Rescan Workspace** (re-detect apps), **Regenerate Commands**, **Save Config**.
 
-   **Auto-Release** — Optionally auto-trigger a release action after a successful deploy.
-
-4. Click **Save Config**.
-
-> You can also manually edit `.dev-dashboard/deploy_config.json` if you prefer JSON.
+Settings are saved to `<project>/.dev-dashboard/deploy_config.json`. That file holds identifiers and paths only — never key contents — so it is safe for teams that commit it.
 
 ---
 
-## 🔑 iOS App Store Connect API Key (.p8) Management
+## 🔑 Credentials: Play Keys, Apple .p8, Firebase
 
-### Why this matters
+### Find & Import Keys
 
-Having `.p8` key files stored in the project's `private_keys/` folder is a security risk — they can accidentally be committed to source control. This tool follows **Apple's industry-standard** approach instead.
+**Configure → Keys**
 
-### How to upload a key (Web UI)
+1. **Choose folder to scan…** (native dialog) or **Scan this workspace**.
+2. Files are recognised **by their contents**, not by name:
 
-1. Open **Configure** (⚙️) → select your app.
-2. Enter your **App Store Connect Issuer ID** (UUID from App Store Connect → Users & Access → Integrations → Team ID).
-3. Drag and drop your `AuthKey_XXXXXXXXXX.p8` file onto the **API Key dropzone** — or click to browse.
-4. The console automatically:
-   - Extracts the **Key ID** from the filename (`AuthKey_<KeyID>.p8`).
-   - **Base64-encodes** the file content.
-   - Saves `apple_key_id`, `apple_p8_base64`, and `apple_issuer_id` into `.dev-dashboard/deploy_config.json`.
-   - Writes the raw `.p8` file to `~/.appstoreconnect/private_keys/AuthKey_<KeyID>.p8` with `chmod 600`.
+   | Found | Recognised by |
+   |---|---|
+   | Google Play service account | JSON with `"type": "service_account"`, `private_key`, `client_email` |
+   | App Store Connect API key | `.p8` with a private key, named `AuthKey_<KEYID>.p8` |
+   | Other Apple keys | other `.p8` files (In-App Purchase / APNs) — listed but **not importable**, they cannot authenticate uploads |
+   | Firebase Android | `google-services.json` structure; matched to apps/flavors by package name |
+   | Firebase iOS | `GoogleService-Info.plist` with `BUNDLE_ID`; matched by bundle ID |
 
-> **Filename convention:** The file **must** follow `AuthKey_XXXXXXXXXX.p8` (10-character uppercase Key ID). This is the exact filename Apple uses when you download from App Store Connect — no renaming needed.
+   Service accounts are ranked: names like *play*, *deploy*, *publish*, *github-actions*, *fastlane* are marked **likely Play uploader**; *firebase-adminsdk* / *revenuecat* are marked **likely Firebase / other service**. Only Google Play Console can confirm access, so pick the right one.
+3. Click **Import** per result and choose **This app** or **All apps** (Firebase files: choose the flavor).
 
-### Key path resolution priority (in bash scripts)
+You can also upload directly: **Android → Choose JSON key…** for a Play key, **iOS → drop `AuthKey_XXXXXXXXXX.p8`** for an Apple key (Issuer ID is taken from the field above it).
 
-All iOS scripts (`ios_utils.sh`, `ios_build.sh`, `ios_upload.sh`, `Fastfile`) resolve the p8 key using this priority order:
+### Where things are stored
 
-| Priority | Source | Notes |
-|---|---|---|
-| **1 (highest)** | `APPLE_API_KEY_BASE64` env var | In-memory Base64; decoded to standard path at runtime |
-| **2** | `~/.appstoreconnect/private_keys/AuthKey_<KeyID>.p8` | Apple's own recommended standard location |
-| **3** | `~/.private_keys/AuthKey_<KeyID>.p8` | Apple secondary fallback |
-| **4 (lowest)** | `<workspace>/private_keys/AuthKey_<KeyID>.p8` | Legacy path — supported for backward compat |
+| Item | Location |
+|---|---|
+| Imported Play keys | `~/.config/dev-deployment/keys/play-<project>-<hash>.json` (`chmod 600`) |
+| Imported `.p8` keys | `~/.appstoreconnect/private_keys/AuthKey_<KEYID>.p8` (`chmod 600`, Apple's standard folder) |
+| Which key belongs to which app | `~/.config/dev-deployment/credentials.json`, per project and app (`chmod 600`) |
+| Firebase file paths | `<project>/.dev-dashboard/deploy_config.json` (they are not secrets) |
 
-### Multiple apps — multiple keys
+Nothing secret is written into the project. Each teammate imports their own keys. Older versions embedded `.p8` contents in `deploy_config.json`; on startup the server moves them to the private store and removes them from the file.
 
-Each app stores its own key independently:
+### How builds receive credentials
 
-```json
-{
-  "apps": {
-    "customer_app": { "apple_key_id": "ABCD123456", ... },
-    "driver_app":   { "apple_key_id": "WXYZ789012", ... }
-  }
-}
+Every job gets these environment variables for its app (an app-specific key overrides one set for *All apps*):
+
+| Variable | Used by |
+|---|---|
+| `SERVICE_ACCOUNT_JSON` | Google Play uploads (fastlane `supply`) |
+| `APPLE_API_KEY`, `APPLE_API_ISSUER`, `APPLE_API_KEY_PATH` | iOS builds and TestFlight uploads |
+
+**Play key lookup order** (first found wins): imported key → `play_service_account_path` typed in Configure → `<project>/private_keys/play-store-deployer.json` → `<app>/private_keys/play-store-deployer.json` → `<app>/android/play-store-deployer.json` → `~/.config/dev-deployment/play-store-deployer.json`.
+
+**Apple key lookup order**: imported key → `APPLE_API_KEY` / `APPLE_API_ISSUER` in the app's `env/<flavor>.json` → `APPLE_API_KEY_BASE64` env var → `~/.appstoreconnect/private_keys/` → `~/.private_keys/` → `<project>/private_keys/`.
+
+Existing setups keep working: the Configure status shows keys found in these fallback locations as *auto-detected* or *from app env file*.
+
+### Upload commands are locked until credentials exist
+
+**Build & Upload IPA**, **Upload IPA only** and **Build & Deploy Both** stay **LOCKED** until the app has an Apple ID, an imported key, or a key in its env file.
+
+---
+
+## 📦 Building & Uploading
+
+1. Click the project tab and the app.
+2. Choose the environment tab (if the app has flavors).
+3. Click a command card, check the command under **Ready to execute**, click **Run**.
+4. Production store uploads ask for confirmation first.
+5. **Stop** ends the running job (process group `SIGTERM`, then `SIGKILL`).
+
+| Command | What runs |
+|---|---|
+| Build IPA / Build IPA for Device | Xcode archive + IPA export (App Store or development signing) |
+| Build & Upload IPA / Upload IPA only | IPA to TestFlight via fastlane |
+| Build AAB / Build APK | `flutter build appbundle` / `flutter build apk --release` |
+| Build & Upload AAB / Upload AAB only | AAB to the Play Store **internal testing** track via fastlane |
+| Build & Deploy Both | iOS + Android with one shared version bump |
+| Clean Project / Pub Get | `flutter clean` / `flutter pub get` in the app folder |
+
+**How scripts find things** (works for any layout):
+
+- **App folder** — resolved by the backend (`resolveAppDir`), wherever the app lives.
+- **Android package name** — saved `android_id_<flavor>` in Configure, else read from the app's Gradle files (`applicationId`, per flavor).
+- **Env file** — `<app>/env/<flavor>.json` (single apps: `env/default.json`, `env.json`).
+
+**Melos workspaces**: if the root `pubspec.yaml` defines a matching Melos script (e.g. `<app>:deploy:<env>:aab:raw`, as in TYRIOS), it is run with `melos run`. If not, the console runs the same build/upload step directly with Flutter in the app folder and says so in the log (`Melos script '…' not defined; running … directly`). No Melos scripts need to be written.
+
+---
+
+## 🏷️ Releases: Changelog, Git Tags & Push
+
+The **Release** commands run `features/deployment/scripts/release_changelog_tagger.dart` through `run_build.sh`. They use your normal `git` and your existing credentials, and push to the repository's `origin` remote. Apps that are their own git repository (e.g. `apps/gyo` with its own remote) are released inside that repository.
+
+### The release summary is generated for you
+
+Commits since the app's previous tag are grouped by [Conventional Commit](https://www.conventionalcommits.org) type:
+
+```text
+## [1.0.2+3] - 2026-10-01
+_1 feature · 1 fix_
+**👥 Contributors:** Sunil (2)
+
+### 🚀 Features
+* **customer**: wishlist (`91ae6b6`, 2026-10-01 18:58, Sunil)
+
+### 🐛 Bug Fixes
+* **customer**: crash on empty cart (`e994f6d`, …)
 ```
 
-### Upload via API (programmatic)
+The same text is used as the **annotated tag message**, the **release commit body** and the app's **`CHANGELOG.md`**. Only commits touching the app (or its internal dependencies) are included. Write commits as `feat(scope): …`, `fix: …` to get useful notes.
 
-**Option A — multipart/form-data:**
-```bash
-curl -X POST http://localhost:18112/api/deployment/p8/upload \
-  -F "app_id=my_app" \
-  -F "issuer_id=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" \
-  -F "file=@/path/to/AuthKey_ABCD123456.p8;filename=AuthKey_ABCD123456.p8"
+Tags are named `<app>-v<version>` from `pubspec.yaml`, e.g. `customer-v1.0.2+3`.
+
+### Release actions
+
+| Action | Files | Commit | Tag | Push |
+|---|---|---|---|---|
+| 1. Preview Changelog (Dry-run) | – | – | – | – |
+| 2. Update CHANGELOG.md Only | ✔ | – | – | – |
+| 3. Update Changelog & Git Commit | ✔ | ✔ | – | – |
+| 4. Changelog + Commit + Local Git Tag | ✔ | ✔ | ✔ | – |
+| 5. Full Release (Tag & Push to Remote) | ✔ | ✔ | ✔ | ✔ |
+| 6–8. Bump Patch / Minor / Major & Release | version bump + ✔ | ✔ | ✔ | – |
+| 9. Store "What's New" Release Notes | – | – | – | – |
+| 10. Pre-Flight Verify & Full Release | analyze/test first, then as 5 | ✔ | ✔ | ✔ |
+| 11. Monorepo Unreleased Report | lists unreleased commits for every app/package | | | |
+| 12. Rollback / Delete Release Tag | deletes the local tag | | | |
+
+**Recommended flow**: **1. Preview** → **6/7/8 Bump** (or **4** without bumping) → **5. Full Release**. When the tag already exists locally on the current commit but not on the remote, Full Release just pushes it.
+
+### What the log shows
+
+```text
+🔎 Commits in release window (customer-v1.0.1+2 ➔ HEAD): 2
+   · b6301d9  fix(api_client): timeout  (skipped: belongs to api_client)
+   ✔ 91ae6b6  feat(customer): wishlist  [app]
+   → 1 included, 1 skipped
+   $ git commit --cleanup=verbatim -F '<message: "chore(release): release customer-v1.0.2+3" + 9 more lines>'
+     │ [main 2bbc0bf] chore(release): release customer-v1.0.2+3
+     └ ok
+   $ git push origin customer-v1.0.2+3
+     │  * [new tag]   customer-v1.0.2+3 -> customer-v1.0.2+3
+     └ ok
+══════════════════ RELEASE SUMMARY ══════════════════
+   Tag:        customer-v1.0.2+3
+   Commit:     2bbc0bf
+   Branch:     main
+   Remote:     git@github.com:org/repo.git
+   Pushed:     yes
 ```
 
-**Option B — JSON with Base64:**
-```bash
-curl -X POST http://localhost:18112/api/deployment/p8/upload \
-  -H "Content-Type: application/json" \
-  -d '{
-    "app_id": "my_app",
-    "filename": "AuthKey_ABCD123456.p8",
-    "issuer_id": "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
-    "content_base64": "<base64-encoded-p8-content>"
-  }'
-```
+Every git command that changes the repository (`add`, `commit`, `tag`, `push`) is printed with its output. A failed push marks the job **failed**, shows git's error and leaves the release local so it can be pushed again.
 
-**Response:**
-```json
-{
-  "success": true,
-  "key_id": "ABCD123456",
-  "stored_path": "/home/user/.appstoreconnect/private_keys/AuthKey_ABCD123456.p8",
-  "b64_stored": true,
-  "app_id": "my_app"
-}
-```
+### Rules
+
+- The project must be a git repository; Full Release needs an `origin` remote.
+- Commit, tag and push are only allowed on `main`, `master`, `develop`, `release`, `release/*`, `hotfix/*` (Preview and changelog-only work on any branch).
+- The previous release tag must be part of the current branch's history.
+- An existing tag is never overwritten; bump the version first.
+
+---
+
+## 🛡️ Safety & Security
+
+- **Localhost only.** The server rejects non-localhost `Host` headers (DNS rebinding) and foreign `Origin`s. Do not expose the port (no `0.0.0.0`, no ngrok).
+- **Auth token.** Every `/api/*` call needs `X-API-Token`; the page gets it injected, scripts read `~/.config/dev-deployment/auth_token.txt`.
+- **Production gate.** Store uploads for production ask for confirmation (`confirmed: true` in the API).
+- **One job per app.** A second job for a busy app is rejected with `APP_BUSY`; locks are per project.
+- **Only configured commands run.** `/execute` resolves the command from templates; arbitrary commands cannot be posted.
+- **Folder access.** The server only reads projects that were added, plus folders you just chose in the native dialog.
+- **Secrets** stay outside projects (see Credentials). Request bodies are limited to 1 MB.
 
 ---
 
 ## ⚙️ Customizing Commands
 
-Commands are defined in [`config/deployment_templates.json`](config/deployment_templates.json). Add, change, or remove commands freely.
-
-### Example: Add a custom shell command
+Commands come from [`config/deployment_templates.json`](config/deployment_templates.json), grouped by `ios`, `android`, `combined`, `release`, `utility`.
 
 ```json
 {
@@ -303,371 +355,78 @@ Commands are defined in [`config/deployment_templates.json`](config/deployment_t
   "name": "Build Web App",
   "description": "Compile production web bundle",
   "runner": "direct",
-  "command_template": "npm run build -- --mode {flavor}",
+  "command_template": "flutter build web --release",
   "icon": "globe",
   "color": "#3b82f6"
 }
 ```
 
-### Supported template placeholders
-
 | Placeholder | Replaced with |
 |---|---|
-| `{flavor}` | Selected environment (`dev`, `qa`, `prod`, …) |
-| `{app_id}` | The app's folder name or identifier |
-| `{bundle_id}` | iOS Bundle ID or Android package name for the selected flavor |
+| `{flavor}` | Selected environment (removed for apps without flavors) |
+| `{app_id}` | App ID (folder name) |
+| `{bundle_id}`, `{android_package}`, `{apple_id}` | Values from Configure |
+
+`"runner": "direct"` commands run in the app folder. Templates whose ID is implemented in `run_build.sh` (build/upload/deploy and all release actions) run through the script layer; everything else always runs directly.
 
 ---
 
-## 📖 Usage Examples
+## 🌐 CI/CD Webhook
 
-### Example 1 — Build a Flutter Android App Bundle
-
-1. Set `WORKSPACE_ROOT=/home/user/my-flutter-app` in `.env`.
-2. Run `./start.sh` and open `http://localhost:18112`.
-3. Click your app → click **Prod** tab → click **Build AAB**.
-4. A safety confirmation popup appears for Production — click **Confirm & Deploy**.
-5. Watch Gradle and Flutter output stream live. A green banner appears on success with the `.aab` file path.
-
----
-
-### Example 2 — Deploy a React / Next.js Web App
-
-Add a custom template to `config/deployment_templates.json`:
-
-```json
-{
-  "utility": [{
-    "id": "build_web_prod",
-    "name": "Build Web Production",
-    "runner": "direct",
-    "command_template": "npm run build",
-    "icon": "globe",
-    "color": "#3b82f6"
-  }]
-}
-```
-
-Set `WORKSPACE_ROOT=/home/user/my-web-project`, start the server, and click **Build Web Production**.
-
----
-
-### Example 3 — Deploy All Apps at Once (Batch Mode)
-
-For a monorepo with `apps/customer_app`, `apps/driver_app`, `apps/admin_portal`:
-
-1. Click **Deploy All Apps** in the top-right header.
-2. Choose **Target Environment** and **Action** (e.g. `Build AAB`).
-3. Click **Start Batch** — apps are built sequentially with live progress per app.
-
----
-
-### Example 4 — Stop a Running Build
-
-Click the red **Stop Job** button in the terminal toolbar. The server sends `SIGTERM`/`SIGKILL` to the process group and frees the app lock.
-
----
-
-### Example 5 — Check Build History
-
-Click the **History** tab above the terminal. The table shows:
-- App Name, Command, Status (✅ / ❌ / 🛑), Started Time, Duration.
-- Click any row to expand the full console log.
-
----
-
-## 🌐 CI/CD Webhook Integration
-
-Trigger builds remotely from GitHub Actions, GitLab CI, or any script:
+Set `WEBHOOK_SECRET` in `.env`, then:
 
 ```bash
 curl -X POST http://localhost:18112/api/deployment/webhook \
   -H "Content-Type: application/json" \
-  -d '{
-    "app": "my-app",
-    "templateId": "build_aab",
-    "flavor": "prod"
-  }'
+  -H "X-Webhook-Secret: $WEBHOOK_SECRET" \
+  -d '{"app":"customer","templateId":"build_aab","flavor":"prod","confirmed":true}'
 ```
 
-**Response:**
-```json
-{ "success": true, "jobId": "job_1783281928_a1b2", "status": "running" }
-```
-
-### Sample GitHub Actions workflow
-
-```yaml
-name: Trigger Local Deployment
-on:
-  push:
-    branches: [main]
-jobs:
-  deploy:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Trigger Build via Webhook
-        run: |
-          curl -X POST http://your-server-ip:18112/api/deployment/webhook \
-            -H "Content-Type: application/json" \
-            -d '{"app":"my-flutter-app","templateId":"build_aab","flavor":"prod"}'
-```
-
----
-
-## 🏗️ System Architecture
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│                       Browser Client                        │
-│             features/deployment/frontend/index.html         │
-│               (Vanilla JS: app.js, setup.js)                │
-└──────────────────────────────┬──────────────────────────────┘
-                               │ HTTP / REST
-┌──────────────────────────────▼──────────────────────────────┐
-│                    Python HTTP Server                       │
-│             features/deployment/backend/server.py           │
-│       Routing · CORS · Static files · Multipart uploads     │
-│                           :18112                            │
-└──────────────────────────────┬──────────────────────────────┘
-                                │ Direct function calls
-┌──────────────────────────────▼──────────────────────────────┐
-│                    Modular Backend Engine                   │
-│             features/deployment/backend/                    │
-│  router.py    (Facade & re-exports)                         │
-│  commands.py  (Command generator, batch deploy planning)    │
-│  config.py    (Workspace discovery, app config & health)    │
-│  jobs.py      (Process execution, job state & history)      │
-│  p8.py        (App Store Connect .p8 key storage)           │
-└──────────────────────────────┬──────────────────────────────┘
-                               │ Subprocess execution
-┌──────────────────────────────▼──────────────────────────────┐
-│                     Bash Script Engine                      │
-│             features/deployment/scripts/                    │
-│  run_build.sh (entry)      json_utils.sh (helpers)          │
-│  android/ (build & upload) ios/ (build & upload)            │
-│  chat/ (notifications)     build_secrets.sh (keychain)      │
-└─────────────────────────────────────────────────────────────┘
-```
-
----
-
-## 📂 Directory Structure
-
-```
-dev-deployment/
-├── config/
-│   ├── deployment_templates.json    # Define available build & deploy buttons
-│   ├── workspaces_list.json         # Multi-workspace list (auto-managed)
-│   ├── workspaces_list.example.json # Example multi-workspace config
-│   └── active_workspace.example.txt # Example workspace pointer
-├── features/
-│   └── deployment/
-│       ├── backend/
-│       │   ├── server.py            # HTTP server: routing, CORS, static, multipart upload
-│       │   ├── router.py            # Unified facade and re-exports
-│       │   ├── commands.py          # Command generation & batch deploy planning
-│       │   ├── config.py            # App discovery, workspace configuration & health checks
-│       │   ├── jobs.py              # Process execution, async job management & history log
-│       │   └── p8.py                # App Store Connect .p8 key validation & storage
-│       ├── bin/
-│       │   ├── start-deployment.sh  # Background launcher
-│       │   ├── stop-deployment.sh   # Graceful stop
-│       │   ├── restart-deployment.sh
-│       │   └── status-deployment.sh
-│       ├── docs/                    # (legacy — now consolidated here)
-│       ├── fastlane/
-│       │   ├── Fastfile             # iOS TestFlight lane (p8 Base64 aware)
-│       │   └── Gemfile              # Self-contained Fastlane dependency definition
-│       ├── frontend/
-│       │   ├── index.html           # Main dashboard UI
-│       │   ├── app.js               # App selection, execution, polling, log streaming
-│       │   ├── setup.js             # Setup modal: credentials, p8 dropzone, workspace
-│       │   └── styles.css           # Theme styles
-│       └── scripts/
-│           ├── run_build.sh         # Primary bash command dispatcher
-│           ├── json_utils.sh        # Helper functions: profile parsing, env loading
-│           ├── build_secrets.sh     # In-memory secret loading from Keychain
-│           ├── setup_keychain.sh    # Interactive Keychain setup helper
-│           ├── android/
-│           │   ├── android_utils.sh # AAB/APK build & Google Play upload
-│           │   └── android_diagnostics.sh
-│           ├── ios/
-│           │   ├── ios_build.sh     # Xcode archive & IPA generation
-│           │   ├── ios_upload.sh    # App Store / TestFlight upload
-│           │   ├── ios_utils.sh     # Cert & provisioning profile discovery
-│           │   └── ios_diagnostics.sh
-│           └── chat/
-│               ├── chat_notify.sh
-│               ├── chat_android_utils.sh
-│               ├── chat_ios_utils.sh
-│               └── chat_helpers.sh
-├── frontend/                        # Shared UI assets and component library
-├── start.sh                         # Main startup script (run this!)
-├── .env.example                     # Environment variable template
-└── .gitignore                       # Excludes secrets, keys, pid files, logs
-```
-
----
-
-## 🔄 Execution & Job Lifecycle
-
-Every build or deployment action goes through a managed lifecycle:
-
-```
-[User clicks action button]
-         │
-         ▼
-[POST /api/deployment/execute]
-         │
-         ├─► [Concurrency Guard] ──(app busy?)──► Reject: APP_BUSY (409)
-         │
-         ├─► [Production Gate] ───(prod flavor?)─► Show confirmation modal
-         │
-         ▼
-[Generate command & spawn subprocess]
-         │
-         ├─► Background thread tracks PID and exit code
-         ├─► Logs written to temp dir and in-memory buffer
-         ├─► Output streamed to browser via GET /api/deployment/job
-         │
-         ▼
-[Job Completes]
-         │
-         ├─► Append summary record to deployment_history.jsonl
-         ├─► Trigger optional chat webhook notification
-         └─► Release app concurrency lock
-```
-
----
-
-## 🛡️ Safety & Approval Gates
-
-### 1. Concurrency Guard
-- Each app has an in-memory execution lock.
-- A second build request for a busy app returns `APP_BUSY (409)`.
-- Different apps can build in parallel without conflict.
-
-### 2. Production Approval Gate
-- Any action with flavor `prod` targeting store distribution requires `confirmed: true` in the payload.
-- Without it, the backend returns `requires_confirmation: true` and the frontend shows a detailed confirmation modal (app name, environment, target track).
-
-### 3. In-Memory Secrets
-- macOS Keychain items are retrieved and passed as flags directly to the build tool — never written to disk during the build.
-- Environment variables from `.env` are injected into the subprocess environment only.
-
----
-
-## 🔧 Script & Build Automation Layer
-
-### `run_build.sh` — Primary dispatcher
-
-```bash
-bash features/deployment/scripts/run_build.sh <action> <app_name> <env_name> [options]
-```
-
-| Action | Description |
-|---|---|
-| `buildIPA` | Xcode archive + IPA export |
-| `uploadIPA` | Upload IPA to TestFlight |
-| `deployIPA` | Build + Upload IPA |
-| `buildAAB` | Gradle AAB build |
-| `uploadAAB` | Upload AAB to Google Play |
-| `deployAAB` | Build + Upload AAB |
-| `buildAPK` | Gradle APK build |
-| `deployBothPlatforms` | Build + upload iOS and Android together |
-| `cleanProject` | Flutter / Gradle clean |
-| `pubGet` | `flutter pub get` |
-
----
-
-## 💬 Chat & Notification Integration
-
-Post interactive build summary cards to Google Chat or any standard webhook.
-
-### Setup
-
-```ini
-# In .env
-GOOGLE_CHAT_WEBHOOK_URL=https://chat.googleapis.com/v1/spaces/.../messages?key=...
-```
-
-### Card Contents
-
-- **Status badge** — SUCCESS / FAILED
-- **App title & environment** — `my_app (prod)`
-- **Git details** — branch, commit hash, author
-- **Artifact links** — TestFlight / Play Store track links
-- **Duration** — total elapsed build time
+GitHub-style `X-Hub-Signature-256` (HMAC-SHA256 of the body) is accepted instead of `X-Webhook-Secret`. Without `WEBHOOK_SECRET` the endpoint is disabled (`503`). The server is localhost-only, so the caller must run on the same machine (e.g. a self-hosted runner).
 
 ---
 
 ## 📋 Deployment History
 
-Every completed job is recorded to `<WORKSPACE_ROOT>/.dev-dashboard/deployment_history.jsonl`:
-
-- **Format:** One JSON object per line (append-only)
-- **Fields:** `job_id`, `app_name`, `action`, `flavor`, `status`, `start_time`, `end_time`, `duration_seconds`, `exit_code`
-- **Rotation:** Auto-managed to prevent unbounded growth
-- **UI:** Viewable under the **History** tab in the console
+Each finished job is appended to `<project>/.dev-dashboard/deployment_history.jsonl` with `id`, `app`, `templateId`, `flavor`, `env`, `command`, `status`, `returnCode`, `startedAt`, `finishedAt`, `durationSeconds`, `outputExcerpt`, `errorExcerpt` and `chainedJobId`. The **History** tab reads it.
 
 ---
 
-## 🌐 REST API Reference
+## 🏗️ Architecture & API
 
-| Method | Endpoint | Description |
+- **How it works, design rules and every file:** [ARCHITECTURE.md](ARCHITECTURE.md)
+- **REST API** (all endpoints, headers, request/response shapes): [docs/API.md](docs/API.md)
+- **Why it is built this way:** [docs/adr/](docs/adr/)
+
+---
+
+## 📁 Configuration & Data Files
+
+| File | Scope | Contents |
 |---|---|---|
-| `GET` | `/api/deployment/apps` | Lists all discovered apps in the workspace |
-| `GET` | `/api/deployment/commands` | Returns generated command cards (`?app=<id>`) |
-| `GET` | `/api/deployment/templates` | Returns available action templates |
-| `GET` | `/api/deployment/deploy-config` | Returns full per-app deployment configuration |
-| `POST` | `/api/deployment/deploy-config/save` | Saves per-app deployment configuration |
-| `POST` | `/api/deployment/apps` | Registers a new app in `apps_config.json` |
-| `POST` | `/api/deployment/p8/upload` | Uploads an App Store Connect API key (`.p8`); supports `multipart/form-data` or JSON+Base64 |
-| `POST` | `/api/deployment/execute` | Starts a build or deployment job |
-| `GET` | `/api/deployment/job` | Polls job status and streams log output (`?id=<jobId>`) |
-| `POST` | `/api/deployment/job/stop` | Stops a running job |
-| `GET` | `/api/deployment/history` | Retrieves history (`?app=`, `?flavor=`, `?status=`, `?limit=`) |
-| `GET` | `/api/deployment/batch-plan` | Generates a batch plan (`?flavor=`, `?templateId=`) |
-| `GET` | `/api/deployment/workspaces` | Lists configured workspaces |
-| `POST` | `/api/deployment/workspace/select` | Switches the active workspace dynamically |
-| `POST` | `/api/deployment/inject-melos` | Injects deployment commands into `pubspec.yaml` |
-| `POST` | `/api/deployment/regenerate-commands` | Rebuilds cached command cards for all apps |
-| `GET` | `/api/deployment/scan-config` | Auto-scans and returns detected config (`?app=`) |
-| `POST` | `/api/deployment/scan-all` | Bulk scans all apps in workspace and merges discovered Bundle IDs & package names |
-| `GET` | `/api/deployment/inspect-path` | Inspects candidate directory path before opening (`?path=`) — returns app counts, tech stacks, monorepo state |
-| `GET` | `/api/deployment/ios-cert-check` | Checks iOS cert/profile expiry (`?app=`, `?flavor=`) |
-| `POST` | `/api/deployment/webhook` | Triggers a build from CI/CD |
+| `config/deployment_templates.json` | tool | Command definitions |
+| `config/workspaces_list.json` | local | Added projects `[{name, path}]` |
+| `.env` | local | Environment overrides |
+| `<project>/.dev-dashboard/apps_config.json` | project | Detected apps: id, name, path, stack, `is_package`, color, icon |
+| `<project>/.dev-dashboard/deploy_config.json` | project | Flavors, bundle IDs, package names, Apple ID, issuer, Firebase paths, auto-release |
+| `<project>/.dev-dashboard/deployment_history.jsonl` | project | Job history |
+| `~/.config/dev-deployment/auth_token.txt` | user | API token |
+| `~/.config/dev-deployment/credentials.json` | user | Key ↔ app mapping |
+| `~/.config/dev-deployment/keys/` | user | Imported Play keys |
+| `~/.appstoreconnect/private_keys/` | user | Imported `.p8` keys |
 
----
+The console adds `.dev-dashboard/` to the project's `.gitignore` when it first writes settings, unless the `.gitignore` already mentions it. If your team commits these files, `deploy_config.json` contains no secrets.
 
-## 📁 Configuration Files Reference
-
-### `.dev-dashboard/apps_config.json`
-Auto-managed list of registered apps:
-```json
-[
-  { "id": "my_app", "name": "My App", "color": "#8b5cf6", "icon": "smartphone", "version": "1.0.0 (1)" }
-]
-```
-
-### `.dev-dashboard/deploy_config.json`
-Per-app credentials and settings (managed via Setup modal or API):
 ```json
 {
   "apps": {
-    "<app_id>": {
-      "flavors": ["dev", "qa", "prod"],
-      "apple_id": "developer@company.com",
+    "customer": {
+      "flavors": ["dev", "prod"],
+      "bundle_id_prod": "com.acme.customer",
+      "android_package_prod": "com.acme.customer",
+      "apple_id": "developer@acme.com",
       "apple_issuer_id": "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
-      "apple_key_id": "ABCD123456",
-      "apple_p8_base64": "LS0tLS1CRUdJTi...",
-      "play_service_account_path": "private_keys/play-service-account.json",
-      "bundle_id_dev": "com.company.app.dev",
-      "bundle_id_qa": "com.company.app.qa",
-      "bundle_id_prod": "com.company.app",
-      "android_package_dev": "com.company.app.dev",
-      "android_package_prod": "com.company.app",
+      "google_services_json_prod": "mobile/customer/android/app/src/prod/google-services.json",
       "auto_release_on_success": false,
       "auto_release_action": "release_push",
       "auto_release_flavors": ["prod"]
@@ -676,89 +435,37 @@ Per-app credentials and settings (managed via Setup modal or API):
 }
 ```
 
-### `config/deployment_templates.json`
-Defines the action buttons available in the dashboard. Groups: `ios`, `android`, `utility`, `release`.
+---
 
-### `.env`
-User-specific environment overrides (never committed):
-```ini
-WORKSPACE_ROOT=/path/to/my/workspace
-DEPLOYMENT_PORT=18112
-GOOGLE_CHAT_WEBHOOK_URL=https://chat.googleapis.com/...
-```
+## 🔧 Environment Variables
 
-### `config/workspaces_list.json`
-Auto-managed list of known workspaces (written when you switch workspaces from the UI):
-```json
-["/home/user/project-a", "/home/user/project-b"]
-```
+| Variable | Purpose |
+|---|---|
+| `WORKSPACE_ROOT` | Project shown first (default: `config/active_workspace.txt`, else this repo) |
+| `DEPLOYMENT_PORT` | Server port (default `18112`) |
+| `DEPLOYMENT_AUTH_TOKEN` | Fixed API token instead of the generated one |
+| `DEPLOYMENT_TMP_DIR` | Temp/log directory for jobs |
+| `WEBHOOK_SECRET` | Enables `/api/deployment/webhook` |
+| `GOOGLE_CHAT_WEBHOOK_URL` | Build notification cards in Google Chat |
+| `DEFAULT_TEAM_ID` | Apple team fallback |
+
+Set by the console for every job: `WORKSPACE_ROOT`, `DEPLOYMENT_PYTHON`, `DASHBOARD_SCRIPTS_PATH`, and the credential variables listed above.
 
 ---
 
-## 📂 Project Structure Overview
+## ⚠️ Known Limitations
 
-```text
-dev-deployment/
-├── config/
-│   ├── deployment_templates.json    # Build & deploy action definitions
-│   ├── workspaces_list.json         # Auto-managed workspace list
-│   └── active_workspace.example.txt # Workspace pointer example
-├── features/
-│   └── deployment/                  # Full deployment subsystem
-│       ├── backend/                 # Python HTTP server & router
-│       ├── bin/                     # Start/stop/restart scripts
-│       ├── fastlane/                # iOS Fastlane lanes
-│       ├── frontend/                # Web dashboard (HTML, JS, CSS)
-│       └── scripts/                 # Bash build & upload automation
-├── frontend/                        # Shared UI component library
-├── start.sh                         # Main entry point
-├── .env.example                     # Environment template
-└── .gitignore                       # Excludes keys, secrets, logs, pid files
-```
+- **Dynamic Gradle flavors** (generated in loops or remote scripts) cannot be read statically — enter them in Configure → General.
+- **iOS builds need macOS** with Xcode.
+- **Single machine**: the server is localhost-only by design.
+- **Release summaries are generated, not edited** — adjust commit messages, or edit `CHANGELOG.md` after **2. Update CHANGELOG.md Only**.
 
 ---
 
-## 🤝 Contributing & Roadmap
+## 🤝 Contributing
 
-We love open-source contributions! Want to help make Dev Deployment Console better?
-
-Check out our **[CONTRIBUTING.md](CONTRIBUTING.md)** for:
-- 🚀 **Feature Wishlist & Ideas** (Melos monorepo scanning improvements, bulk workspace auto-scan, Slack/Discord webhooks, etc.)
-- 🛠️ **Dev Setup & PR Guidelines**
-- 🎨 **Code Standards**
-
----
-
-## ❓ Frequently Asked Questions
-
-### 1. What is this tool, and who is it for?
-Dev Deployment Console is a lightweight, local web dashboard designed for mobile and web developers. It provides a point-and-click UI to build, sign, and upload apps (Flutter, React Native, iOS/Android Native, Node) to TestFlight and Google Play Store without manually typing terminal commands or memorizing CLI flags.
-
-### 2. What do I need installed?
-- **Python ≥ 3.10** (standard library only; no pip dependencies required).
-- **Bash 4+** (standard on Linux; installed via Homebrew on macOS).
-- Your ecosystem build tools (Flutter SDK, Xcode on macOS, Android Studio / JDK, or fastlane depending on what you build).
-
-### 3. How do I start and stop it?
-Run `./start.sh` or `python3 features/deployment/backend/server.py --port 18112`. For background execution, use `./features/deployment/bin/start-deployment.sh` and stop with `./features/deployment/bin/stop-deployment.sh`.
-
-### 4. Are my secrets and credentials safe?
-**Yes.** All secrets, `.env` files, build logs, private keystores, and App Store Connect `.p8` keys are kept out of Git. The dashboard automatically adds `.dev-dashboard/` to your workspace `.gitignore` on first run, and `.p8` keys are saved to `~/.appstoreconnect/private_keys/` with `chmod 600`.
-
-### 5. Can I run this on Linux and macOS?
-**Yes.** The dashboard, server, and runner scripts run on both Linux and macOS. Linux can build Android APK/AAB bundles and web projects; macOS is required for iOS signing and Xcode builds.
-
----
-
-> 📖 **More questions? See our comprehensive [FAQ.md](FAQ.md)** for detailed answers on:
-> - Single apps with no flavors vs. flavored projects
-> - Melos 7 & Dart pub workspace support (`workspace:` in `pubspec.yaml`)
-> - Autoscan & ID matching behavior
-> - Concurrency guard (`APP_BUSY`) & prod deployment safety gates
-> - Security model (localhost-only policy) & troubleshooting guide
-
----
+See [CONTRIBUTING.md](CONTRIBUTING.md) for setup, tests and the roadmap, and [docs/proposals/](docs/proposals/) for features that are designed and ready to build. More answers in [FAQ.md](FAQ.md); how the code is organised is in [ARCHITECTURE.md](ARCHITECTURE.md). Report vulnerabilities as described in [SECURITY.md](SECURITY.md).
 
 ## 📄 License
 
-This project is open-source and available under the [MIT License](LICENSE).
+[MIT](LICENSE)
