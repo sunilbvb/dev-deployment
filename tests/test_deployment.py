@@ -2074,5 +2074,204 @@ class TestCertificateAndKeystoreSentinel(unittest.TestCase):
             httpd.server_close()
 
 
+class TestBuildSizeInspectorAndDiff(unittest.TestCase):
 
+    def setUp(self):
+        self.temp_dir = tempfile.TemporaryDirectory()
+        self.ws_root = Path(self.temp_dir.name).resolve()
+        self._orig_ws = config.WORKSPACE_ROOT
+        config.WORKSPACE_ROOT = self.ws_root
 
+        self.app_dir = self.ws_root / "test_app"
+        self.app_dir.mkdir(parents=True, exist_ok=True)
+        self.bundle_dir = self.app_dir / "build" / "app" / "outputs" / "bundle" / "prodRelease"
+        self.bundle_dir.mkdir(parents=True, exist_ok=True)
+
+    def tearDown(self):
+        config.WORKSPACE_ROOT = self._orig_ws
+        self.temp_dir.cleanup()
+
+    def test_formatting_utilities(self):
+        import build_size
+
+        self.assertEqual(build_size.format_bytes(0), "0 B")
+        self.assertEqual(build_size.format_bytes(1024), "1.0 KB")
+        self.assertEqual(build_size.format_bytes(25375539), "24.2 MB")
+        self.assertEqual(build_size.format_bytes(1073741824), "1.00 GB")
+
+        self.assertEqual(build_size.format_delta_bytes(0), "0 B")
+        self.assertEqual(build_size.format_delta_bytes(3984588), "+3.8 MB")
+        self.assertEqual(build_size.format_delta_bytes(-1048576), "-1.0 MB")
+
+        self.assertEqual(build_size.format_delta_percent(18.0), "+18.0%")
+        self.assertEqual(build_size.format_delta_percent(-5.5), "-5.5%")
+        self.assertEqual(build_size.format_delta_percent(0.0), "0%")
+
+    def test_archive_contents_inspection_and_uncompressed_warning(self):
+        import zipfile
+        import build_size
+
+        archive_path = self.bundle_dir / "app-prod-release.aab"
+        with zipfile.ZipFile(archive_path, "w") as zf:
+            # 1. Deflated standard code
+            zf.writestr(
+                zipfile.ZipInfo("base/dex/classes.dex"),
+                b"x" * 20000,
+                compress_type=zipfile.ZIP_DEFLATED,
+            )
+            # 2. Huge uncompressed asset (STORED >= 500 KB)
+            zf.writestr(
+                zipfile.ZipInfo("base/assets/intro_video.mp4"),
+                b"v" * 600000,
+                compress_type=zipfile.ZIP_STORED,
+            )
+            # 3. Deflated image
+            zf.writestr(
+                zipfile.ZipInfo("base/res/drawable/logo.png"),
+                b"p" * 15000,
+                compress_type=zipfile.ZIP_DEFLATED,
+            )
+
+        inspection = build_size.inspect_archive_contents(archive_path)
+        self.assertEqual(inspection["fileCount"], 3)
+        self.assertTrue(inspection["hasUncompressedWarnings"])
+        self.assertEqual(len(inspection["uncompressedAssets"]), 1)
+        self.assertEqual(inspection["uncompressedAssets"][0]["name"], "base/assets/intro_video.mp4")
+        self.assertIn("STORED", inspection["uncompressedAssets"][0]["warning"])
+        self.assertGreater(inspection["compressionRatio"], 0)
+        self.assertGreater(len(inspection["largestFiles"]), 0)
+
+    def test_compare_build_size_baseline_and_warning_threshold(self):
+        import build_size
+
+        # 1. Baseline Run
+        art1 = {
+            "path": str(self.bundle_dir / "app-prod-release.aab"),
+            "filename": "app-prod-release.aab",
+            "type": "AAB",
+            "sizeBytes": 20 * 1024 * 1024,
+            "sizeFormatted": "20.0 MB",
+        }
+        res_baseline = build_size.compare_build_size(
+            app_id="test_app",
+            flavor="prod",
+            current_artifact=art1,
+            ws_root=self.ws_root,
+        )
+        self.assertTrue(res_baseline["success"])
+        self.assertFalse(res_baseline["hasBaseline"])
+        self.assertIn("first baseline", res_baseline["summary"])
+
+        # Record baseline in history JSONL file
+        history_dir = self.ws_root / ".dev-dashboard"
+        history_dir.mkdir(parents=True, exist_ok=True)
+        history_file = history_dir / "deployment_history.jsonl"
+        history_file.write_text(json.dumps({
+            "id": "job_001",
+            "app": "test_app",
+            "flavor": "prod",
+            "status": "success",
+            "completedAt": "2026-10-01T12:00:00Z",
+            "artifact": art1,
+        }) + "\n", encoding="utf-8")
+
+        # 2. Second Run: +3.8 MB, +18.0% increase -> triggers Warning ⚠️
+        art2 = {
+            "path": str(self.bundle_dir / "app-prod-release.aab"),
+            "filename": "app-prod-release.aab",
+            "type": "AAB",
+            "sizeBytes": int(23.6 * 1024 * 1024),
+            "sizeFormatted": "23.6 MB",
+        }
+        res_growth = build_size.compare_build_size(
+            app_id="test_app",
+            flavor="prod",
+            current_artifact=art2,
+            current_job_id="job_002",
+            ws_root=self.ws_root,
+        )
+        self.assertTrue(res_growth["success"])
+        self.assertTrue(res_growth["hasBaseline"])
+        self.assertEqual(res_growth["severity"], "warning")
+        self.assertEqual(res_growth["badgeVariant"], "warning")
+        self.assertIn("⚠️", res_growth["summary"])
+        self.assertIn("+3.6 MB", res_growth["summary"])
+        self.assertIn("+18.0%", res_growth["summary"])
+
+    def test_archive_entry_diff(self):
+        import zipfile
+        import build_size
+
+        prev_zip = self.bundle_dir / "prev.aab"
+        curr_zip = self.bundle_dir / "curr.aab"
+
+        with zipfile.ZipFile(prev_zip, "w") as zf:
+            zf.writestr("lib/arm64-v8a/libapp.so", b"a" * 100000)
+            zf.writestr("assets/deprecated_asset.png", b"b" * 50000)
+
+        with zipfile.ZipFile(curr_zip, "w") as zf:
+            zf.writestr("lib/arm64-v8a/libapp.so", b"a" * 150000)  # +50 KB
+            zf.writestr("assets/new_feature_video.mp4", b"c" * 80000)  # Added
+
+        diff = build_size._compute_archive_diff(str(prev_zip), str(curr_zip))
+        self.assertTrue(diff["hasDiff"])
+        self.assertEqual(diff["addedCount"], 1)
+        self.assertEqual(diff["addedAssets"][0]["name"], "assets/new_feature_video.mp4")
+        self.assertEqual(diff["removedCount"], 1)
+        self.assertEqual(diff["removedAssets"][0]["name"], "assets/deprecated_asset.png")
+        self.assertEqual(diff["grownCount"], 1)
+        self.assertEqual(diff["grownAssets"][0]["name"], "lib/arm64-v8a/libapp.so")
+        self.assertEqual(diff["grownAssets"][0]["deltaBytes"], 50000)
+
+    def test_inspect_and_diff_job_integration(self):
+        import zipfile
+        import build_size
+
+        aab_file = self.bundle_dir / "app-prod-release.aab"
+        with zipfile.ZipFile(aab_file, "w") as zf:
+            zf.writestr("base/dex/classes.dex", b"test" * 500)
+
+        job = {
+            "id": "job_inspect_test",
+            "app": "test_app",
+            "flavor": "prod",
+            "status": "success",
+            "started_at": 1000.0,
+        }
+
+        res = build_size.inspect_and_diff_job(job, ws_root=self.ws_root)
+        self.assertIsNotNone(res)
+        self.assertIn("buildSize", job)
+        self.assertIn("artifact", job)
+        self.assertEqual(job["buildSize"]["currentFilename"], "app-prod-release.aab")
+
+    def test_server_build_size_endpoint(self):
+        import http.client
+        import http.server
+        import zipfile
+        import server
+        import threading
+
+        aab_file = self.bundle_dir / "app-prod-release.aab"
+        with zipfile.ZipFile(aab_file, "w") as zf:
+            zf.writestr("base/dex/classes.dex", b"test" * 500)
+
+        httpd = http.server.ThreadingHTTPServer(("127.0.0.1", 0), server.DeploymentHandler)
+        port = httpd.server_address[1]
+        t = threading.Thread(target=httpd.serve_forever, daemon=True)
+        t.start()
+
+        try:
+            token = server._get_auth_token()
+            conn = http.client.HTTPConnection("127.0.0.1", port)
+
+            conn.request("GET", "/api/deployment/build-size?app=test_app&flavor=prod", headers={"X-API-Token": token})
+            res = conn.getresponse()
+            self.assertEqual(res.status, 200)
+            data = json.loads(res.read().decode("utf-8"))
+            self.assertTrue(data.get("success"))
+            self.assertIn("buildSize", data)
+            self.assertEqual(data["buildSize"]["currentFilename"], "app-prod-release.aab")
+        finally:
+            httpd.shutdown()
+            httpd.server_close()

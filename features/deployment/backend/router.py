@@ -1,4 +1,5 @@
 import artifacts
+import build_size
 import credentials
 import doctor
 import notifications
@@ -93,4 +94,10 @@ check_workspace_sentinel = sentinel.check_workspace_sentinel
 check_apple_expiry = sentinel.check_apple_expiry
 check_android_keystore_expiry = sentinel.check_android_keystore_expiry
 check_firebase_mismatch = sentinel.check_firebase_mismatch
+find_build_artifact = build_size.find_build_artifact
+inspect_archive_contents = build_size.inspect_archive_contents
+compare_build_size = build_size.compare_build_size
+inspect_and_diff_job = build_size.inspect_and_diff_job
+get_build_size_info = build_size.get_build_size_info
+
 

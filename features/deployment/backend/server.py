@@ -279,6 +279,12 @@ class DeploymentHandler(http.server.SimpleHTTPRequestHandler):
                 else:
                     self.write_json(router.check_workspace_sentinel(flavor=flavor))
                 return
+            if parsed.path == "/api/deployment/build-size":
+                job_id = query.get("jobId", [""])[0] or None
+                app_id = query.get("app", [""])[0] or None
+                flavor = query.get("flavor", ["prod"])[0]
+                self.write_json(router.get_build_size_info(job_id=job_id, app_id=app_id, flavor=flavor))
+                return
             if parsed.path == "/api/deployment/apps":
                 self.write_json(router.get_apps())
                 return
