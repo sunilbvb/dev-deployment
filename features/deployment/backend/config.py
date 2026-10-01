@@ -64,6 +64,9 @@ def get_workspace_root() -> Path:
 
 def _get_allowed_workspace_roots() -> list[Path]:
     allowed = [DASHBOARD_ROOT.resolve()]
+    curr_ws = get_workspace_root().resolve()
+    if curr_ws not in allowed:
+        allowed.append(curr_ws)
     for filename in ("workspaces_list.json", "workspaces_list.example.json"):
         ws_file = DASHBOARD_ROOT / "config" / filename
         if ws_file.exists():

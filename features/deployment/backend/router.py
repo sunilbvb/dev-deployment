@@ -1,7 +1,9 @@
+import artifacts
 import credentials
 import doctor
 import picker
 import pipelines
+import qr
 from config import (
     add_app as config_add_app,
     allow_workspace as config_allow_workspace,
@@ -70,4 +72,12 @@ run_pipeline = pipelines.run_pipeline
 stop_pipeline_run = pipelines.stop_pipeline_run
 get_pipeline_run = pipelines.get_pipeline_run
 diagnose_app = doctor.diagnose_app
+get_apk_download_info = artifacts.get_apk_download_info
+resolve_safe_apk_path = artifacts.resolve_safe_apk_path
+find_apk_artifact = artifacts.find_apk_artifact
+get_lan_ip = artifacts.get_lan_ip
+qr_svg = qr.qr_svg
+qr_ascii = qr.qr_ascii
+generate_qr = qr.generate_qr
+generate_qr_matrix = qr.generate_qr_matrix
 
