@@ -163,8 +163,29 @@ const els = {
     serverModalPort: document.getElementById('serverModalPort'),
     serverModalPid: document.getElementById('serverModalPid'),
     serverModalPython: document.getElementById('serverModalPython'),
+    serverModalUptimeRow: document.getElementById('serverModalUptimeRow'),
+    serverModalUptime: document.getElementById('serverModalUptime'),
     copyServerSnippetBtn: document.getElementById('copyServerSnippetBtn'),
     testServerReconnectBtn: document.getElementById('testServerReconnectBtn'),
+    serverStartBtn: document.getElementById('serverStartBtn'),
+    serverRestartBtn: document.getElementById('serverRestartBtn'),
+    serverStopBtn: document.getElementById('serverStopBtn'),
+    serverEndBtn: document.getElementById('serverEndBtn'),
+    serverInstallDesktopBtn: document.getElementById('serverInstallDesktopBtn'),
+    serverInstallServiceBtn: document.getElementById('serverInstallServiceBtn'),
+    launcherStatusMsg: document.getElementById('launcherStatusMsg'),
+    cfgServerStatusBadge: document.getElementById('cfgServerStatusBadge'),
+    cfgServerStatusText: document.getElementById('cfgServerStatusText'),
+    cfgServerPortText: document.getElementById('cfgServerPortText'),
+    cfgServerPidText: document.getElementById('cfgServerPidText'),
+    cfgServerUptimeText: document.getElementById('cfgServerUptimeText'),
+    cfgServerStartBtn: document.getElementById('cfgServerStartBtn'),
+    cfgServerRestartBtn: document.getElementById('cfgServerRestartBtn'),
+    cfgServerStopBtn: document.getElementById('cfgServerStopBtn'),
+    cfgServerEndBtn: document.getElementById('cfgServerEndBtn'),
+    cfgServerInstallDesktopBtn: document.getElementById('cfgServerInstallDesktopBtn'),
+    cfgServerInstallServiceBtn: document.getElementById('cfgServerInstallServiceBtn'),
+    cfgLauncherStatusMsg: document.getElementById('cfgLauncherStatusMsg'),
 };
 
 // C9: Tab-isolated workspace - attach X-Workspace header to all fetch requests
@@ -2491,8 +2512,21 @@ async function loadDoc(docId) {
 
 // ═══════════════════════════ Server Status & Console Controller ═══════════════════════════
 
+function formatUptime(sec) {
+    if (!sec || isNaN(sec)) return '-';
+    sec = Math.floor(sec);
+    if (sec < 60) return `${sec}s`;
+    const m = Math.floor(sec / 60);
+    const s = sec % 60;
+    if (m < 60) return `${m}m ${s}s`;
+    const h = Math.floor(m / 60);
+    const rm = m % 60;
+    return `${h}h ${rm}m`;
+}
+
 function updateServerStatusUI(isOnline, info = {}) {
     state.isServerOnline = isOnline;
+    const uptimeStr = formatUptime(info.uptimeSeconds);
 
     if (els.serverStatusDot && els.serverStatusText && els.serverStatusBadge) {
         if (isOnline) {
@@ -2531,6 +2565,10 @@ function updateServerStatusUI(isOnline, info = {}) {
             if (els.serverModalPort) els.serverModalPort.textContent = info.port || 18112;
             if (els.serverModalPid) els.serverModalPid.textContent = info.pid || 'Active';
             if (els.serverModalPython) els.serverModalPython.textContent = info.pythonVersion || 'Python 3';
+            if (els.serverModalUptimeRow && els.serverModalUptime) {
+                els.serverModalUptimeRow.style.display = 'block';
+                els.serverModalUptime.textContent = uptimeStr;
+            }
         } else {
             els.serverModalStatusTitle.textContent = '🟠 Server Offline';
             els.serverModalStatusBadge.setAttribute('data-variant', 'warning');
@@ -2539,7 +2577,175 @@ function updateServerStatusUI(isOnline, info = {}) {
             if (els.serverModalPort) els.serverModalPort.textContent = '18112 (default)';
             if (els.serverModalPid) els.serverModalPid.textContent = 'Not running';
             if (els.serverModalPython) els.serverModalPython.textContent = 'Requires Python 3.10+';
+            if (els.serverModalUptimeRow) els.serverModalUptimeRow.style.display = 'none';
         }
+    }
+
+    // Update Configure Server Panel if present
+    if (els.cfgServerStatusBadge) {
+        els.cfgServerStatusBadge.setAttribute('data-variant', isOnline ? 'success' : 'warning');
+        els.cfgServerStatusBadge.textContent = isOnline ? 'ONLINE' : 'OFFLINE';
+    }
+    if (els.cfgServerStatusText) {
+        els.cfgServerStatusText.textContent = isOnline ? '🟢 Online' : '🟠 Offline';
+        els.cfgServerStatusText.style.color = isOnline ? 'var(--ui-success, #22c55e)' : 'var(--ui-warning, #f59e0b)';
+    }
+    if (els.cfgServerPortText) els.cfgServerPortText.textContent = info.port || '18112';
+    if (els.cfgServerPidText) els.cfgServerPidText.textContent = isOnline ? (info.pid || 'Active') : 'Not running';
+    if (els.cfgServerUptimeText) els.cfgServerUptimeText.textContent = isOnline ? uptimeStr : '-';
+
+    // Update lifecycle button states
+    const updateButtons = (startBtn, restartBtn, stopBtn, endBtn) => {
+        if (startBtn) {
+            startBtn.disabled = isOnline;
+            startBtn.innerHTML = isOnline ? '<i data-lucide="check"></i><span>Running</span>' : '<i data-lucide="play"></i><span>Start</span>';
+        }
+        if (restartBtn) restartBtn.disabled = !isOnline;
+        if (stopBtn) stopBtn.disabled = !isOnline;
+        if (endBtn) endBtn.disabled = !isOnline;
+    };
+    updateButtons(els.serverStartBtn, els.serverRestartBtn, els.serverStopBtn, els.serverEndBtn);
+    updateButtons(els.cfgServerStartBtn, els.cfgServerRestartBtn, els.cfgServerStopBtn, els.cfgServerEndBtn);
+    refreshIcons();
+}
+
+async function handleServerStart() {
+    if (state.isServerOnline) {
+        showToast('Server is already active and healthy!');
+        return;
+    }
+    showToast('Checking connection to deployment server...');
+    const ok = await checkServerStatus();
+    if (ok) {
+        showToast('Connected to local deployment server!');
+    } else {
+        showToast('Server is offline. Click "Create Desktop Shortcut" below or launch via terminal.', 'warning');
+    }
+}
+
+async function handleServerRestart() {
+    if (!state.isServerOnline) {
+        showToast('Cannot restart: server is offline.', 'warning');
+        return;
+    }
+    try {
+        showToast('Restarting deployment server in-place...');
+        if (els.serverRestartBtn) els.serverRestartBtn.disabled = true;
+        if (els.cfgServerRestartBtn) els.cfgServerRestartBtn.disabled = true;
+
+        await fetch(api('/api/deployment/server/restart'), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({}),
+        });
+
+        // Poll for server coming back online
+        let attempts = 0;
+        const pollInterval = setInterval(async () => {
+            attempts++;
+            const backOnline = await checkServerStatus(true);
+            if (backOnline || attempts > 15) {
+                clearInterval(pollInterval);
+                if (backOnline) {
+                    showToast('Server restarted successfully!');
+                } else {
+                    showToast('Server restart taking longer than expected.', 'warning');
+                }
+            }
+        }, 600);
+    } catch (_) {
+        showToast('Restart initiated. Reconnecting...');
+    }
+}
+
+async function handleServerStop() {
+    if (!state.isServerOnline) {
+        showToast('Server is already offline.');
+        return;
+    }
+    try {
+        showToast('Stopping deployment server...');
+        await fetch(api('/api/deployment/server/stop'), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({}),
+        });
+        setTimeout(() => {
+            updateServerStatusUI(false);
+            showToast('Server stopped.');
+        }, 500);
+    } catch (_) {
+        updateServerStatusUI(false);
+    }
+}
+
+async function handleServerEnd() {
+    if (!state.isServerOnline) {
+        showToast('Server is already offline.');
+        return;
+    }
+    try {
+        showToast('Terminating server process...');
+        await fetch(api('/api/deployment/server/end'), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ force: true }),
+        });
+        setTimeout(() => {
+            updateServerStatusUI(false);
+            showToast('Server process terminated.');
+        }, 400);
+    } catch (_) {
+        updateServerStatusUI(false);
+    }
+}
+
+async function handleInstallDesktopShortcut(isFromCfg = false) {
+    const statusEl = isFromCfg ? els.cfgLauncherStatusMsg : els.launcherStatusMsg;
+    try {
+        showToast('Creating desktop shortcut...');
+        const res = await fetch(api('/api/deployment/server/install-desktop'), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({}),
+        });
+        const data = await res.json();
+        if (data && data.success) {
+            showToast('Desktop shortcut created!');
+            if (statusEl) {
+                statusEl.style.display = 'block';
+                statusEl.textContent = '✓ Desktop application launcher installed. Launch anytime without terminal!';
+            }
+        } else {
+            showToast((data && data.error) || 'Failed to create shortcut', 'warning');
+        }
+    } catch (_) {
+        showToast('Server must be active to create desktop integration.', 'warning');
+    }
+}
+
+async function handleInstallSystemdService(isFromCfg = false) {
+    const statusEl = isFromCfg ? els.cfgLauncherStatusMsg : els.launcherStatusMsg;
+    try {
+        showToast('Installing background systemd service...');
+        const res = await fetch(api('/api/deployment/server/install-service'), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({}),
+        });
+        const data = await res.json();
+        if (data && data.success) {
+            showToast('Background service installed and enabled!');
+            if (statusEl) {
+                statusEl.style.display = 'block';
+                statusEl.textContent = '✓ Systemd user service active. Server runs automatically on login!';
+            }
+            await checkServerStatus();
+        } else {
+            showToast((data && (data.error || data.warning)) || 'Failed to install service', 'warning');
+        }
+    } catch (_) {
+        showToast('Server must be active to configure service.', 'warning');
     }
 }
 
@@ -3010,6 +3216,28 @@ if (els.startDemoModeBtn) {
 if (els.exitDemoModeBtn) {
     els.exitDemoModeBtn.addEventListener('click', exitDemoMode);
 }
+
+// Server Console & Configure Dialog Server Action Listeners
+if (els.serverStartBtn) els.serverStartBtn.addEventListener('click', handleServerStart);
+if (els.serverRestartBtn) els.serverRestartBtn.addEventListener('click', handleServerRestart);
+if (els.serverStopBtn) els.serverStopBtn.addEventListener('click', handleServerStop);
+if (els.serverEndBtn) els.serverEndBtn.addEventListener('click', handleServerEnd);
+if (els.serverInstallDesktopBtn) els.serverInstallDesktopBtn.addEventListener('click', () => handleInstallDesktopShortcut(false));
+if (els.serverInstallServiceBtn) els.serverInstallServiceBtn.addEventListener('click', () => handleInstallSystemdService(false));
+
+if (els.cfgServerStartBtn) els.cfgServerStartBtn.addEventListener('click', handleServerStart);
+if (els.cfgServerRestartBtn) els.cfgServerRestartBtn.addEventListener('click', handleServerRestart);
+if (els.cfgServerStopBtn) els.cfgServerStopBtn.addEventListener('click', handleServerStop);
+if (els.cfgServerEndBtn) els.cfgServerEndBtn.addEventListener('click', handleServerEnd);
+if (els.cfgServerInstallDesktopBtn) els.cfgServerInstallDesktopBtn.addEventListener('click', () => handleInstallDesktopShortcut(true));
+if (els.cfgServerInstallServiceBtn) els.cfgServerInstallServiceBtn.addEventListener('click', () => handleInstallSystemdService(true));
+
+window.handleServerStart = handleServerStart;
+window.handleServerRestart = handleServerRestart;
+window.handleServerStop = handleServerStop;
+window.handleServerEnd = handleServerEnd;
+window.handleInstallDesktopShortcut = handleInstallDesktopShortcut;
+window.handleInstallSystemdService = handleInstallSystemdService;
 
 // ═══════════════════════════ Application Initialization ═══════════════════════════
 

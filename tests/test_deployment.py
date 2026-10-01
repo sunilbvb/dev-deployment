@@ -2381,3 +2381,62 @@ class TestDocumentationAndServerStatus(unittest.TestCase):
             httpd.shutdown()
             httpd.server_close()
 
+    def test_server_manager_functions(self):
+        import server_manager
+
+        # 1. Desktop launcher installation
+        res_launcher = server_manager.install_desktop_launcher()
+        self.assertTrue(res_launcher["success"])
+        self.assertIn("message", res_launcher)
+
+        # 2. Service status query
+        status = server_manager.get_service_status()
+        self.assertIn("installed", status)
+        self.assertIn("running", status)
+        self.assertIn("enabled", status)
+
+    def test_server_lifecycle_http_endpoints(self):
+        import http.client
+        import http.server
+        import server
+        import threading
+
+        httpd = http.server.ThreadingHTTPServer(("127.0.0.1", 0), server.DeploymentHandler)
+        port = httpd.server_address[1]
+        t = threading.Thread(target=httpd.serve_forever, daemon=True)
+        t.start()
+
+        try:
+            conn = http.client.HTTPConnection("127.0.0.1", port)
+            token = server._get_auth_token()
+
+            # GET /api/deployment/server/status
+            conn.request("GET", "/api/deployment/server/status")
+            res_status = conn.getresponse()
+            self.assertEqual(res_status.status, 200)
+            data_status = json.loads(res_status.read().decode("utf-8"))
+            self.assertTrue(data_status["success"])
+            self.assertEqual(data_status["status"], "online")
+
+            # GET /api/deployment/server/service-status
+            conn.request("GET", "/api/deployment/server/service-status")
+            res_svc = conn.getresponse()
+            self.assertEqual(res_svc.status, 200)
+            data_svc = json.loads(res_svc.read().decode("utf-8"))
+            self.assertIn("installed", data_svc)
+
+            # POST /api/deployment/server/install-desktop (requires auth)
+            conn.request(
+                "POST",
+                "/api/deployment/server/install-desktop",
+                body=json.dumps({}),
+                headers={"Content-Type": "application/json", "X-API-Token": token}
+            )
+            res_desk = conn.getresponse()
+            self.assertEqual(res_desk.status, 200)
+            data_desk = json.loads(res_desk.read().decode("utf-8"))
+            self.assertTrue(data_desk["success"])
+        finally:
+            httpd.shutdown()
+            httpd.server_close()
+

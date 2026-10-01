@@ -10,6 +10,8 @@ import logging
 import os
 import secrets
 import sys
+import threading
+import time
 from email.parser import BytesFeedParser
 from pathlib import Path
 from typing import Any, Optional
@@ -22,6 +24,7 @@ SHARED_FRONTEND_DIR = Path(__file__).resolve().parents[3] / "frontend"
 SHARED_ASSET_PREFIXES = ("css/", "js/", "assets/")
 
 _SERVER_AUTH_TOKEN = ""
+_ACTIVE_SERVER: Optional[http.server.ThreadingHTTPServer] = None
 
 
 def _get_auth_token_file() -> Path:
@@ -249,8 +252,8 @@ class DeploymentHandler(http.server.SimpleHTTPRequestHandler):
                     if not self._verify_auth_with_query(query):
                         self.write_json({"success": False, "error": "Unauthorized: valid token required"}, status=401)
                         return
-                elif parsed.path == "/api/deployment/server-status":
-                    # Heartbeat status ping allows frontend to detect when server comes online
+                elif parsed.path in ("/api/deployment/server-status", "/api/deployment/server/status", "/api/deployment/server/service-status"):
+                    # Heartbeat and telemetry status ping allows frontend to detect when server comes online
                     pass
                 else:
                     if not self._verify_auth():
@@ -288,9 +291,12 @@ class DeploymentHandler(http.server.SimpleHTTPRequestHandler):
                 flavor = query.get("flavor", ["prod"])[0]
                 self.write_json(router.get_build_size_info(job_id=job_id, app_id=app_id, flavor=flavor))
                 return
-            if parsed.path == "/api/deployment/server-status":
+            if parsed.path in ("/api/deployment/server-status", "/api/deployment/server/status"):
                 port = self.server.server_address[1] if self.server else 18112
                 self.write_json(router.get_server_status_info(port=port))
+                return
+            if parsed.path == "/api/deployment/server/service-status":
+                self.write_json(router.get_service_status())
                 return
             if parsed.path == "/api/deployment/docs":
                 doc_name = query.get("doc", ["overview"])[0]
@@ -614,6 +620,40 @@ class DeploymentHandler(http.server.SimpleHTTPRequestHandler):
                 ))
                 return
 
+            if parsed.path in ("/api/deployment/server/stop", "/api/deployment/server/end"):
+                self.write_json({"success": True, "message": "Server shutting down gracefully..."})
+                def _do_shutdown():
+                    time.sleep(0.3)
+                    if _ACTIVE_SERVER:
+                        try:
+                            _ACTIVE_SERVER.shutdown()
+                        except Exception:
+                            pass
+                    sys.exit(0)
+                threading.Thread(target=_do_shutdown, daemon=True).start()
+                return
+
+            if parsed.path == "/api/deployment/server/restart":
+                self.write_json({"success": True, "message": "Server restarting in-place..."})
+                def _do_restart():
+                    time.sleep(0.4)
+                    if _ACTIVE_SERVER:
+                        try:
+                            _ACTIVE_SERVER.server_close()
+                        except Exception:
+                            pass
+                    os.execv(sys.executable, [sys.executable] + sys.argv)
+                threading.Thread(target=_do_restart, daemon=True).start()
+                return
+
+            if parsed.path == "/api/deployment/server/install-desktop":
+                self.write_json(router.install_desktop_launcher())
+                return
+
+            if parsed.path == "/api/deployment/server/install-service":
+                self.write_json(router.install_systemd_service())
+                return
+
             if parsed.path == "/api/deployment/execute":
                 app_id = str(data.get("app") or "")
                 req_cmd = str(data.get("command") or "")
@@ -777,7 +817,9 @@ def main() -> int:
     except Exception:
         logging.exception("Failed to migrate inline .p8 keys out of deploy_config.json")
 
+    global _ACTIVE_SERVER
     server = http.server.ThreadingHTTPServer((args.host, args.port), DeploymentHandler)
+    _ACTIVE_SERVER = server
     lan_ip = router.get_lan_ip()
     print(f"Deployment app: http://localhost:{args.port}")
     if lan_ip and lan_ip != "127.0.0.1":
