@@ -15,16 +15,15 @@ print_aab_not_found_error() {
 print_service_account_missing_error() {
     local service_account_json="$1"
     local app_name="$2"
-    local expected_workspace_path
-    expected_workspace_path="${MELOS_ROOT_PATH:-}/private_keys/play-store-deployer.json"
-
     echo "❌ ERROR: Service account file not found for app: ${app_name:-<unspecified>}"
     echo "   Expected path: $service_account_json"
     echo ""
-    echo "📋 SOLUTION:"
-    echo "   Please ensure the private_keys directory exists in the workspace root:"
-    echo "   The service account file should be located at: $expected_workspace_path"
-    echo "   This file contains the Google Play Store API credentials for Android deployment."
+    echo "📋 SOLUTION - provide the Google Play service-account JSON in any of:"
+    echo "   - SERVICE_ACCOUNT_JSON environment variable (path or raw JSON)"
+    echo "   - \"play_service_account\" in .dev-dashboard/deploy_config.json (per app or global)"
+    echo "   - <workspace>/private_keys/play-store-deployer.json"
+    echo "   - <app>/private_keys/play-store-deployer.json or <app>/android/play-store-deployer.json"
+    echo "   - ~/.config/dev-deployment/play-store-deployer.json"
 }
 
 print_play_store_upload_failed_error() {

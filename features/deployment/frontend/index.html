@@ -40,10 +40,6 @@
         <div class="ui-page-title-row">
             <h1 class="ui-page-title">Deployment Console</h1>
             <div class="ui-page-actions">
-                <button id="deployAllBtn" class="ui-button" data-variant="secondary" data-size="sm" type="button" title="Deploy All Apps">
-                    <i data-lucide="layers"></i>
-                    <span>Deploy All Apps</span>
-                </button>
                 <button id="openSetupBtn" class="ui-button" data-variant="secondary" data-size="sm" type="button" title="Deployment Setup">
                     <i data-lucide="settings-2"></i>
                     <span>Configure</span>
@@ -70,6 +66,10 @@
             </div>
             <div class="ui-card-body">
                 <div id="appGrid" class="ui-app-grid"></div>
+                <details id="packagePanel" hidden style="margin-top: 12px;">
+                    <summary id="packageSummary" style="cursor: pointer; font-size: 0.78rem; color: var(--ui-text-muted);"></summary>
+                    <ul id="packageList" style="margin: 8px 0 0; padding-left: 18px; font-size: 0.78rem; color: var(--ui-text-secondary);"></ul>
+                </details>
             </div>
         </aside>
 
@@ -118,22 +118,6 @@
             </div>
             </div>
         </section>
-    </section>
-
-    <section id="batchProgressPanel" class="ui-card batch-progress-panel hidden">
-        <div class="ui-card-header">
-            <div>
-                <p class="eyebrow">Deploy All Apps</p>
-                <h2 id="batchSummaryLine">Running batch...</h2>
-            </div>
-            <button id="batchStopBtn" class="ui-button" data-variant="danger" type="button">
-                <i data-lucide="square"></i>
-                <span>Stop Batch</span>
-            </button>
-        </div>
-        <div class="ui-card-body">
-            <div id="batchPillRow" class="batch-pill-row"></div>
-        </div>
     </section>
 
     <section class="ui-card terminal-panel">
@@ -223,89 +207,50 @@
     </div>
 </div>
 
-<!-- ═══════════════════════════ DEPLOY ALL APPS MODAL ═══════════════════════════ -->
-<div id="batchDeployOverlay" class="ui-modal-backdrop" role="dialog" aria-modal="true" aria-label="Deploy All Apps">
-    <div class="ui-modal" data-size="md" style="max-width: 640px;">
-        <div class="ui-modal-header">
-            <div>
-                <h3 class="ui-modal-title">Deploy All Apps</h3>
-                <p class="modal-subtitle" style="font-size: 0.8rem; color: var(--ui-muted, #9aa6b8); margin: 0;">Runs sequentially, one app at a time, for the currently selected environment.</p>
-            </div>
-            <button id="closeBatchModalBtn" class="ui-modal-close" type="button">&times;</button>
-        </div>
-        <div class="ui-modal-body">
-            <div class="ui-field" style="margin-bottom: 16px;">
-                <label class="ui-label">Command</label>
-                <select id="batchTemplateSelect" class="ui-input">
-                    <option value="auto">Auto (Combined Deploy if configured, else single platform)</option>
-                    <option value="deploy_both">Build & Deploy Both (iOS + Android)</option>
-                    <option value="deploy_aab">Build & Upload AAB</option>
-                    <option value="deploy_ipa">Build & Upload IPA</option>
-                    <option value="upload_aab">Upload AAB only</option>
-                    <option value="upload_ipa">Upload IPA only</option>
-                </select>
-            </div>
-            <div id="batchPlanList" class="batch-plan-list"></div>
-        </div>
-        <div class="ui-modal-footer" style="display:flex; gap:8px; justify-content:flex-end; padding:16px;">
-            <button id="batchCancelBtn" type="button" class="ui-button" data-variant="ghost">
-                <span>Cancel</span>
-            </button>
-            <button id="batchStartBtn" type="button" class="ui-button" data-variant="primary">
-                <i data-lucide="play"></i>
-                <span>Start</span>
-            </button>
-        </div>
-    </div>
-</div>
-
 <!-- ═══════════════════════════ WORKSPACE SWITCH MODAL ═══════════════════════════ -->
-<div id="workspaceSwitchOverlay" class="ui-modal-backdrop" role="dialog" aria-modal="true" aria-label="Open Project Folder">
-    <div class="ui-modal" data-size="sm" style="max-width: 540px;">
+<div id="workspaceSwitchOverlay" class="ui-modal-backdrop" role="dialog" aria-modal="true" aria-label="Import Project">
+    <div class="ui-modal" data-size="sm" style="max-width: 560px;">
         <div class="ui-modal-header">
             <div>
-                <h3 class="ui-modal-title">Open Project Folder</h3>
-                <p class="modal-subtitle" style="font-size: 0.8rem; color: var(--ui-muted, #9aa6b8); margin: 0;">Point the deployment console to any app directory or monorepo workspace.</p>
+                <h3 class="ui-modal-title">Import Project</h3>
+                <p class="modal-subtitle" style="font-size: 0.8rem; color: var(--ui-muted, #9aa6b8); margin: 0;">Choose a project folder. Apps and packages are detected automatically — single app, multiple apps, shared packages, with or without Melos.</p>
             </div>
             <button id="closeWorkspaceModalBtn" class="ui-modal-close" type="button">&times;</button>
         </div>
         <div class="ui-modal-body" style="padding: 20px;">
-            <div class="ui-field" style="margin-bottom: 16px;">
-                <label class="ui-label">Recent Workspaces</label>
-                <select id="workspaceSelectDropdown" class="ui-input" style="width: 100%;">
-                    <option value="">-- Select a saved project --</option>
-                </select>
-            </div>
-            <div class="ui-field" style="margin-bottom: 16px;">
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
-                    <label class="ui-label" style="margin-bottom: 0;">Directory Path</label>
-                    <label for="folderPickerInput" class="ui-button" data-variant="ghost" data-size="sm" style="cursor: pointer; padding: 2px 8px; font-size: 0.75rem;">
-                        <i data-lucide="folder-open"></i>
-                        <span>Browse Folder</span>
-                    </label>
-                    <input id="folderPickerInput" type="file" webkitdirectory directory style="display: none;">
-                </div>
-                <input id="workspacePathInput" class="ui-input" type="text" placeholder="/home/username/projects/my-app" style="width: 100%;">
-                <span class="ui-help-text" style="display: block; font-size: 0.72rem; color: var(--ui-text-muted); margin-top: 4px;">Absolute path to single app folder or monorepo workspace.</span>
+            <button id="browseFolderBtn" type="button" class="ui-button" data-variant="primary" style="width: 100%; justify-content: center;">
+                <i data-lucide="folder-open"></i>
+                <span>Choose project folder…</span>
+            </button>
+            <div id="workspaceManualPath" hidden style="margin-top: 12px;">
+                <label class="ui-label" for="workspacePathInput">No folder dialog on this system — type the folder path</label>
+                <input id="workspacePathInput" class="ui-input" type="text" placeholder="/Users/you/projects/my-workspace" style="width: 100%;">
             </div>
 
-            <!-- Project Inspection Preview Card -->
-            <div id="workspaceInspectionBox" class="ui-card hidden" style="background: rgba(255,255,255,0.03); border: 1px dashed var(--ui-border-color); padding: 12px 16px; margin-top: 12px; border-radius: 8px;">
-                <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px;">
-                    <i data-lucide="search-check" style="width: 16px; height: 16px; color: var(--ui-primary, #3b82f6);"></i>
-                    <span id="inspectTitle" style="font-weight: 600; font-size: 0.85rem;">Detected 0 Apps</span>
-                    <span id="inspectMonorepoBadge" class="ui-badge hidden" data-variant="info" style="font-size: 0.7rem; padding: 1px 6px;">Monorepo</span>
+            <div id="workspaceInspectionBox" class="import-result hidden">
+                <div class="import-result-head">
+                    <span id="inspectTitle" class="import-result-name"></span>
+                    <span id="inspectMonorepoBadge" class="ui-badge" data-variant="info"></span>
                 </div>
-                <div id="inspectBadges" style="display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px;"></div>
+                <code id="inspectPath" class="import-result-path"></code>
+                <div class="import-result-group">
+                    <span class="import-result-label" id="inspectAppsLabel">Apps</span>
+                    <div id="inspectBadges" class="import-result-chips"></div>
+                </div>
+                <div class="import-result-group" id="inspectPackagesGroup">
+                    <span class="import-result-label" id="inspectPackagesLabel">Packages</span>
+                    <div id="inspectPackageBadges" class="import-result-chips"></div>
+                </div>
             </div>
+            <div id="workspaceInspectError" class="cert-status-box hidden" data-status="error" style="margin-top: 12px;"></div>
         </div>
         <div class="ui-modal-footer" style="display: flex; gap: 8px; justify-content: flex-end; padding: 16px;">
             <button id="cancelWorkspaceBtn" type="button" class="ui-button" data-variant="ghost">
                 <span>Cancel</span>
             </button>
-            <button id="confirmWorkspaceBtn" type="button" class="ui-button" data-variant="primary">
-                <i data-lucide="check"></i>
-                <span>Open Project</span>
+            <button id="confirmWorkspaceBtn" type="button" class="ui-button" data-variant="primary" disabled>
+                <i data-lucide="plus"></i>
+                <span>Add project</span>
             </button>
         </div>
     </div>
@@ -406,8 +351,17 @@
                         <h2 id="setupAppTitle" class="ui-page-title" style="font-size: 1.35rem; margin: 2px 0 0 0;">App Name</h2>
                     </div>
 
+                    <div id="setupTabs" class="setup-tabs" role="tablist" aria-label="App configuration sections">
+                        <button type="button" role="tab" class="setup-tab" data-tab="general" aria-selected="true">General</button>
+                        <button type="button" role="tab" class="setup-tab" data-tab="keys" aria-selected="false">Keys</button>
+                        <button type="button" role="tab" class="setup-tab" data-tab="ios" aria-selected="false">iOS <span class="setup-tab-dot" data-tab-status="ios"></span></button>
+                        <button type="button" role="tab" class="setup-tab" data-tab="android" aria-selected="false">Android <span class="setup-tab-dot" data-tab-status="android"></span></button>
+                        <button type="button" role="tab" class="setup-tab" data-tab="firebase" aria-selected="false">Firebase</button>
+                        <button type="button" role="tab" class="setup-tab" data-tab="release" aria-selected="false">Release</button>
+                    </div>
+
                     <!-- Flavor Configuration Card -->
-                    <div class="ui-card" style="margin-bottom: 16px;">
+                    <div class="ui-card" data-setup-panel="general" style="margin-bottom: 16px;">
                         <div class="ui-card-header">
                             <h4 class="ui-card-title">Flavor Configuration</h4>
                         </div>
@@ -421,7 +375,7 @@
                     </div>
 
                     <!-- Release Automation Card -->
-                    <div class="ui-card" style="margin-bottom: 16px;">
+                    <div class="ui-card" data-setup-panel="release" style="margin-bottom: 16px;">
                         <div class="ui-card-header">
                             <h4 class="ui-card-title">Release Automation</h4>
                         </div>
@@ -445,7 +399,7 @@
                     </div>
 
                     <!-- App Identifiers Card -->
-                    <div class="ui-card" style="margin-bottom: 16px;">
+                    <div class="ui-card" data-setup-panel="general" style="margin-bottom: 16px;">
                         <div class="ui-card-header">
                             <h4 class="ui-card-title">App Identifiers (Bundle IDs &amp; Package Names)</h4>
                         </div>
@@ -461,8 +415,36 @@
                         </div>
                     </div>
 
+                    <!-- Key scanner: finds credentials anywhere on disk by content -->
+                    <div class="ui-card" data-setup-panel="keys" style="margin-bottom: 16px;">
+                        <div class="ui-card-header">
+                            <h4 class="ui-card-title">Find &amp; Import Keys</h4>
+                        </div>
+                        <div class="ui-card-body">
+                            <span class="ui-help-text" style="display:block; margin-bottom: 10px;">
+                                Scan a folder for Google Play service-account JSON, App Store Connect <code>.p8</code> keys and Firebase configs.
+                                Files are recognised by their contents, not their names, and matched to apps by package / bundle ID.
+                                Imported keys are copied to your private <code>~/.config/dev-deployment</code> and <code>~/.appstoreconnect</code> folders
+                                (<code>chmod 600</code>) and are never written into the project.
+                            </span>
+                            <div style="display:flex; gap: 8px; flex-wrap: wrap;">
+                                <button id="credPickFolderBtn" type="button" class="ui-button" data-variant="primary">
+                                    <i data-lucide="folder-search"></i><span>Choose folder to scan…</span>
+                                </button>
+                                <button id="credScanWorkspaceBtn" type="button" class="ui-button" data-variant="secondary">
+                                    <i data-lucide="search"></i><span>Scan this workspace</span>
+                                </button>
+                            </div>
+                            <div id="credScanManual" hidden style="display:flex; gap: 8px; margin-top: 8px;">
+                                <input id="credScanFolder" class="ui-input" type="text" placeholder="No folder dialog on this system — type a folder path" style="flex:1;">
+                                <button id="credScanBtn" type="button" class="ui-button" data-variant="secondary"><span>Scan</span></button>
+                            </div>
+                            <div id="credScanResults" style="margin-top: 10px;"></div>
+                        </div>
+                    </div>
+
                     <!-- iOS Certificates & Credentials Card -->
-                    <div class="ui-card" style="margin-bottom: 16px;">
+                    <div class="ui-card" data-setup-panel="ios" style="margin-bottom: 16px;">
                         <div class="ui-card-header">
                             <h4 class="ui-card-title">iOS Certificates &amp; Credentials</h4>
                         </div>
@@ -482,8 +464,8 @@
                                 <label class="ui-label">App Store Connect API Key (.p8) <span class="ui-badge" data-variant="warning" style="font-size: 0.65rem; margin-left: 6px;">Required for iOS Uploads</span></label>
                                 <span class="ui-help-text" style="display:block; margin-bottom: 10px;">
                                     Upload your <strong>AuthKey_XXXXXXXXXX.p8</strong> file from App Store Connect → Users &amp; Access → Integrations.
-                                    The key is Base64-encoded, saved in deploy_config, and written to
-                                    <code>~/.appstoreconnect/private_keys/</code> with <code>chmod 600</code>.
+                                    It is written to <code>~/.appstoreconnect/private_keys/</code> with <code>chmod 600</code> and
+                                    passed to iOS builds and uploads automatically. Nothing is stored in the project.
                                 </span>
                                 <div class="ui-dropzone" id="p8Dropzone">
                                     <input type="file" id="p8FileInput" accept=".p8" style="display:none;">
@@ -513,21 +495,38 @@
                     </div>
 
                     <!-- Android Certificates & Google Play Card -->
-                    <div class="ui-card" style="margin-bottom: 16px;">
+                    <div class="ui-card" data-setup-panel="android" style="margin-bottom: 16px;">
                         <div class="ui-card-header">
                             <h4 class="ui-card-title">Android Certificates &amp; Google Play Credentials</h4>
                         </div>
                         <div class="ui-card-body">
+                            <div class="ui-field">
+                                <label class="ui-label">Google Play Service Account Key</label>
+                                <div id="playKeyStatus" class="cert-status-box" data-status="unknown">Select an app to check.</div>
+                                <div style="display:flex; gap: 8px; margin-top: 8px;">
+                                    <input type="file" id="playKeyFileInput" accept=".json,application/json" style="display:none;">
+                                    <button id="playKeyChooseBtn" type="button" class="ui-button" data-variant="secondary" data-size="sm">
+                                        <i data-lucide="upload"></i><span>Choose JSON key…</span>
+                                    </button>
+                                    <label class="ui-label" style="display:flex; align-items:center; gap:6px; margin:0; font-weight:400;">
+                                        <input type="checkbox" id="playKeyAllApps"> Use for all apps in this workspace
+                                    </label>
+                                    <button id="playKeyRemoveBtn" type="button" class="ui-button" data-variant="ghost" data-size="sm" hidden>
+                                        <span>Remove</span>
+                                    </button>
+                                </div>
+                                <span class="ui-help-text">Google Cloud → IAM → Service Accounts → Keys → JSON. The file is validated, copied to <code>~/.config/dev-deployment/keys/</code> (<code>chmod 600</code>) and used for every Android upload.</span>
+                            </div>
                             <div class="ui-field" style="margin-bottom: 0;">
-                                <label class="ui-label">Google Play Service Account JSON Path</label>
+                                <label class="ui-label">Or: existing key path (advanced)</label>
                                 <input id="cfgPlayService" class="ui-input" type="text" placeholder="private_keys/play-service-account.json">
-                                <span class="ui-help-text">Google Developer API Service Account credentials key in JSON format, required to upload Android App Bundles (AAB).</span>
+                                <span class="ui-help-text">Only used when no key was imported above. Relative paths are resolved from the workspace root.</span>
                             </div>
                         </div>
                     </div>
 
                     <!-- Firebase Client Configuration Card (Android & iOS) -->
-                    <div class="ui-card" style="margin-bottom: 20px;">
+                    <div class="ui-card" data-setup-panel="firebase" style="margin-bottom: 20px;">
                         <div class="ui-card-header">
                             <h4 class="ui-card-title">Firebase Client Configuration (Android &amp; iOS)</h4>
                         </div>
@@ -554,10 +553,6 @@
                             <button id="regenerateBtn" type="button" class="ui-button" data-variant="secondary" title="Regenerate build and deploy commands">
                                 <i data-lucide="refresh-cw"></i>
                                 <span>Regenerate Commands</span>
-                            </button>
-                            <button id="injectMelosBtn" type="button" class="ui-button" data-variant="ghost" title="Inject scripts into root pubspec.yaml (Monorepos only)">
-                                <i data-lucide="code-2"></i>
-                                <span>Inject Melos Scripts</span>
                             </button>
                         </div>
                         <button id="saveConfigBtn" type="button" class="ui-button" data-variant="primary" style="min-width: 140px;">

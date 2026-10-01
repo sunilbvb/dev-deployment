@@ -43,14 +43,13 @@ void main(List<String> rawArgs) async {
     exit(1);
   }
 
-  // Load pub workspace packages
-  final workspacePubspecFile = File('$workspaceRoot/pubspec.yaml');
-  if (!workspacePubspecFile.existsSync()) {
-    stderr.writeln('❌ Error: Root pubspec.yaml not found at $workspaceRoot');
+  // Works for Melos/pub workspaces, a single project at the root, and plain
+  // folders of apps/packages — a root pubspec.yaml is not required.
+  final workspacePackages = await scanWorkspacePackages(workspaceRoot);
+  if (workspacePackages.isEmpty) {
+    stderr.writeln('❌ Error: No Dart/Flutter projects (pubspec.yaml) found under $workspaceRoot');
     exit(1);
   }
-
-  final workspacePackages = await scanWorkspacePackages(workspaceRoot);
 
   // -------------------------------------------------------------
   // OPERATION: Workspace Status / Unreleased Scan
@@ -199,6 +198,15 @@ void main(List<String> rawArgs) async {
     );
   }
 
+  // A release made locally (e.g. "Bump Patch", "Local Git Tag") is pushed as-is by Full
+  // Release, instead of being rejected as a duplicate tag.
+  if (options.mode == ReleaseMode.push && !options.force &&
+      await isUnpushedLocalReleaseAtHead(tagName, appRepoRoot)) {
+    print('ℹ️ Tag $tagName already exists locally on the current commit and is not on the remote yet — pushing it.');
+    await pushExistingRelease(tagName: tagName, repoRoot: appRepoRoot);
+    return;
+  }
+
   // -------------------------------------------------------------
   // BRANCH GOVERNANCE & INTEGRITY GUARDS
   // -------------------------------------------------------------
@@ -265,7 +273,7 @@ void main(List<String> rawArgs) async {
     // are unrelated history, not part of this release.
     if (!targetHasOwnRepo) {
       final touchesTarget = commit.changedFiles.any(
-        (f) => f.startsWith(target.relativePath),
+        (f) => isInPackage(f, target, workspacePackages.values),
       );
       final mentionsTarget = targetAliases.any(
         (a) => subjectLower.contains(a) || bodyLower.contains(a),
@@ -280,7 +288,7 @@ void main(List<String> rawArgs) async {
     // 2. Check if commit touches dependent packages
     for (final dep in internalDeps) {
       final touchesDep = commit.changedFiles.any(
-        (f) => f.startsWith(dep.relativePath),
+        (f) => isInPackage(f, dep, workspacePackages.values),
       );
       final mentionsDep =
           subjectLower.contains(dep.name.toLowerCase()) ||
@@ -294,7 +302,9 @@ void main(List<String> rawArgs) async {
     // 3. Check if commit touches workspace tooling, root docs, or shared configuration
     if (!assigned) {
       final isOtherApp = commit.changedFiles.any(
-        (f) => f.startsWith('apps/') && !f.startsWith(target.relativePath),
+        (f) => workspacePackages.values.any(
+          (p) => p.name != target.name && isInPackage(f, p, workspacePackages.values),
+        ),
       );
       final touchesTooling = commit.changedFiles.any(
         (f) =>
@@ -320,6 +330,17 @@ void main(List<String> rawArgs) async {
         (sum, dep) => sum + (packageCommits[dep.name]?.length ?? 0),
       ) +
       workspaceCommits.length;
+
+  printCommitTable(
+    commits: targetCommits,
+    target: target,
+    internalDeps: internalDeps,
+    packageCommits: packageCommits,
+    workspaceCommits: workspaceCommits,
+    allPackages: workspacePackages.values,
+    fromRef: fromTag,
+    toRef: options.toRef,
+  );
 
   print(
     '📝 Found $totalRelevantCommits relevant commits for ${target.name} across ${packageCommits.length} packages + tooling.',
@@ -573,6 +594,7 @@ void main(List<String> rawArgs) async {
   }
 
   if (options.mode == ReleaseMode.tag) {
+    await printReleaseSummary(tagName: tagName, repoRoot: appRepoRoot, pushed: false);
     print(
       '✨ [MODE 4 - LOCAL TAG] Created local Git tag: $tagName (No remote push).',
     );
@@ -586,11 +608,19 @@ void main(List<String> rawArgs) async {
   // MODE 5: Push to Remote
   // -------------------------------------------------------------
   print('🚀 Pushing commit & tag to remote repository...');
+  final remoteRes = await runGit(['remote', 'get-url', 'origin'], appRepoRoot);
+  if (remoteRes.exitCode != 0) {
+    stderr.writeln('❌ No "origin" remote is configured in ${repoLabel(appRepoRoot)}. '
+        'Add one (git remote add origin <url>) or use "Changelog + Commit + Local Git Tag" instead.');
+    exit(1);
+  }
+  print('   Remote: origin → ${remoteRes.stdout.toString().trim()}');
   final pushCommitRes = await runGit(['push', 'origin', 'HEAD'], appRepoRoot);
+  final pushProblems = <String>[];
   if (pushCommitRes.exitCode == 0) {
     print('✅ Pushed commit to remote (HEAD).');
   } else {
-    stderr.writeln('⚠️ Warning pushing commit: ${pushCommitRes.stderr}');
+    pushProblems.add('commit push from ${repoLabel(appRepoRoot)}');
   }
 
   final pushTagFailures = <String>[];
@@ -625,9 +655,65 @@ void main(List<String> rawArgs) async {
     }
   }
 
+  pushProblems.addAll(pushTagFailures.map((f) => 'tag push ${f.split(':').first}'));
+  await printReleaseSummary(tagName: tagName, repoRoot: appRepoRoot, pushed: pushProblems.isEmpty);
+  if (pushProblems.isNotEmpty) {
+    stderr.writeln('❌ Release created locally, but pushing failed: ${pushProblems.join('; ')}. '
+        'Check the git output above, then push manually: git push origin HEAD && git push origin $tagName');
+    exit(1);
+  }
   print(
     '\n🎉 [MODE 5 - FULL RELEASE] Release, changelog, commit, tag, and remote push complete!',
   );
+}
+
+Future<bool> isUnpushedLocalReleaseAtHead(String tagName, String repoRoot) async {
+  final tagCommit = await Process.run('git', ['rev-parse', '-q', '--verify', '$tagName^{commit}'], workingDirectory: repoRoot);
+  if (tagCommit.exitCode != 0) return false;
+  final head = await Process.run('git', ['rev-parse', 'HEAD'], workingDirectory: repoRoot);
+  if (tagCommit.stdout.toString().trim() != head.stdout.toString().trim()) return false;
+  final remoteTag = await Process.run('git', ['ls-remote', '--tags', 'origin', 'refs/tags/$tagName'], workingDirectory: repoRoot);
+  // Unknown remote state (offline / no origin) counts as "not pushed"; the push itself reports errors.
+  return remoteTag.exitCode != 0 || remoteTag.stdout.toString().trim().isEmpty;
+}
+
+Future<void> pushExistingRelease({required String tagName, required String repoRoot}) async {
+  final remoteRes = await runGit(['remote', 'get-url', 'origin'], repoRoot);
+  if (remoteRes.exitCode != 0) {
+    stderr.writeln('❌ No "origin" remote is configured in ${repoLabel(repoRoot)}. Add one with: git remote add origin <url>');
+    exit(1);
+  }
+  print('🚀 Pushing existing release to origin → ${remoteRes.stdout.toString().trim()}');
+  final problems = <String>[];
+  if ((await runGit(['push', 'origin', 'HEAD'], repoRoot)).exitCode != 0) problems.add('commit push');
+  if ((await runGit(['push', 'origin', tagName], repoRoot)).exitCode != 0) problems.add('tag push');
+  await printReleaseSummary(tagName: tagName, repoRoot: repoRoot, pushed: problems.isEmpty);
+  if (problems.isNotEmpty) {
+    stderr.writeln('❌ Pushing failed (${problems.join(', ')}). Check the git output above.');
+    exit(1);
+  }
+  print('\n🎉 [MODE 5 - FULL RELEASE] Existing release $tagName pushed to remote.');
+}
+
+/// Final, easy-to-scan record of what the release produced.
+Future<void> printReleaseSummary({
+  required String tagName,
+  required String repoRoot,
+  required bool pushed,
+}) async {
+  final commit = await Process.run('git', ['rev-parse', '--short', '$tagName^{commit}'], workingDirectory: repoRoot);
+  final branch = await Process.run('git', ['branch', '--show-current'], workingDirectory: repoRoot);
+  final remote = await Process.run('git', ['remote', 'get-url', 'origin'], workingDirectory: repoRoot);
+  String clean(ProcessResult r) => r.exitCode == 0 ? r.stdout.toString().trim() : '';
+  print('');
+  print('══════════════════ RELEASE SUMMARY ══════════════════');
+  print('   Tag:        $tagName');
+  print('   Commit:     ${clean(commit).isEmpty ? '(unknown)' : clean(commit)}');
+  print('   Branch:     ${clean(branch).isEmpty ? '(detached)' : clean(branch)}');
+  print('   Repository: ${repoLabel(repoRoot)}');
+  print('   Remote:     ${clean(remote).isEmpty ? '(none configured)' : clean(remote)}');
+  print('   Pushed:     ${pushed ? 'yes' : 'no (local only)'}');
+  print('═════════════════════════════════════════════════════');
 }
 
 /// Validate branch governance, ancestry linearity, and tag uniqueness
@@ -1140,7 +1226,7 @@ Future<void> runWorkspaceStatusReport(
         : commits
               .where(
                 (c) =>
-                    c.changedFiles.any((f) => f.startsWith(pkg.relativePath)),
+                    c.changedFiles.any((f) => isInPackage(f, pkg, packages.values)),
               )
               .toList();
 
@@ -1227,56 +1313,89 @@ Future<Map<String, PackageInfo>> scanWorkspacePackages(
 ) async {
   final packages = <String, PackageInfo>{};
 
-  final searchDirs = [
-    Directory('$workspaceRoot/apps'),
-    Directory('$workspaceRoot/packages'),
-  ];
+  void addPackage(File pubspec, String relPath) {
+    final content = pubspec.readAsStringSync();
+    final nameMatch = RegExp(
+      r'^name:\s*([a-zA-Z0-9_-]+)',
+      multiLine: true,
+    ).firstMatch(content);
+    if (nameMatch == null) return;
+    final versionMatch = RegExp(
+      r'^version:\s*([0-9a-zA-Z\.\+\-]+)',
+      multiLine: true,
+    ).firstMatch(content);
+    final name = nameMatch.group(1)!;
+    packages.putIfAbsent(
+      name,
+      () => PackageInfo(
+        name: name,
+        relativePath: relPath,
+        absolutePath: pubspec.parent.path,
+        version: versionMatch?.group(1),
+        directDependencies: extractDependencyNames(content),
+      ),
+    );
+  }
 
-  for (final dir in searchDirs) {
-    if (!dir.existsSync()) continue;
-    final entities = dir.listSync(recursive: true, followLinks: false);
-    for (final entity in entities) {
-      if (entity is File && entity.path.endsWith('pubspec.yaml')) {
-        final pkgDir = entity.parent;
-        final relPath = pkgDir.path.substring(workspaceRoot.length + 1);
+  // The root is a project of its own unless it only aggregates workspace members.
+  final rootPubspec = File('$workspaceRoot/pubspec.yaml');
+  if (rootPubspec.existsSync() &&
+      !RegExp(r'^workspace:', multiLine: true).hasMatch(rootPubspec.readAsStringSync())) {
+    addPackage(rootPubspec, '.');
+  }
 
-        if (pkgDir.path == workspaceRoot ||
-            relPath.contains('/build/') ||
-            relPath.startsWith('build/') ||
-            relPath.contains('/.dart_tool/') ||
-            relPath.contains('/Pods/')) {
-          continue;
-        }
-
-        final content = entity.readAsStringSync();
-        final nameMatch = RegExp(
-          r'^name:\s*([a-zA-Z0-9_-]+)',
-          multiLine: true,
-        ).firstMatch(content);
-        final versionMatch = RegExp(
-          r'^version:\s*([0-9a-zA-Z\.\+\-]+)',
-          multiLine: true,
-        ).firstMatch(content);
-
-        if (nameMatch != null) {
-          final name = nameMatch.group(1)!;
-          final version = versionMatch?.group(1);
-          final deps = extractDependencyNames(content);
-
-          packages[name] = PackageInfo(
-            name: name,
-            relativePath: relPath,
-            absolutePath: pkgDir.path,
-            version: version,
-            directDependencies: deps,
-          );
-        }
+  void walk(Directory dir, int depth) {
+    if (depth > _maxScanDepth) return;
+    List<FileSystemEntity> children;
+    try {
+      children = dir.listSync(followLinks: false)
+        ..sort((a, b) => a.path.compareTo(b.path));
+    } on FileSystemException {
+      return;
+    }
+    final isProject = depth > 0 && File('${dir.path}/pubspec.yaml').existsSync();
+    if (isProject) {
+      addPackage(File('${dir.path}/pubspec.yaml'), dir.path.substring(workspaceRoot.length + 1));
+    }
+    for (final child in children) {
+      if (child is! Directory) continue;
+      final name = child.uri.pathSegments.where((s) => s.isNotEmpty).last;
+      if (name.startsWith('.') || _skipDirs.contains(name)) continue;
+      // Inside a project, platform/source folders never hold sibling projects.
+      if ((isProject || depth == 0 && rootPubspec.existsSync()) && _projectInternalDirs.contains(name)) {
+        continue;
       }
+      walk(child, depth + 1);
     }
   }
 
+  walk(Directory(workspaceRoot), 0);
   return packages;
 }
+
+/// Whether [file] (relative to the workspace root) belongs to [pkg]. A package
+/// at "." (the workspace root) owns everything not owned by a nested package.
+bool isInPackage(String file, PackageInfo pkg, Iterable<PackageInfo> all) {
+  bool under(String path) => file == path || file.startsWith('$path/');
+  if (pkg.relativePath == '.') {
+    return !all.any((p) => p.relativePath != '.' && under(p.relativePath));
+  }
+  if (!under(pkg.relativePath)) return false;
+  // A nested package (e.g. profile/profile_logic) owns its files, not the parent.
+  return !all.any((p) =>
+      p.relativePath != pkg.relativePath &&
+      p.relativePath.startsWith('${pkg.relativePath}/') &&
+      under(p.relativePath));
+}
+
+const _maxScanDepth = 5;
+const _skipDirs = {
+  'build', 'node_modules', 'Pods', 'example', 'examples', 'ephemeral', 'DerivedData',
+};
+const _projectInternalDirs = {
+  'android', 'ios', 'macos', 'linux', 'windows', 'web', 'lib', 'test',
+  'integration_test', 'test_driver', 'assets', 'fonts', 'bin',
+};
 
 Set<String> extractDependencyNames(String pubspecContent) {
   final deps = <String>{};
@@ -1757,8 +1876,94 @@ Future<void> prependToChangelog(File changelogFile, String newContent) async {
   await changelogFile.writeAsString(finalContent);
 }
 
-Future<ProcessResult> runGit(List<String> args, String workingDirectory) {
-  return Process.run('git', args, workingDirectory: workingDirectory);
+/// Git sub-commands that change the repository; these are echoed to the console
+/// together with their outcome so every release step is auditable.
+const _mutatingGitCommands = {'add', 'commit', 'tag', 'push'};
+
+bool _isMutating(List<String> args) {
+  if (args.isEmpty || !_mutatingGitCommands.contains(args.first)) return false;
+  // `git tag -l` / `git tag --list` only read.
+  return !(args.first == 'tag' && (args.contains('-l') || args.contains('--list')));
+}
+
+String _shellQuote(String arg) =>
+    RegExp(r'^[A-Za-z0-9_./:@%+=,-]+$').hasMatch(arg) ? arg : "'${arg.replaceAll("'", "'\\''")}'";
+
+Future<ProcessResult> runGit(
+  List<String> args,
+  String workingDirectory, {
+  List<String>? displayArgs,
+}) async {
+  final echo = _isMutating(args);
+  if (echo) {
+    print('   \$ git ${(displayArgs ?? args).map(_shellQuote).join(' ')}   (in ${repoLabel(workingDirectory)})');
+  }
+  final res = await Process.run('git', args, workingDirectory: workingDirectory);
+  if (echo) {
+    final out = '${res.stdout}'.trim();
+    final err = '${res.stderr}'.trim();
+    if (res.exitCode == 0) {
+      // push reports its result on stderr; show it so the remote outcome is visible.
+      for (final line in [out, if (args.first == 'push') err].where((s) => s.isNotEmpty).expand((s) => s.split('\n'))) {
+        print('     │ $line');
+      }
+      print('     └ ok');
+    } else {
+      for (final line in [out, err].where((s) => s.isNotEmpty).expand((s) => s.split('\n'))) {
+        print('     │ $line');
+      }
+      print('     └ failed (exit ${res.exitCode})');
+    }
+  }
+  return res;
+}
+
+/// Prints every commit in the release window and why it was or was not included.
+void printCommitTable({
+  required List<GitCommit> commits,
+  required PackageInfo target,
+  required List<PackageInfo> internalDeps,
+  required Map<String, List<GitCommit>> packageCommits,
+  required List<GitCommit> workspaceCommits,
+  required Iterable<PackageInfo> allPackages,
+  required String? fromRef,
+  required String toRef,
+}) {
+  print('');
+  print('🔎 Commits in release window (${fromRef ?? 'first commit'} ➔ $toRef): ${commits.length}');
+  if (commits.isEmpty) {
+    print('   (none — nothing has changed since the last release)');
+    print('');
+    return;
+  }
+  final ownerOf = <String, String>{};
+  for (final entry in packageCommits.entries) {
+    for (final c in entry.value) {
+      ownerOf.putIfAbsent(c.hash, () => entry.key == target.name ? 'app' : 'dependency ${entry.key}');
+    }
+  }
+  for (final c in workspaceCommits) {
+    ownerOf.putIfAbsent(c.hash, () => 'workspace / tooling');
+  }
+  var included = 0;
+  for (final c in commits) {
+    final owner = ownerOf[c.hash];
+    final subject = c.subject.length > 72 ? '${c.subject.substring(0, 69)}...' : c.subject;
+    if (owner != null) {
+      included += 1;
+      print('   ✔ ${c.shortHash}  $subject  [$owner]');
+    } else {
+      final others = {
+        for (final f in c.changedFiles)
+          for (final p in allPackages)
+            if (p.name != target.name && isInPackage(f, p, allPackages)) p.name,
+      };
+      final reason = others.isNotEmpty ? 'belongs to ${others.join(', ')}' : 'no files in this app';
+      print('   · ${c.shortHash}  $subject  (skipped: $reason)');
+    }
+  }
+  print('   → $included included, ${commits.length - included} skipped');
+  print('');
 }
 
 Future<ProcessResult> runGitWithMessageFile(
@@ -1773,10 +1978,16 @@ Future<ProcessResult> runGitWithMessageFile(
 
   try {
     await messageFile.writeAsString(message);
-    return await runGit([
-      ...argsBeforeFile,
-      messageFile.path,
-    ], workingDirectory);
+    // --cleanup=verbatim keeps "### Features" headings (git strips '#' lines as comments
+    // by default); -F must directly precede the file even when flags like -f were appended.
+    final args = argsBeforeFile.where((a) => a != '-F').toList();
+    final gitArgs = [args.first, '--cleanup=verbatim', ...args.skip(1), '-F'];
+    final headline = message.split('\n').first.trim();
+    return await runGit(
+      [...gitArgs, messageFile.path],
+      workingDirectory,
+      displayArgs: [...gitArgs, '<message: "$headline" + ${message.split('\n').length - 1} more lines>'],
+    );
   } finally {
     if (tempDir.existsSync()) {
       await tempDir.delete(recursive: true);

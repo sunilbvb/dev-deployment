@@ -29,3 +29,15 @@ Vertical navigation sidebar container with grouped items and badges.
   </div>
 </aside>
 ```
+
+## Using `<button>` items
+
+`.ui-sidebar-item` also works on `<button>` elements (e.g. for in-page selection). The kit resets the browser's default button chrome for `button.ui-sidebar-item` — no grey fill or border, full width, left-aligned with an 8px gap — so buttons look like link items:
+
+```html
+<button type="button" class="ui-sidebar-item ui-active">
+  <span class="app-dot"></span><span>customer</span>
+</button>
+```
+
+The reset lives in the local fallback `frontend/css/developer-dashboard-ui-kit.css`; when the kit is loaded from the CDN, the consuming app needs the same rule until the CDN build includes it (the deployment console adds it in `features/deployment/frontend/styles.css`).

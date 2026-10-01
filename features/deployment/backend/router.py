@@ -1,7 +1,9 @@
-
+import credentials
+import picker
 from config import (
     add_app as config_add_app,
     allow_workspace as config_allow_workspace,
+    remove_workspace as config_remove_workspace,
     check_system_health as config_check_system_health,
     get_apps as config_get_apps,
     get_workspaces_list as config_get_workspaces_list,
@@ -23,7 +25,6 @@ from p8 import upload_p8_key as p8_upload_p8_key
 from jobs import (
     check_ios_expiry as jobs_check_ios_expiry,
     execute_command as jobs_execute_command,
-    get_batch_deploy_plan as jobs_get_batch_deploy_plan,
     get_deployment_history as jobs_get_deployment_history,
     get_job as jobs_get_job,
     get_running_jobs as jobs_get_running_jobs,
@@ -42,7 +43,6 @@ check_ios_expiry = jobs_check_ios_expiry
 get_job = jobs_get_job
 get_running_jobs = jobs_get_running_jobs
 get_deployment_history = jobs_get_deployment_history
-get_batch_deploy_plan = jobs_get_batch_deploy_plan
 execute_command = jobs_execute_command
 stop_job = jobs_stop_job
 save_deploy_config = config_save_deploy_config
@@ -51,7 +51,14 @@ scan_all_apps_config = config_scan_all_apps_config
 add_app = config_add_app
 set_active_workspace = config_set_active_workspace
 upload_p8_key = p8_upload_p8_key
+scan_credentials = credentials.scan_credentials
+import_credential_path = credentials.import_credential_path
+import_credential_bytes = credentials.import_credential_bytes
+remove_credential = credentials.remove_credential
+get_credentials_status = credentials.get_credentials_status
+pick_path = picker.pick_path
 check_system_health = config_check_system_health
 get_workspace_root = config_get_workspace_root
 rescan_workspace = config_rescan_workspace
 allow_workspace = config_allow_workspace
+remove_workspace = config_remove_workspace

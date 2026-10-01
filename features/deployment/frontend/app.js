@@ -19,7 +19,6 @@ const state = {
     stderrLength: 0,
     activeOutputView: 'live',
     historyEntries: [],
-    batch: { active: false, flavor: '', templateId: 'auto', plan: [], results: [], index: -1, stopRequested: false },
 };
 
 const els = {
@@ -54,35 +53,22 @@ const els = {
     closeProdConfirmBtn: document.getElementById('closeProdConfirmBtn'),
     confirmProdDeployBtn: document.getElementById('confirmProdDeployBtn'),
     // Deploy All Apps
-    deployAllBtn: document.getElementById('deployAllBtn'),
-    batchDeployOverlay: document.getElementById('batchDeployOverlay'),
-    batchTemplateSelect: document.getElementById('batchTemplateSelect'),
-    batchPlanList: document.getElementById('batchPlanList'),
-    batchCancelBtn: document.getElementById('batchCancelBtn'),
-    closeBatchModalBtn: document.getElementById('closeBatchModalBtn'),
-    batchStartBtn: document.getElementById('batchStartBtn'),
-    batchProgressPanel: document.getElementById('batchProgressPanel'),
-    batchPillRow: document.getElementById('batchPillRow'),
-    batchSummaryLine: document.getElementById('batchSummaryLine'),
-    batchStopBtn: document.getElementById('batchStopBtn'),
 };
 
 // C9: Tab-isolated workspace - attach X-Workspace header to all fetch requests
 const _nativeFetch = window.fetch;
 window.fetch = function(input, init) {
     const opts = init || {};
-    opts.headers = opts.headers || {};
-    const curWs = sessionStorage.getItem('active_workspace') || state.activeWorkspace || '';
-    if (curWs) {
-        if (opts.headers instanceof Headers) {
-            if (!opts.headers.has('X-Workspace')) {
-                opts.headers.set('X-Workspace', curWs);
-            }
-        } else if (typeof opts.headers === 'object' && !Array.isArray(opts.headers)) {
-            if (!opts.headers['X-Workspace']) {
-                opts.headers['X-Workspace'] = curWs;
-            }
-        }
+    opts.headers = new Headers(opts.headers || {});
+    if (window.__DEPLOYMENT_TOKEN__ && !opts.headers.has('X-API-Token')) {
+        opts.headers.set('X-API-Token', window.__DEPLOYMENT_TOKEN__);
+    }
+    let curWs = state.activeWorkspace || '';
+    if (!curWs) {
+        try { curWs = sessionStorage.getItem('active_workspace') || ''; } catch (_) { /* storage may be blocked */ }
+    }
+    if (curWs && !opts.headers.has('X-Workspace')) {
+        opts.headers.set('X-Workspace', curWs);
     }
     return _nativeFetch(input, opts);
 };
@@ -122,8 +108,21 @@ function prettyCommandTitle(commandKey) {
     }).join(' ');
 }
 
-function getCommandMeta(key) {
-    const k = String(key || '').toLowerCase();
+const PLATFORM_META = {
+    ios: {group: 'iOS', icon: 'apple', color: '#64748b'},
+    android: {group: 'Android', icon: 'smartphone', color: '#22c55e'},
+    combined: {group: 'Combined Deploy', icon: 'rocket', color: '#3b82f6'},
+    release: {group: 'Release', icon: 'tag', color: '#8b5cf6'},
+    utility: {group: 'Utilities', icon: 'wrench', color: '#94a3b8'},
+};
+
+function getCommandMeta(cmd) {
+    // Group by the template's declared platform; the command text (e.g. "flutter build ipa --release") is ambiguous.
+    if (cmd && typeof cmd === 'object') {
+        if (PLATFORM_META[cmd.platform]) return PLATFORM_META[cmd.platform];
+        cmd = cmd.key || cmd.id;
+    }
+    const k = String(cmd || '').toLowerCase();
     if (k.includes('release') || k.includes('tag')) return {group: 'Release', icon: 'tag', color: '#8b5cf6'};
     if (k.includes('ipa') || k.includes('ios')) return {group: 'iOS', icon: 'apple', color: '#64748b'};
     if (k.includes('aab') || k.includes('apk') || k.includes('android')) return {group: 'Android', icon: 'smartphone', color: '#22c55e'};
@@ -155,13 +154,25 @@ function matchesEnv(cmd) {
 async function loadApps() {
     const res = await fetch(api('/api/deployment/apps'));
     const data = await res.json();
-    state.apps = data.apps || [];
+    const all = data.apps || [];
+    state.apps = all.filter(a => !a.is_package);
+    renderPackages(all.filter(a => a.is_package));
     renderApps();
     els.historyAppFilter.innerHTML = '<option value="">All apps</option>' +
         state.apps.map(a => `<option value="${escapeHtml(a.id)}">${escapeHtml(a.name || a.id)}</option>`).join('');
     if (state.apps.length) {
         selectApp(state.apps[0].id);
     }
+}
+
+function renderPackages(packages) {
+    const panel = document.getElementById('packagePanel');
+    if (!panel) return;
+    panel.hidden = packages.length === 0;
+    document.getElementById('packageSummary').textContent = `${packages.length} package${packages.length === 1 ? '' : 's'} (not deployable)`;
+    document.getElementById('packageList').innerHTML = packages
+        .map(p => `<li title="${escapeHtml(p.path || '')}">${escapeHtml(p.name || p.id)}</li>`)
+        .join('');
 }
 
 function renderApps() {
@@ -187,12 +198,11 @@ function renderApps() {
         const icon = canRenderImage
             ? `<img src="${escapeHtml(resolvedIconUrl)}" alt="" data-fallback-icon="${fallbackIcon}" onerror="this.outerHTML='<i data-lucide=&quot;${fallbackIcon}&quot;></i>'; refreshIcons();" style="width:24px;height:24px;object-fit:cover;border-radius:6px;">`
             : `<i data-lucide="${fallbackIcon}"></i>`;
-        const packageBadge = app.is_package ? `<span class="ui-badge" data-variant="secondary" style="font-size: 0.62rem; padding: 0 4px; margin-left: 4px; opacity: 0.8;">PKG</span>` : '';
         return `
             <div class="compact-app-card ${activeState}" data-state="${activeState}" data-app="${escapeHtml(app.id)}" style="--app-color:${escapeHtml(app.color || '#6366f1')}">
                 <div class="app-card-badge"><i data-lucide="check"></i></div>
                 <div class="compact-app-card-icon" style="width:32px !important;height:32px !important;margin:0 !important;background:transparent !important;border:none !important;">${icon}</div>
-                <h3 style="font-size: 12px; font-weight: 600;" title="${escapeHtml(app.name || app.id)}">${escapeHtml(app.name || app.id)}${packageBadge}</h3>
+                <h3 style="font-size: 12px; font-weight: 600;" title="${escapeHtml(app.name || app.id)}">${escapeHtml(app.name || app.id)}</h3>
             </div>
         `;
     }).join('');
@@ -223,11 +233,12 @@ function renderEnvTabs() {
     state.hasMultipleEnvs = sortedFlavors.length > 1;
 
     if (sortedFlavors.length === 0) {
-        if (els.envTabs) els.envTabs.style.display = 'none';
+        // The UI kit styles .ui-segmented-control with !important, so match its priority.
+        if (els.envTabs) els.envTabs.style.setProperty('display', 'none', 'important');
         state.selectedEnv = 'default';
         return;
     } else {
-        if (els.envTabs) els.envTabs.style.display = 'flex';
+        if (els.envTabs) els.envTabs.style.setProperty('display', 'flex', 'important');
     }
 
     if (!sortedFlavors.includes(state.selectedEnv)) {
@@ -242,8 +253,17 @@ function renderEnvTabs() {
 
 async function loadCommands(appId) {
     els.commandGrid.innerHTML = '<div class="empty-state">Loading deployment commands...</div>';
-    const res = await fetch(api(`/api/deployment/commands?app=${encodeURIComponent(appId)}`));
-    const data = await res.json();
+    let data;
+    try {
+        const res = await fetch(api(`/api/deployment/commands?app=${encodeURIComponent(appId)}`));
+        data = await res.json();
+        if (!res.ok || data.success === false) throw new Error(data.error || `HTTP ${res.status}`);
+    } catch (err) {
+        state.commands = [];
+        els.commandGrid.innerHTML = `<div class="empty-state">Could not load commands: ${escapeHtml(err.message)}.
+            Check that the console server is still running (<code>./start.sh</code>), then reload this page.</div>`;
+        return;
+    }
     state.commands = data.commands || [];
     renderEnvTabs();
     renderCommands();
@@ -258,7 +278,7 @@ function renderCommands() {
 
     const groups = new Map();
     visible.forEach(cmd => {
-        const meta = getCommandMeta(cmd.key || cmd.id);
+        const meta = getCommandMeta(cmd);
         if (!groups.has(meta.group)) groups.set(meta.group, []);
         groups.get(meta.group).push({cmd, meta});
     });
@@ -616,155 +636,6 @@ function renderHistory() {
     }).join('');
 }
 
-// ═══════════════════════════ Deploy All Apps (batch) ═══════════════════════════
-
-function openBatchModal() {
-    state.batch.templateId = els.batchTemplateSelect.value || 'auto';
-    els.batchDeployOverlay.classList.add('ui-active');
-    refreshBatchPlan();
-}
-
-function closeBatchModal() {
-    els.batchDeployOverlay.classList.remove('ui-active');
-}
-
-async function refreshBatchPlan() {
-    const flavor = state.selectedEnv;
-    state.batch.flavor = flavor;
-    els.batchPlanList.innerHTML = '<div class="empty-state">Loading plan...</div>';
-    try {
-        const res = await fetch(api(`/api/deployment/batch-plan?flavor=${encodeURIComponent(flavor)}&templateId=${encodeURIComponent(state.batch.templateId)}`));
-        const data = await res.json();
-        state.batch.plan = data.plan || [];
-        renderBatchPlanList();
-    } catch (error) {
-        els.batchPlanList.innerHTML = `<div class="empty-state">Failed to load plan: ${escapeHtml(error.message)}</div>`;
-    }
-}
-
-function renderBatchPlanList() {
-    if (!state.batch.plan.length) {
-        els.batchPlanList.innerHTML = '<div class="empty-state">No apps configured.</div>';
-        els.batchStartBtn.disabled = true;
-        return;
-    }
-    const anyWillRun = state.batch.plan.some(p => p.willRun);
-    els.batchStartBtn.disabled = !anyWillRun;
-    els.batchPlanList.innerHTML = state.batch.plan.map(p => `
-        <div class="batch-plan-row">
-            <span class="app-dot" style="background:${escapeHtml(p.color || '#6366f1')}"></span>
-            <strong>${escapeHtml(p.appName || p.appId)}</strong>
-            ${p.willRun
-                ? `<span class="ui-badge" data-variant="success">${escapeHtml(p.templateName || p.templateId)}</span>`
-                : `<span class="ui-badge" data-variant="warning">Skipped: ${escapeHtml(p.skipReason || 'not configured')}</span>`}
-        </div>
-    `).join('');
-}
-
-function startBatchDeploy() {
-    closeBatchModal();
-    state.batch.results = state.batch.plan.map(p => ({ status: p.willRun ? 'pending' : 'skipped', error: '' }));
-    state.batch.active = true;
-    state.batch.index = -1;
-    state.batch.stopRequested = false;
-    els.batchProgressPanel.classList.remove('hidden');
-    els.batchStopBtn.disabled = false;
-    els.batchSummaryLine.textContent = `Deploying ${state.batch.plan.filter(p => p.willRun).length} app(s) for ${state.batch.flavor}...`;
-    renderBatchPills();
-    advanceBatch();
-}
-
-function advanceBatch() {
-    const idx = state.batch.results.findIndex(r => r.status === 'pending');
-    if (idx === -1 || state.batch.stopRequested) return finishBatch();
-    state.batch.index = idx;
-    state.batch.results[idx].status = 'running';
-    renderBatchPills();
-    const p = state.batch.plan[idx];
-    writeTerminal(`── Now deploying: ${p.appName} (${p.templateName}) ──`);
-    fetch(api('/api/deployment/execute'), {
-        method: 'POST', headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({ app: p.appId, command: p.command, runner: p.runner, env: state.batch.flavor, templateId: p.templateId, flavor: state.batch.flavor, confirmed: true }),
-    }).then(r => r.json()).then(data => {
-        if (!data.success && data.needsConfirmation) {
-            // Shouldn't normally happen (batch always sends confirmed:true), but if the
-            // server-side gate rejects anyway, don't silently hang - mark it and move on.
-            state.batch.results[idx].status = 'error';
-            state.batch.results[idx].error = 'Needs confirmation';
-            renderBatchPills();
-            return advanceBatch();
-        }
-        if (!data.success || !data.jobId) {
-            state.batch.results[idx].status = 'error';
-            state.batch.results[idx].error = data.error || 'Could not start';
-            renderBatchPills();
-            return advanceBatch();
-        }
-        state.activeJobId = data.jobId;
-        pollBatchJob(data.jobId, idx);
-    }).catch(error => {
-        state.batch.results[idx].status = 'error';
-        state.batch.results[idx].error = error.message;
-        renderBatchPills();
-        advanceBatch();
-    });
-}
-
-function pollBatchJob(jobId, idx) {
-    fetch(api(`/api/deployment/job?id=${encodeURIComponent(jobId)}`)).then(r => r.json()).then(data => {
-        if (!data.success || !data.job) {
-            state.batch.results[idx].status = 'error';
-            renderBatchPills();
-            return advanceBatch();
-        }
-        const job = data.job;
-        if (job.status === 'running' || job.status === 'stopping' || job.status === 'chaining') {
-            return setTimeout(() => pollBatchJob(jobId, idx), 900);
-        }
-        if (job.status === 'success' && job.chainedJobId) {
-            return setTimeout(() => pollBatchJob(job.chainedJobId, idx), 900); // ride the release chain first
-        }
-        state.batch.results[idx].status = job.status; // success | error | stopped
-        writeTerminal(`── ${state.batch.plan[idx].appName}: ${job.status} ──`, job.status === 'success' ? 'success' : 'error');
-        renderBatchPills();
-        advanceBatch();
-    }).catch(() => {
-        state.batch.results[idx].status = 'error';
-        renderBatchPills();
-        advanceBatch();
-    });
-}
-
-function stopBatchDeploy() {
-    state.batch.stopRequested = true;
-    els.batchStopBtn.disabled = true;
-    if (state.activeJobId) {
-        fetch(api('/api/deployment/job/stop'), {
-            method: 'POST', headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({jobId: state.activeJobId}),
-        }).catch(() => {});
-    }
-}
-
-function finishBatch() {
-    state.batch.active = false;
-    state.batch.results.forEach(r => { if (r.status === 'pending') r.status = 'skipped'; });
-    renderBatchPills();
-    const succeeded = state.batch.results.filter(r => r.status === 'success').length;
-    const failed = state.batch.results.filter(r => r.status === 'error').length;
-    els.batchSummaryLine.textContent = `Batch complete: ${succeeded} succeeded, ${failed} failed`;
-    els.batchStopBtn.disabled = true;
-    showToast('Deploy All Apps: batch finished');
-    loadCommands(state.selectedApp);
-}
-
-function renderBatchPills() {
-    els.batchPillRow.innerHTML = state.batch.plan.map((p, i) => {
-        const result = state.batch.results[i] || { status: 'pending' };
-        return `<span class="batch-pill" data-status="${escapeHtml(result.status)}" title="${escapeHtml(result.error || '')}">${escapeHtml(p.appName || p.appId)}</span>`;
-    }).join('');
-}
-
 els.appGrid.addEventListener('click', event => {
     const card = event.target.closest('.compact-app-card') || event.target.closest('.ui-app-card');
     if (card) selectApp(card.dataset.app);
@@ -823,19 +694,6 @@ els.historyAppFilter.addEventListener('change', loadHistory);
 els.historyFlavorFilter.addEventListener('change', loadHistory);
 els.historyStatusFilter.addEventListener('change', loadHistory);
 
-// Deploy All Apps (batch)
-els.deployAllBtn.addEventListener('click', openBatchModal);
-els.batchCancelBtn.addEventListener('click', closeBatchModal);
-els.closeBatchModalBtn.addEventListener('click', closeBatchModal);
-els.batchDeployOverlay.addEventListener('click', event => {
-    if (event.target === els.batchDeployOverlay) closeBatchModal();
-});
-els.batchTemplateSelect.addEventListener('change', () => {
-    state.batch.templateId = els.batchTemplateSelect.value || 'auto';
-    refreshBatchPlan();
-});
-els.batchStartBtn.addEventListener('click', startBatchDeploy);
-els.batchStopBtn.addEventListener('click', stopBatchDeploy);
 
 let currentWorkspacesList = [];
 
@@ -851,79 +709,75 @@ function renderProjectSegments(workspaces, activePath) {
     container.innerHTML = workspaces.map(w => {
         const isActive = w.path === activePath;
         const name = w.name || w.path.split('/').pop() || 'Project';
-        return `<button class="ui-segment ${isActive ? 'active' : ''}" type="button" data-path="${escapeHtml(w.path)}" title="${escapeHtml(w.path)}">${escapeHtml(name)}</button>`;
+        const remove = w.isDefault ? '' :
+            `<button class="project-tab-remove" type="button" data-remove="${escapeHtml(w.path)}" title="Remove ${escapeHtml(name)} from the list" aria-label="Remove ${escapeHtml(name)}">×</button>`;
+        return `<span class="project-tab ${isActive ? 'active' : ''}">` +
+            `<button class="ui-segment ${isActive ? 'active' : ''}" type="button" data-path="${escapeHtml(w.path)}" title="${escapeHtml(w.path)}">${escapeHtml(name)}</button>` +
+            remove + '</span>';
     }).join('');
 
     container.querySelectorAll('.ui-segment').forEach(btn => {
-        btn.addEventListener('click', async () => {
-            const targetPath = btn.getAttribute('data-path');
-            if (targetPath && targetPath !== activePath) {
-                await switchWorkspacePath(targetPath);
-            }
-        });
+        btn.addEventListener('click', () => selectProject(btn.getAttribute('data-path')));
+    });
+    container.querySelectorAll('.project-tab-remove').forEach(btn => {
+        btn.addEventListener('click', () => removeProject(btn.getAttribute('data-remove')));
     });
 }
 
-async function switchWorkspacePath(path) {
-    if (!path) return;
+/** Remove a project tab. Only the list entry goes; the folder and its settings stay. */
+async function removeProject(path) {
+    const project = currentWorkspacesList.find(w => w.path === path);
+    const name = project?.name || path.split('/').pop();
+    if (!confirm(`Remove "${name}" from the project list?\n\nThe folder and its settings are not deleted — import it again to bring it back.`)) return;
+    let res;
     try {
-        // C8: Check if any job is currently running before switching workspace
-        try {
-            const runRes = await fetch(api('/api/deployment/running-jobs')).then(r => r.json());
-            const curWs = sessionStorage.getItem('active_workspace') || state.activeWorkspace;
-            const runningInCur = (runRes.runningJobs || []).filter(j => j.workspace === curWs);
-            if (runningInCur.length > 0) {
-                const proceed = confirm(`A deployment job (#${runningInCur[0].jobId} for "${runningInCur[0].app}") is currently running in this workspace.\n\nSwitching workspaces will leave it running in the background. Continue?`);
-                if (!proceed) return;
-            }
-        } catch (_) {}
-
-        let res = await fetch(api('/api/deployment/workspace/select'), {
+        res = await fetch(api('/api/deployment/workspace/remove'), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ path }),
         }).then(r => r.json());
-
-        // C10: If path is rejected because it is not in the allowed list, offer to allow it
-        if (!res.success && res.error && res.error.includes('not in the allowed workspaces list')) {
-            const userConfirmed = confirm(`Folder "${path}" is not in the authorized workspaces list.\n\nAllow this folder and add it to your workspaces list?`);
-            if (userConfirmed) {
-                const allowRes = await fetch(api('/api/deployment/workspace/allow'), {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ path }),
-                }).then(r => r.json());
-                if (allowRes.success) {
-                    res = await fetch(api('/api/deployment/workspace/select'), {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ path }),
-                    }).then(r => r.json());
-                } else {
-                    showToast('Failed to authorize folder: ' + (allowRes.error || 'Unknown error'));
-                    return;
-                }
-            } else {
-                return;
-            }
-        }
-
-        if (!res.success) {
-            showToast('Failed to switch workspace: ' + (res.error || 'Unknown error'));
-            return;
-        }
-
-        sessionStorage.setItem('active_workspace', path);
-        state.activeWorkspace = path;
-        showToast(`Switched workspace to: ${res.activeName || path}`);
-        await loadWorkspaceInfo();
-        await loadApps();
-        if (typeof loadSetupData === 'function' && document.getElementById('setupOverlay')?.classList.contains('ui-active')) {
-            await loadSetupData();
-        }
     } catch (err) {
-        showToast('Error switching workspace: ' + err.message);
+        showToast('Could not remove project: ' + err.message);
+        return;
     }
+    if (!res.success) {
+        showToast(res.error || 'Could not remove project');
+        return;
+    }
+    showToast(`Removed "${name}" from the project list`);
+    const wasActive = state.activeWorkspace === path;
+    await loadWorkspaceInfo();
+    if (wasActive) {
+        const fallback = currentWorkspacesList.find(w => w.isDefault) || currentWorkspacesList[0];
+        state.activeWorkspace = '';
+        if (fallback) await selectProject(fallback.path);
+    }
+}
+
+/**
+ * Show a project. Purely client-side: every request carries the project in the
+ * X-Workspace header, so other browser tabs and running jobs are unaffected.
+ */
+async function selectProject(path) {
+    if (!path || path === state.activeWorkspace) return;
+    try { sessionStorage.setItem('active_workspace', path); } catch (_) { /* storage may be blocked */ }
+    state.activeWorkspace = path;
+    state.selectedApp = null;
+    renderActiveProject();
+    await loadApps();
+    if (typeof loadSetupData === 'function' && document.getElementById('setupOverlay')?.classList.contains('ui-active')) {
+        await loadSetupData();
+    }
+}
+
+function renderActiveProject() {
+    const active = currentWorkspacesList.find(w => w.path === state.activeWorkspace);
+    const label = document.getElementById('workspaceLabel');
+    if (label && active) {
+        label.textContent = `WORKSPACE: ${(active.name || active.path.split('/').pop()).toUpperCase()}`;
+        label.title = active.path;
+    }
+    renderProjectSegments(currentWorkspacesList, state.activeWorkspace);
 }
 
 async function loadWorkspaceInfo() {
@@ -950,23 +804,16 @@ async function loadWorkspaceInfo() {
             if (missingBanner) missingBanner.style.display = 'none';
         }
 
-        const label = document.getElementById('workspaceLabel');
-        if (label && data.activeName) {
-            label.textContent = `WORKSPACE: ${data.activeName.toUpperCase()}`;
-            label.title = data.active || '';
-        }
         currentWorkspacesList = data.workspaces || [];
-        renderProjectSegments(currentWorkspacesList, data.active);
+        let stored = '';
+        try { stored = sessionStorage.getItem('active_workspace') || ''; } catch (_) { /* ignore */ }
+        const known = currentWorkspacesList.some(w => w.path === stored);
+        state.activeWorkspace = known ? stored : data.active;
+        if (!known) {
+            try { sessionStorage.setItem('active_workspace', state.activeWorkspace); } catch (_) { /* ignore */ }
+        }
+        renderActiveProject();
 
-        const dropdown = document.getElementById('workspaceSelectDropdown');
-        if (dropdown) {
-            dropdown.innerHTML = '<option value="">-- Select a saved project --</option>' +
-                currentWorkspacesList.map(w => `<option value="${escapeHtml(w.path)}" ${w.path === data.active ? 'selected' : ''}>${escapeHtml(w.name || w.path)} (${escapeHtml(w.path)})</option>`).join('');
-        }
-        const pathInput = document.getElementById('workspacePathInput');
-        if (pathInput && !pathInput.value) {
-            pathInput.value = data.active || '';
-        }
     } catch (_) {}
 }
 
@@ -976,137 +823,151 @@ const wsModalEls = {
     closeBtn: document.getElementById('closeWorkspaceModalBtn'),
     cancelBtn: document.getElementById('cancelWorkspaceBtn'),
     confirmBtn: document.getElementById('confirmWorkspaceBtn'),
-    dropdown: document.getElementById('workspaceSelectDropdown'),
+    browseBtn: document.getElementById('browseFolderBtn'),
+    manual: document.getElementById('workspaceManualPath'),
     pathInput: document.getElementById('workspacePathInput'),
+    result: document.getElementById('workspaceInspectionBox'),
+    error: document.getElementById('workspaceInspectError'),
+    name: document.getElementById('inspectTitle'),
+    layout: document.getElementById('inspectMonorepoBadge'),
+    path: document.getElementById('inspectPath'),
+    appsLabel: document.getElementById('inspectAppsLabel'),
+    apps: document.getElementById('inspectBadges'),
+    packagesGroup: document.getElementById('inspectPackagesGroup'),
+    packagesLabel: document.getElementById('inspectPackagesLabel'),
+    packages: document.getElementById('inspectPackageBadges'),
 };
 
+/** Folder chosen and inspected in the Import Project dialog; null until it has at least one app. */
+let importCandidate = null;
+
+function resetImportDialog() {
+    importCandidate = null;
+    wsModalEls.result.classList.add('hidden');
+    wsModalEls.error.classList.add('hidden');
+    wsModalEls.manual.hidden = true;
+    wsModalEls.pathInput.value = '';
+    wsModalEls.confirmBtn.disabled = true;
+}
+
 function openWorkspaceModal() {
-    if (!wsModalEls.overlay) return;
+    resetImportDialog();
     wsModalEls.overlay.classList.add('ui-active');
-    loadWorkspaceInfo();
-    if (window.lucide && typeof lucide.createIcons === 'function') {
-        lucide.createIcons();
-    }
+    refreshIcons();
 }
 
 function closeWorkspaceModal() {
-    if (!wsModalEls.overlay) return;
     wsModalEls.overlay.classList.remove('ui-active');
 }
 
-if (wsModalEls.openBtn) wsModalEls.openBtn.addEventListener('click', openWorkspaceModal);
-if (wsModalEls.closeBtn) wsModalEls.closeBtn.addEventListener('click', closeWorkspaceModal);
-if (wsModalEls.cancelBtn) wsModalEls.cancelBtn.addEventListener('click', closeWorkspaceModal);
-if (wsModalEls.overlay) {
-    wsModalEls.overlay.addEventListener('click', e => {
-        if (e.target === wsModalEls.overlay) closeWorkspaceModal();
-    });
+wsModalEls.openBtn.addEventListener('click', openWorkspaceModal);
+wsModalEls.closeBtn.addEventListener('click', closeWorkspaceModal);
+wsModalEls.cancelBtn.addEventListener('click', closeWorkspaceModal);
+wsModalEls.overlay.addEventListener('click', e => {
+    if (e.target === wsModalEls.overlay) closeWorkspaceModal();
+});
+
+function renderChips(container, items) {
+    container.innerHTML = items
+        .map(item => `<span class="ui-badge" data-variant="secondary" title="${escapeHtml(item.path || '')}">${escapeHtml(item.name || item.id)}</span>`)
+        .join('');
 }
 
-if (wsModalEls.dropdown) {
-    wsModalEls.dropdown.addEventListener('change', () => {
-        if (wsModalEls.dropdown.value) {
-            wsModalEls.pathInput.value = wsModalEls.dropdown.value;
-            inspectWorkspacePath(wsModalEls.dropdown.value);
-        }
-    });
+function showImportError(message) {
+    importCandidate = null;
+    wsModalEls.confirmBtn.disabled = true;
+    wsModalEls.result.classList.add('hidden');
+    wsModalEls.error.textContent = message;
+    wsModalEls.error.classList.remove('hidden');
 }
+
+async function inspectImportFolder(pathStr) {
+    if (!pathStr) return;
+    wsModalEls.error.classList.add('hidden');
+    let data;
+    try {
+        data = await fetch(api(`/api/deployment/inspect-path?path=${encodeURIComponent(pathStr)}`)).then(r => r.json());
+    } catch (err) {
+        showImportError(`Could not inspect the folder: ${err.message}`);
+        return;
+    }
+    if (!data.success) {
+        showImportError(data.error || 'Could not inspect the folder.');
+        return;
+    }
+    const apps = (data.apps || []).filter(a => !a.is_package);
+    const packages = (data.apps || []).filter(a => a.is_package);
+    if (!apps.length) {
+        showImportError(`No app found in "${data.name}". Choose the folder that contains your Flutter app(s).`);
+        return;
+    }
+    importCandidate = data.path;
+    wsModalEls.name.textContent = data.name;
+    wsModalEls.layout.textContent = data.layout || '';
+    wsModalEls.path.textContent = data.path;
+    wsModalEls.appsLabel.textContent = `${apps.length} app${apps.length === 1 ? '' : 's'}`;
+    renderChips(wsModalEls.apps, apps);
+    wsModalEls.packagesGroup.hidden = packages.length === 0;
+    wsModalEls.packagesLabel.textContent = `${packages.length} package${packages.length === 1 ? '' : 's'}`;
+    renderChips(wsModalEls.packages, packages);
+    wsModalEls.result.classList.remove('hidden');
+    const alreadyAdded = currentWorkspacesList.some(w => w.path === data.path);
+    wsModalEls.confirmBtn.querySelector('span').textContent = alreadyAdded ? 'Already added — open it' : 'Add project';
+    wsModalEls.confirmBtn.disabled = false;
+}
+
+wsModalEls.browseBtn.addEventListener('click', async () => {
+    wsModalEls.browseBtn.disabled = true;
+    const picked = typeof window.pickNativePath === 'function'
+        ? await window.pickNativePath({ kind: 'folder', prompt: 'Choose your project folder' })
+        : { unsupported: true };
+    wsModalEls.browseBtn.disabled = false;
+    if (picked.path) {
+        inspectImportFolder(picked.path);
+    } else if (picked.unsupported) {
+        wsModalEls.manual.hidden = false;
+        wsModalEls.pathInput.focus();
+    } else if (picked.error) {
+        showImportError(picked.error);
+    }
+});
 
 let inspectDebounceTimer = null;
-const folderPickerInput = document.getElementById('folderPickerInput');
-const inspectionBox = document.getElementById('workspaceInspectionBox');
-const inspectTitle = document.getElementById('inspectTitle');
-const inspectMonorepoBadge = document.getElementById('inspectMonorepoBadge');
-const inspectBadges = document.getElementById('inspectBadges');
+wsModalEls.pathInput.addEventListener('input', () => {
+    clearTimeout(inspectDebounceTimer);
+    inspectDebounceTimer = setTimeout(() => inspectImportFolder(wsModalEls.pathInput.value.trim()), 400);
+});
 
-if (wsModalEls.pathInput) {
-    wsModalEls.pathInput.addEventListener('input', () => {
-        clearTimeout(inspectDebounceTimer);
-        inspectDebounceTimer = setTimeout(() => {
-            inspectWorkspacePath(wsModalEls.pathInput.value.trim());
-        }, 300);
-    });
-}
-
-if (folderPickerInput) {
-    folderPickerInput.addEventListener('change', (e) => {
-        const files = e.target.files;
-        if (!files || files.length === 0) return;
-        
-        // Extract root directory path if available
-        let firstFile = files[0];
-        let relativePath = firstFile.webkitRelativePath || '';
-        let rootFolderName = relativePath.split('/')[0] || '';
-        
-        if (firstFile.path) {
-            // Electron or Chromium desktop environment providing absolute path
-            let fullPath = firstFile.path;
-            let dirPath = fullPath.substring(0, fullPath.indexOf(relativePath));
-            let resolvedRoot = dirPath + rootFolderName;
-            wsModalEls.pathInput.value = resolvedRoot;
-            inspectWorkspacePath(resolvedRoot);
-        } else if (rootFolderName) {
-            showToast(`Selected folder: ${rootFolderName}. Ensure full path is entered if needed.`);
-        }
-    });
-}
-
-async function inspectWorkspacePath(pathStr) {
-    if (!pathStr || !inspectionBox) return;
+wsModalEls.confirmBtn.addEventListener('click', async () => {
+    if (!importCandidate) return;
+    const path = importCandidate;
+    wsModalEls.confirmBtn.disabled = true;
     try {
-        const res = await fetch(api(`/api/deployment/inspect-path?path=${encodeURIComponent(pathStr)}`));
-        const data = await res.json();
-        if (data.success && data.exists) {
-            inspectionBox.classList.remove('hidden');
-            inspectTitle.textContent = `Detected ${data.appCount} App(s) in "${data.name}"`;
-            
-            if (data.isMonorepo) {
-                inspectMonorepoBadge.classList.remove('hidden');
-                inspectMonorepoBadge.textContent = data.hasMelos ? 'Monorepo (Melos)' : 'Monorepo';
-            } else {
-                inspectMonorepoBadge.classList.add('hidden');
+        if (!currentWorkspacesList.some(w => w.path === path)) {
+            // Choosing the folder is the user's explicit grant, so authorise it without a second prompt.
+            const allowRes = await fetch(api('/api/deployment/workspace/allow'), {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ path }),
+            }).then(r => r.json());
+            if (!allowRes.success) {
+                showImportError(allowRes.error || 'Could not add the project.');
+                return;
             }
-
-            inspectBadges.innerHTML = '';
-            (data.apps || []).forEach(app => {
-                const badge = document.createElement('span');
-                badge.className = 'ui-badge';
-                badge.setAttribute('data-variant', 'secondary');
-                badge.style.fontSize = '0.75rem';
-                badge.style.padding = '2px 8px';
-                badge.textContent = `${app.name} (${app.stack || 'generic'})`;
-                inspectBadges.appendChild(badge);
-            });
-            if (window.lucide && typeof lucide.createIcons === 'function') {
-                lucide.createIcons();
-            }
-        } else {
-            inspectionBox.classList.add('hidden');
+            await loadWorkspaceInfo();
+            showToast(`Added project "${allowRes.name || path}"`);
         }
-    } catch (_) {
-        if (inspectionBox) inspectionBox.classList.add('hidden');
+        closeWorkspaceModal();
+        await selectProject(path);
+    } finally {
+        wsModalEls.confirmBtn.disabled = !importCandidate;
     }
-}
+});
 
-if (wsModalEls.confirmBtn) {
-    wsModalEls.confirmBtn.addEventListener('click', async () => {
-        const path = (wsModalEls.pathInput?.value || '').trim();
-        if (!path) {
-            showToast('Please enter or select a project directory path');
-            return;
-        }
-        wsModalEls.confirmBtn.disabled = true;
-        try {
-            await switchWorkspacePath(path);
-            closeWorkspaceModal();
-        } finally {
-            wsModalEls.confirmBtn.disabled = false;
-        }
-    });
-}
-
-loadWorkspaceInfo();
-loadApps().catch(error => {
+(async () => {
+    await loadWorkspaceInfo();
+    await loadApps();
+})().catch(error => {
     els.appGrid.innerHTML = `<div class="empty-state">Failed to load apps: ${escapeHtml(error.message)}</div>`;
 });
 refreshIcons();

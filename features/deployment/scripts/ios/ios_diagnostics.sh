@@ -139,7 +139,7 @@ print_ios_build_failed_error() {
     echo "   👉 Run: flutter clean && flutter pub get && cd ios && pod install"
     echo ""
     echo "3. 📝 Missing Env Config File:"
-    echo "   Ensure 'apps/$app_name/env/$secret_file' exists and contains valid JSON."
+    echo "   Ensure '<app folder>/env/$secret_file' exists and contains valid JSON."
     echo "================================================================================"
 }
 
@@ -163,7 +163,7 @@ print_env_json_missing_error() {
     local app_name="$1"
     local env_name="$2"
     echo "Error: environment JSON not found for $app_name/$env_name"
-    echo "Tried: apps/$app_name/env/$env_name.json, apps/$app_name/env/env.json, env/$env_name.json, env/env.json"
+    echo "Tried: <app folder>/env/$env_name.json, <app folder>/env/env.json, env/$env_name.json, env/env.json"
 }
 
 print_testflight_upload_failed_fastlane_with_env() {

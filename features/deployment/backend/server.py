@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import argparse
+import base64
 import hashlib
 import hmac
 import http.server
@@ -201,6 +202,9 @@ class DeploymentHandler(http.server.SimpleHTTPRequestHandler):
             if parsed.path == "/api/deployment/deploy-config":
                 self.write_json({"success": True, "config": router.load_deploy_config()})
                 return
+            if parsed.path == "/api/deployment/credentials":
+                self.write_json(router.get_credentials_status(query.get("app", [""])[0]))
+                return
             if parsed.path == "/api/deployment/templates":
                 self.write_json({"success": True, "templates": router.load_templates()})
                 return
@@ -229,12 +233,6 @@ class DeploymentHandler(http.server.SimpleHTTPRequestHandler):
                 self.write_json(router.check_ios_expiry(
                     query.get("app", [""])[0],
                     query.get("flavor", ["prod"])[0],
-                ))
-                return
-            if parsed.path == "/api/deployment/batch-plan":
-                self.write_json(router.get_batch_deploy_plan(
-                    query.get("flavor", [""])[0],
-                    query.get("templateId", ["auto"])[0],
                 ))
                 return
             if parsed.path.startswith("/api/"):
@@ -349,7 +347,7 @@ class DeploymentHandler(http.server.SimpleHTTPRequestHandler):
 
                 self.write_json(router.execute_command(
                     app_id,
-                    target_cmd.get("command", ""),
+                    target_cmd.get("key", ""),
                     target_cmd.get("runner", "custom"),
                     flavor,
                     template_id,
@@ -413,6 +411,43 @@ class DeploymentHandler(http.server.SimpleHTTPRequestHandler):
                 logging.exception("Failed to parse POST JSON payload")
                 data = {}
 
+            if parsed.path == "/api/deployment/pick":
+                self.write_json(router.pick_path(
+                    str(data.get("kind") or "folder"),
+                    str(data.get("prompt") or ""),
+                    str(data.get("start") or ""),
+                    data.get("extensions") if isinstance(data.get("extensions"), list) else None,
+                ))
+                return
+            if parsed.path == "/api/deployment/credentials/scan":
+                self.write_json(router.scan_credentials(str(data.get("folder") or "")))
+                return
+            if parsed.path == "/api/deployment/credentials/import":
+                self.write_json(router.import_credential_path(
+                    str(data.get("path") or ""),
+                    app_id=str(data.get("app") or ""),
+                    flavor=str(data.get("flavor") or ""),
+                    issuer_id=str(data.get("issuerId") or ""),
+                ))
+                return
+            if parsed.path == "/api/deployment/credentials/upload":
+                try:
+                    content = base64.b64decode(str(data.get("contentBase64") or ""), validate=True)
+                except Exception:
+                    self.write_json({"success": False, "error": "contentBase64 is not valid base64"}, status=400)
+                    return
+                self.write_json(router.import_credential_bytes(
+                    Path(str(data.get("filename") or "")).name,
+                    content,
+                    app_id=str(data.get("app") or ""),
+                    flavor=str(data.get("flavor") or ""),
+                    issuer_id=str(data.get("issuerId") or ""),
+                ))
+                return
+            if parsed.path == "/api/deployment/credentials/remove":
+                self.write_json(router.remove_credential(str(data.get("kind") or ""), str(data.get("app") or "")))
+                return
+
             if parsed.path == "/api/deployment/execute":
                 app_id = str(data.get("app") or "")
                 req_cmd = str(data.get("command") or "")
@@ -426,7 +461,7 @@ class DeploymentHandler(http.server.SimpleHTTPRequestHandler):
                     if req_template_id and c.get("templateId") == req_template_id and (c.get("flavor") == req_flavor or c.get("flavor") == "any"):
                         target_cmd = c
                         break
-                    if not req_template_id and c.get("command") == req_cmd:
+                    if not req_template_id and c.get("key") == req_cmd:
                         target_cmd = c
                         break
 
@@ -445,7 +480,7 @@ class DeploymentHandler(http.server.SimpleHTTPRequestHandler):
 
                 res = router.execute_command(
                     app_id,
-                    target_cmd["command"],
+                    target_cmd["key"],
                     runner=target_cmd.get("runner", req_runner),
                     env=req_flavor or target_cmd.get("flavor", "dev"),
                     template_id=target_cmd.get("templateId", req_template_id),
@@ -455,14 +490,14 @@ class DeploymentHandler(http.server.SimpleHTTPRequestHandler):
                 self.write_json(res)
                 return
 
-            if parsed.path == "/api/deployment/stop":
-                self.write_json(router.stop_job(str(data.get("job_id") or "")))
+            if parsed.path in ("/api/deployment/stop", "/api/deployment/job/stop"):
+                self.write_json(router.stop_job(str(data.get("jobId") or data.get("job_id") or "")))
                 return
             if parsed.path == "/api/deployment/deploy-config/save":
                 self.write_json(router.save_deploy_config(data))
                 return
-            if parsed.path == "/api/deployment/regenerate":
-                self.write_json(router.regenerate_commands(str(data.get("app") or "")))
+            if parsed.path in ("/api/deployment/regenerate", "/api/deployment/regenerate-commands"):
+                self.write_json(router.regenerate_commands())
                 return
             if parsed.path == "/api/deployment/scan-all":
                 force_mode = bool(data.get("force") or False)
@@ -470,6 +505,16 @@ class DeploymentHandler(http.server.SimpleHTTPRequestHandler):
                 return
             if parsed.path == "/api/deployment/rescan-workspace":
                 self.write_json(router.rescan_workspace())
+                return
+            if parsed.path == "/api/deployment/workspace/remove":
+                path = str(data.get("path") or "")
+                resolved = str(Path(path).resolve()) if path else ""
+                busy = [j for j in router.get_running_jobs()
+                        if j.get("workspace") and str(Path(j["workspace"]).resolve()) == resolved]
+                if busy:
+                    self.write_json({"success": False, "error": f"A build is running in this project ({busy[0].get('app')}). Stop it first."}, status=409)
+                    return
+                self.write_json(router.remove_workspace(path))
                 return
             if parsed.path == "/api/deployment/workspace/allow":
                 self.write_json(router.allow_workspace(str(data.get("path") or "")))
@@ -560,6 +605,11 @@ def main() -> int:
     token = _get_auth_token()
     if token:
         print(f"🔑 Auth Token Active: {token[:4]}...{token[-4:]}")
+
+    try:
+        router.credentials.migrate_inline_p8()
+    except Exception:
+        logging.exception("Failed to migrate inline .p8 keys out of deploy_config.json")
 
     server = http.server.ThreadingHTTPServer((args.host, args.port), DeploymentHandler)
     print(f"Deployment app: http://{args.host}:{args.port}")
