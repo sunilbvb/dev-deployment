@@ -7,6 +7,7 @@ Python standard library only.
 
 from __future__ import annotations
 
+import logging
 import os
 from pathlib import Path
 import platform
@@ -799,10 +800,10 @@ def _check_credentials(app_id: str, app_dir: Path) -> list[dict[str, Any]]:
     return checks
 
 
-def diagnose_app(app_id: Optional[str] = None, flavor: str = "prod") -> dict[str, Any]:
+def diagnose_app(app_id: Optional[str] = None, flavor: str = "prod", ws_root: Optional[Path] = None) -> dict[str, Any]:
     """Run full diagnostic check for an app (or workspace if app_id is None)."""
     started_at = time.time()
-    ws_root = get_workspace_root()
+    ws_root = ws_root or get_workspace_root()
 
     all_checks: list[dict[str, Any]] = []
 
@@ -831,7 +832,33 @@ def diagnose_app(app_id: Optional[str] = None, flavor: str = "prod") -> dict[str
         # 5. Credentials & Secrets
         all_checks.extend(_check_credentials(app_id, app_dir))
 
-    # 6. Git Status
+        # 6. Certificate & Keystore Sentinel (Expiry & Firebase Mismatches)
+        try:
+            import sentinel
+            sentinel_res = sentinel.check_app_sentinel(app_id, flavor=flavor, ws_root=ws_root)
+            sentinel_alerts = sentinel_res.get("alerts", [])
+            if sentinel_alerts:
+                for a in sentinel_alerts:
+                    all_checks.append({
+                        "id": a["id"],
+                        "category": a.get("category", "credentials"),
+                        "name": f"Sentinel: {a['title']}",
+                        "status": "fail" if a["severity"] == "critical" else "warn",
+                        "message": a["message"],
+                        "hint": a.get("hint", ""),
+                    })
+            else:
+                all_checks.append({
+                    "id": "sentinel_status_ok",
+                    "category": "credentials",
+                    "name": "Certificate & Keystore Sentinel",
+                    "status": "pass",
+                    "message": "Apple certificates, Android keystore, and Firebase project IDs are healthy.",
+                })
+        except Exception:
+            logging.exception("Failed to run sentinel checks in doctor")
+
+    # 7. Git Status
     all_checks.extend(_check_git_status(app_dir))
 
     # Calculate Score & Overall Status

@@ -271,6 +271,14 @@ class DeploymentHandler(http.server.SimpleHTTPRequestHandler):
                 flavor = query.get("flavor", ["prod"])[0]
                 self.write_json(router.diagnose_app(app_id=app_id, flavor=flavor))
                 return
+            if parsed.path == "/api/deployment/sentinel":
+                app_id = query.get("app", [""])[0] or None
+                flavor = query.get("flavor", ["prod"])[0]
+                if app_id:
+                    self.write_json(router.check_app_sentinel(app_id=app_id, flavor=flavor))
+                else:
+                    self.write_json(router.check_workspace_sentinel(flavor=flavor))
+                return
             if parsed.path == "/api/deployment/apps":
                 self.write_json(router.get_apps())
                 return
