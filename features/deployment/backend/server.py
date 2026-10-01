@@ -199,6 +199,12 @@ class DeploymentHandler(http.server.SimpleHTTPRequestHandler):
             if parsed.path == "/api/deployment/commands":
                 self.write_json(router.get_commands(query.get("app", [""])[0]))
                 return
+            if parsed.path == "/api/deployment/pipelines":
+                self.write_json(router.get_pipelines(query.get("app", [""])[0]))
+                return
+            if parsed.path == "/api/deployment/pipelines/run":
+                self.write_json(router.get_pipeline_run(query.get("id", [""])[0]))
+                return
             if parsed.path == "/api/deployment/deploy-config":
                 self.write_json({"success": True, "config": router.load_deploy_config()})
                 return
@@ -446,6 +452,17 @@ class DeploymentHandler(http.server.SimpleHTTPRequestHandler):
                 return
             if parsed.path == "/api/deployment/credentials/remove":
                 self.write_json(router.remove_credential(str(data.get("kind") or ""), str(data.get("app") or "")))
+                return
+            if parsed.path == "/api/deployment/pipelines/run":
+                self.write_json(router.run_pipeline(
+                    app=str(data.get("app") or ""),
+                    pipeline_id=str(data.get("pipelineId") or ""),
+                    flavor=str(data.get("flavor") or ""),
+                    confirmed=bool(data.get("confirmed") or False),
+                ))
+                return
+            if parsed.path == "/api/deployment/pipelines/stop":
+                self.write_json(router.stop_pipeline_run(str(data.get("runId") or "")))
                 return
 
             if parsed.path == "/api/deployment/execute":

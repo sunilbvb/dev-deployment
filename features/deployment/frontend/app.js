@@ -12,6 +12,10 @@ const state = {
     selectedCommand: null,
     selectedEnv: 'dev',
     hasMultipleEnvs: false,
+    pipelines: [],
+    selectedPipeline: null,
+    activePipelineRunId: null,
+    pipelineLastStepIndex: 0,
     activeJobId: null,
     timerId: null,
     timerStartedAt: 0,
@@ -255,11 +259,16 @@ async function loadCommands(appId) {
     els.commandGrid.innerHTML = '<div class="empty-state">Loading deployment commands...</div>';
     let data;
     try {
-        const res = await fetch(api(`/api/deployment/commands?app=${encodeURIComponent(appId)}`));
-        data = await res.json();
-        if (!res.ok || data.success === false) throw new Error(data.error || `HTTP ${res.status}`);
+        const [cmdRes, pipeRes] = await Promise.all([
+            fetch(api(`/api/deployment/commands?app=${encodeURIComponent(appId)}`)).then(r => r.json()),
+            fetch(api(`/api/deployment/pipelines?app=${encodeURIComponent(appId)}`)).then(r => r.json()).catch(() => ({ pipelines: [] })),
+        ]);
+        data = cmdRes;
+        state.pipelines = pipeRes.pipelines || [];
+        if (!data || data.success === false) throw new Error(data?.error || 'Failed to load commands');
     } catch (err) {
         state.commands = [];
+        state.pipelines = [];
         els.commandGrid.innerHTML = `<div class="empty-state">Could not load commands: ${escapeHtml(err.message)}.
             Check that the console server is still running (<code>./start.sh</code>), then reload this page.</div>`;
         return;
@@ -270,8 +279,31 @@ async function loadCommands(appId) {
 }
 
 function renderCommands() {
+    let html = '';
+    const visiblePipelines = (state.pipelines || []).filter(p => !p.flavor || !state.hasMultipleEnvs || p.flavor === state.selectedEnv || p.flavor === 'any');
+    if (visiblePipelines.length > 0) {
+        html += `<div class="ui-section-header" style="margin: 10px 0 10px 0;"><span class="ui-section-title">Pipelines</span></div>`;
+        html += `<div class="compact-app-grid compact-app-grid--commands">`;
+        html += visiblePipelines.map(p => {
+            const isSelected = state.selectedPipeline && state.selectedPipeline.id === p.id;
+            const selectedClass = isSelected ? 'active' : '';
+            const stepCount = (p.steps || []).length;
+            const flavorBadge = p.flavor ? `<span class="ui-badge" data-variant="info" style="margin-left:4px;">${escapeHtml(p.flavor.toUpperCase())}</span>` : '';
+            return `
+                <div class="compact-app-card ${selectedClass}" data-state="${isSelected ? 'selected' : ''}" data-pipeline-id="${escapeHtml(p.id)}" style="--app-color: #6366f1;">
+                    <div class="compact-app-card-icon"><i data-lucide="layers"></i></div>
+                    <div style="min-width: 0; flex: 1;">
+                        <h3 title="${escapeHtml(p.name)}">${escapeHtml(p.name)} ${flavorBadge}</h3>
+                        <div class="compact-app-meta">${stepCount} step${stepCount === 1 ? '' : 's'}</div>
+                    </div>
+                </div>
+            `;
+        }).join('');
+        html += `</div>`;
+    }
+
     const visible = state.commands.filter(cmd => matchesEnv(cmd));
-    if (!visible.length) {
+    if (!visible.length && !visiblePipelines.length) {
         els.commandGrid.innerHTML = '<div class="empty-state">No deployment commands found for this selection.</div>';
         return;
     }
@@ -283,7 +315,6 @@ function renderCommands() {
         groups.get(meta.group).push({cmd, meta});
     });
 
-    let html = '';
     groups.forEach((items, group) => {
         html += `<div class="ui-section-header" style="margin: 20px 0 10px 0;"><span class="ui-section-title">${escapeHtml(group)}</span></div>`;
         html += `<div class="compact-app-grid compact-app-grid--commands">`;
@@ -311,11 +342,20 @@ function renderCommands() {
     refreshIcons();
 }
 
+function selectPipeline(id) {
+    const pipe = (state.pipelines || []).find(p => p.id === id) || null;
+    state.selectedPipeline = pipe;
+    state.selectedCommand = null;
+    renderCommands();
+    updateExecutionPanel();
+}
+
 function selectCommand(id) {
     const cmd = state.commands.find(c => c.id === id) || null;
     // block selection of unconfigured commands
     if (cmd && cmd.configured === false) return;
     state.selectedCommand = cmd;
+    state.selectedPipeline = null;
     renderCommands();
     updateExecutionPanel();
 }
@@ -341,13 +381,31 @@ function resolvedCommandForExecution() {
 }
 
 function updateExecutionPanel() {
-    if (!state.selectedApp || !state.selectedCommand) {
+    if (!state.selectedApp || (!state.selectedCommand && !state.selectedPipeline)) {
         els.executionPanel.classList.add('hidden');
         els.runButton.disabled = true;
         els.iosCertBanner.classList.add('hidden');
         return;
     }
 
+    if (state.selectedPipeline) {
+        els.executionPanel.classList.remove('hidden');
+        const pipeFlavor = state.selectedPipeline.flavor ? ` (${state.selectedPipeline.flavor.toUpperCase()})` : '';
+        els.selectedCommandTitle.textContent = state.selectedPipeline.name + pipeFlavor;
+        const steps = state.selectedPipeline.steps || [];
+        const lines = steps.map((s, idx) => {
+            const cont = s.continueOnFailure ? ' [continue on error]' : '';
+            const custom = s.isCustom ? ' (custom shell)' : '';
+            return `${idx + 1}. ${s.name || s.templateId || 'Custom'}: ${s.command}${cont}${custom}`;
+        });
+        els.selectedCommandPreview.textContent = lines.join('\n');
+        els.runButton.disabled = false;
+        els.runButton.querySelector('span').textContent = 'Run Pipeline';
+        els.iosCertBanner.classList.add('hidden');
+        return;
+    }
+
+    els.runButton.querySelector('span').textContent = 'Run';
     const command = resolvedCommandForExecution();
     const runner = state.selectedCommand.runner || 'make';
     const isLocked = state.selectedCommand.configured === false;
@@ -425,14 +483,27 @@ function isProdStoreDeploy() {
     return flavor === 'prod' || flavor === 'default' || flavor === '';
 }
 
+let isConfirmingPipeline = false;
+
 function openProdConfirmModal() {
+    isConfirmingPipeline = false;
     const app = state.apps.find(a => a.id === state.selectedApp);
     els.prodConfirmAppName.textContent = app ? (app.name || app.id) : state.selectedApp;
     els.prodConfirmCommandPreview.textContent = els.selectedCommandPreview.textContent;
     els.prodConfirmOverlay.classList.add('ui-active');
 }
 
+function openPipelineConfirmModal(commandsList) {
+    isConfirmingPipeline = true;
+    const app = state.apps.find(a => a.id === state.selectedApp);
+    els.prodConfirmAppName.textContent = app ? (app.name || app.id) : state.selectedApp;
+    const preview = commandsList.map(c => `• ${c.step}: ${c.command}`).join('\n');
+    els.prodConfirmCommandPreview.textContent = preview;
+    els.prodConfirmOverlay.classList.add('ui-active');
+}
+
 function closeProdConfirmModal() {
+    isConfirmingPipeline = false;
     els.prodConfirmOverlay.classList.remove('ui-active');
 }
 
@@ -568,12 +639,134 @@ async function pollJob(jobId) {
 
 function finishExecution() {
     state.activeJobId = null;
+    state.activePipelineRunId = null;
+    state.pipelineLastStepIndex = 0;
     els.runButton.disabled = false;
     els.stopJobBtn.disabled = true;
     stopTimer();
 }
 
+async function executePipelineSelected(confirmed = false) {
+    if (!state.selectedApp || !state.selectedPipeline) return;
+    const pipelineId = state.selectedPipeline.id;
+    state.activePipelineRunId = null;
+    state.pipelineLastStepIndex = 0;
+    state.stdoutLength = 0;
+    state.stderrLength = 0;
+    els.runButton.disabled = true;
+    els.stopJobBtn.disabled = true;
+    startTimer();
+    writeTerminal(`Starting pipeline: ${state.selectedPipeline.name}`);
+
+    try {
+        const res = await fetch(api('/api/deployment/pipelines/run'), {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                app: state.selectedApp,
+                pipelineId: pipelineId,
+                flavor: state.selectedPipeline.flavor || state.selectedEnv || '',
+                confirmed: !!confirmed,
+            }),
+        });
+        const data = await res.json();
+        if (!data.success && data.needsConfirmation) {
+            finishExecution();
+            openPipelineConfirmModal(data.commands || []);
+            return;
+        }
+        if (!data.success || !data.runId) {
+            const err = new Error(data.error || 'Pipeline could not start');
+            err.code = data.code || '';
+            throw err;
+        }
+        state.activePipelineRunId = data.runId;
+        els.stopJobBtn.disabled = false;
+        pollPipelineRun(data.runId);
+    } catch (error) {
+        writeTerminal(`Failed to start pipeline: ${error.message}`, 'error');
+        showToast(error.message || 'Failed to start pipeline', 'error');
+        finishExecution();
+    }
+}
+
+async function pollPipelineRun(runId) {
+    try {
+        const res = await fetch(api(`/api/deployment/pipelines/run?id=${encodeURIComponent(runId)}`));
+        const data = await res.json();
+        if (!data.success || !data.run) throw new Error(data.error || 'Failed to read pipeline run');
+
+        const run = data.run;
+
+        // Check if step changed to print header
+        if (run.currentStep && run.currentStep !== state.pipelineLastStepIndex) {
+            state.pipelineLastStepIndex = run.currentStep;
+            const stepObj = (run.steps || [])[run.currentStep - 1];
+            const stepName = stepObj ? (stepObj.name || stepObj.templateId || `Step ${run.currentStep}`) : `Step ${run.currentStep}`;
+            const total = (run.steps || []).length;
+            writeTerminal(`════ Step ${run.currentStep}/${total} · ${stepName} ════`);
+            state.stdoutLength = 0;
+            state.stderrLength = 0;
+        }
+
+        // Stream output of current step job if available
+        if (run.currentJobId) {
+            try {
+                const jRes = await fetch(api(`/api/deployment/job?id=${encodeURIComponent(run.currentJobId)}`));
+                const jData = await jRes.json();
+                if (jData.success && jData.job) {
+                    const job = jData.job;
+                    if (job.output && job.output.length > state.stdoutLength) {
+                        job.output.slice(state.stdoutLength).split('\n').forEach(line => {
+                            if (line.trim()) writeTerminal(line);
+                        });
+                        state.stdoutLength = job.output.length;
+                    }
+                    if (job.error && job.error.length > state.stderrLength) {
+                        job.error.slice(state.stderrLength).split('\n').forEach(line => {
+                            if (line.trim()) writeTerminal(`[stderr] ${line}`, 'error');
+                        });
+                        state.stderrLength = job.error.length;
+                    }
+                }
+            } catch (_) {}
+        }
+
+        if (run.status === 'running' || run.status === 'stopping') {
+            setTimeout(() => pollPipelineRun(runId), 900);
+            return;
+        }
+
+        if (run.status === 'success') {
+            writeTerminal(`Pipeline completed successfully: ${run.name}`, 'success');
+            showToast('Pipeline completed successfully');
+        } else if (run.status === 'stopped') {
+            writeTerminal(`Pipeline stopped: ${run.name}`, 'warning');
+            showToast('Pipeline stopped');
+        } else {
+            const failedStepMsg = run.failedStep ? ` (failed at step ${run.failedStep})` : '';
+            writeTerminal(`Pipeline failed${failedStepMsg}: ${run.name}`, 'error');
+            showToast('Pipeline failed', 'error');
+        }
+        finishExecution();
+        loadCommands(state.selectedApp);
+    } catch (error) {
+        writeTerminal(`Pipeline polling failed: ${error.message}`, 'error');
+        finishExecution();
+    }
+}
+
 async function stopActiveJob() {
+    if (state.activePipelineRunId) {
+        els.stopJobBtn.disabled = true;
+        writeTerminal('Stopping pipeline...', 'warning');
+        await fetch(api('/api/deployment/pipelines/stop'), {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({runId: state.activePipelineRunId}),
+        }).catch(() => {});
+        return;
+    }
     if (!state.activeJobId) return;
     els.stopJobBtn.disabled = true;
     await fetch(api('/api/deployment/job/stop'), {
@@ -621,6 +814,26 @@ function renderHistory() {
         return;
     }
     els.historyOutput.innerHTML = state.historyEntries.map(entry => {
+        if (entry.type === 'pipeline') {
+            const statusClass = entry.status === 'success' ? 'success' : (entry.status === 'stopped' ? 'warning' : 'error');
+            const time = entry.completedAt ? new Date(entry.completedAt).toLocaleString() : '';
+            const duration = entry.durationSeconds != null ? `${entry.durationSeconds}s` : '—';
+            const stepsCount = (entry.steps || []).length;
+            const stepsSummary = (entry.steps || []).map((s, idx) => {
+                const sColor = s.status === 'success' ? 'var(--ui-success)' : (s.status === 'skipped' ? 'var(--ui-text-muted)' : 'var(--ui-danger)');
+                return `<span style="color: ${sColor}; font-weight: 500;">Step ${idx + 1} (${escapeHtml(s.name || s.templateId || 'Custom')}): ${escapeHtml(s.status || 'unknown')}</span>`;
+            }).join(' &nbsp;·&nbsp; ');
+            const failedInfo = entry.failedStep ? ` · failed at step #${entry.failedStep}` : '';
+            return `
+                <div class="terminal-line history-row pipeline-history-row" style="flex-direction: column; align-items: flex-start; gap: 4px;">
+                    <div>
+                        <span class="${statusClass}">PIPELINE ${escapeHtml((entry.status || '').toUpperCase())}</span>
+                        &nbsp;${escapeHtml(time)} · ${escapeHtml(entry.app || '')} · <strong>${escapeHtml(entry.name || entry.pipelineId || 'Pipeline')}</strong> (${stepsCount} steps) · ${escapeHtml(entry.flavor || '')} · ${duration} · #${escapeHtml(entry.id || '')}${failedInfo}
+                    </div>
+                    ${stepsSummary ? `<div style="font-size: 0.78rem; padding-left: 12px; opacity: 0.9;">${stepsSummary}</div>` : ''}
+                </div>
+            `;
+        }
         const statusClass = entry.status === 'success' ? 'success' : (entry.status === 'stopped' ? 'warning' : 'error');
         const time = entry.completedAt ? new Date(entry.completedAt).toLocaleString() : '';
         const duration = entry.durationSeconds != null ? `${entry.durationSeconds}s` : '—';
@@ -642,6 +855,11 @@ els.appGrid.addEventListener('click', event => {
 });
 
 els.commandGrid.addEventListener('click', event => {
+    const pipeCard = event.target.closest('.compact-app-card[data-pipeline-id]');
+    if (pipeCard) {
+        selectPipeline(pipeCard.dataset.pipelineId);
+        return;
+    }
     const button = event.target.closest('.compact-app-card');
     // ignore clicks on locked (unconfigured) commands
     if (button && button.dataset.locked !== 'true') selectCommand(button.dataset.id);
@@ -663,6 +881,10 @@ els.envTabs.addEventListener('click', event => {
 });
 
 els.runButton.addEventListener('click', () => {
+    if (state.selectedPipeline) {
+        executePipelineSelected(false);
+        return;
+    }
     if (isProdStoreDeploy()) {
         openProdConfirmModal();
     } else {
@@ -676,7 +898,11 @@ els.clearTerminalBtn.addEventListener('click', clearTerminal);
 els.confirmProdDeployBtn.addEventListener('click', () => {
     els.confirmProdDeployBtn.disabled = true; // guard against a rapid double-click
     closeProdConfirmModal();
-    executeSelected(true).finally(() => { els.confirmProdDeployBtn.disabled = false; });
+    if (isConfirmingPipeline) {
+        executePipelineSelected(true).finally(() => { els.confirmProdDeployBtn.disabled = false; });
+    } else {
+        executeSelected(true).finally(() => { els.confirmProdDeployBtn.disabled = false; });
+    }
 });
 els.cancelProdConfirmBtn.addEventListener('click', closeProdConfirmModal);
 els.closeProdConfirmBtn.addEventListener('click', closeProdConfirmModal);

@@ -11,6 +11,7 @@ import commands
 import config
 import jobs
 import p8
+import pipelines
 
 
 class TestDeploymentSecurityAndLogic(unittest.TestCase):
@@ -911,3 +912,350 @@ class TestRemoveWorkspace(unittest.TestCase):
                 self.assertFalse(config.remove_workspace(str(project))["success"])
             finally:
                 config.DASHBOARD_ROOT, config.WORKSPACE_ROOT = saved_root, saved_ws
+
+
+class TestPipelines(unittest.TestCase):
+
+    def setUp(self):
+        self.td = tempfile.TemporaryDirectory()
+        self.base = Path(self.td.name).resolve()
+        self.orig_ws = config.WORKSPACE_ROOT
+        config.WORKSPACE_ROOT = self.base
+
+        # Create mock app
+        self.app_dir = self.base / "app_alpha"
+        self.app_dir.mkdir(parents=True)
+        (self.app_dir / "pubspec.yaml").write_text("name: app_alpha\nversion: 1.0.0+1\n", encoding="utf-8")
+        (self.app_dir / "android" / "app").mkdir(parents=True)
+        (self.app_dir / "android" / "app" / "build.gradle").write_text('android { defaultConfig { applicationId "com.example.alpha" } }', encoding="utf-8")
+
+        # Create basic deploy_config.json
+        cfg_dir = self.base / ".dev-dashboard"
+        cfg_dir.mkdir(parents=True, exist_ok=True)
+        self.cfg_file = cfg_dir / "deploy_config.json"
+        self.cfg_file.write_text(json.dumps({
+            "apps": {
+                "app_alpha": {
+                    "flavors": ["dev", "qa", "prod"],
+                    "bundle_id": "com.example.alpha",
+                    "android_package": "com.example.alpha",
+                }
+            }
+        }), encoding="utf-8")
+
+    def tearDown(self):
+        config.WORKSPACE_ROOT = self.orig_ws
+        self.td.cleanup()
+
+    def test_pipeline_schema_validation(self):
+        # 1. Valid pipeline saves
+        valid_cfg = {
+            "apps": {
+                "app_alpha": {
+                    "pipelines": [
+                        {
+                            "id": "qa-workflow",
+                            "name": "QA Workflow",
+                            "flavor": "qa",
+                            "steps": [
+                                {"templateId": "pub_get"},
+                                {"templateId": "clean", "continueOnFailure": True},
+                            ]
+                        }
+                    ]
+                }
+            }
+        }
+        res = config.save_deploy_config(valid_cfg)
+        self.assertTrue(res.get("success"), res.get("error"))
+
+        # 2. Invalid ID (uppercase / spaces)
+        bad_id_cfg = json.loads(json.dumps(valid_cfg))
+        bad_id_cfg["apps"]["app_alpha"]["pipelines"][0]["id"] = "QA Workflow Invalid"
+        self.assertFalse(config.save_deploy_config(bad_id_cfg)["success"])
+
+        # 3. Duplicate IDs
+        dup_cfg = json.loads(json.dumps(valid_cfg))
+        dup_cfg["apps"]["app_alpha"]["pipelines"].append({
+            "id": "qa-workflow",
+            "name": "Another Workflow",
+            "steps": [{"templateId": "pub_get"}],
+        })
+        self.assertFalse(config.save_deploy_config(dup_cfg)["success"])
+
+        # 4. Empty steps
+        empty_steps_cfg = json.loads(json.dumps(valid_cfg))
+        empty_steps_cfg["apps"]["app_alpha"]["pipelines"][0]["steps"] = []
+        self.assertFalse(config.save_deploy_config(empty_steps_cfg)["success"])
+
+        # 5. Over 20 steps
+        too_many_cfg = json.loads(json.dumps(valid_cfg))
+        too_many_cfg["apps"]["app_alpha"]["pipelines"][0]["steps"] = [{"templateId": "pub_get"}] * 21
+        self.assertFalse(config.save_deploy_config(too_many_cfg)["success"])
+
+    def test_pipeline_resolution_and_confirmation(self):
+        cfg = {
+            "apps": {
+                "app_alpha": {
+                    "flavors": ["dev", "prod"],
+                    "bundle_id": "com.example.alpha",
+                    "android_package": "com.example.alpha",
+                    "pipelines": [
+                        {
+                            "id": "dev-build",
+                            "name": "Dev Build",
+                            "flavor": "dev",
+                            "steps": [
+                                {"templateId": "pub_get"},
+                                {"templateId": "build_apk"},
+                            ]
+                        },
+                        {
+                            "id": "prod-release",
+                            "name": "Prod Release",
+                            "flavor": "prod",
+                            "steps": [
+                                {"templateId": "pub_get"},
+                                {"templateId": "deploy_aab"},
+                            ]
+                        },
+                        {
+                            "id": "custom-pipe",
+                            "name": "Custom Pipeline",
+                            "flavor": "dev",
+                            "steps": [
+                                {"command": "echo test custom step", "name": "Echo step"},
+                            ]
+                        }
+                    ]
+                }
+            }
+        }
+        config.save_deploy_config(cfg)
+
+        # Non-prod build pipeline should not need confirmation
+        dev_res = pipelines.resolve_pipeline("app_alpha", "dev-build")
+        self.assertTrue(dev_res.get("success"), dev_res.get("error"))
+        self.assertFalse(dev_res.get("needsConfirmation"))
+        self.assertEqual(len(dev_res.get("steps", [])), 2)
+
+        # Prod store deploy pipeline must need confirmation
+        prod_res = pipelines.resolve_pipeline("app_alpha", "prod-release")
+        self.assertTrue(prod_res.get("success"))
+        self.assertTrue(prod_res.get("needsConfirmation"))
+
+        # Custom shell step must always require confirmation
+        custom_res = pipelines.resolve_pipeline("app_alpha", "custom-pipe")
+        self.assertTrue(custom_res.get("success"))
+        self.assertTrue(custom_res.get("needsConfirmation"))
+        self.assertTrue(custom_res["steps"][0]["isCustom"])
+
+    def test_pipeline_execution_happy_path(self):
+        cfg = {
+            "apps": {
+                "app_alpha": {
+                    "bundle_id": "com.example.alpha",
+                    "android_package": "com.example.alpha",
+                    "pipelines": [
+                        {
+                            "id": "fast-seq",
+                            "name": "Fast Sequence",
+                            "steps": [
+                                {"command": "echo 'step 1 output'"},
+                                {"command": "echo 'step 2 output'"},
+                                {"command": "echo 'step 3 output'"},
+                            ]
+                        }
+                    ]
+                }
+            }
+        }
+        config.save_deploy_config(cfg)
+
+        # Requires confirmation because of custom commands
+        unconfirmed = pipelines.run_pipeline("app_alpha", "fast-seq", confirmed=False)
+        self.assertFalse(unconfirmed.get("success"))
+        self.assertTrue(unconfirmed.get("needsConfirmation"))
+
+        # Run with confirmation
+        run_res = pipelines.run_pipeline("app_alpha", "fast-seq", confirmed=True)
+        self.assertTrue(run_res.get("success"), run_res.get("error"))
+        run_id = run_res["runId"]
+
+        # Wait for pipeline to finish
+        import time
+        for _ in range(50):
+            status_res = pipelines.get_pipeline_run(run_id)
+            self.assertTrue(status_res.get("success"))
+            if status_res["run"]["status"] in ("success", "error", "stopped"):
+                break
+            time.sleep(0.1)
+
+        final_run = pipelines.get_pipeline_run(run_id)["run"]
+        self.assertEqual(final_run["status"], "success")
+        self.assertEqual(len(final_run["steps"]), 3)
+        self.assertTrue(all(s["status"] == "success" for s in final_run["steps"]))
+
+        # Verify deployment history contains pipeline run
+        history = jobs.get_deployment_history(app="app_alpha")
+        self.assertTrue(history.get("success"))
+        pipe_entries = [e for e in history.get("entries", []) if e.get("type") == "pipeline" and e.get("id") == run_id]
+        self.assertEqual(len(pipe_entries), 1)
+        self.assertEqual(pipe_entries[0]["status"], "success")
+
+    def test_pipeline_execution_stop_on_failure(self):
+        cfg = {
+            "apps": {
+                "app_alpha": {
+                    "bundle_id": "com.example.alpha",
+                    "android_package": "com.example.alpha",
+                    "pipelines": [
+                        {
+                            "id": "failing-seq",
+                            "name": "Failing Sequence",
+                            "steps": [
+                                {"command": "echo 'step 1'"},
+                                {"command": "exit 1"},
+                                {"command": "echo 'step 3'"},
+                            ]
+                        }
+                    ]
+                }
+            }
+        }
+        config.save_deploy_config(cfg)
+
+        run_res = pipelines.run_pipeline("app_alpha", "failing-seq", confirmed=True)
+        self.assertTrue(run_res.get("success"))
+        run_id = run_res["runId"]
+
+        import time
+        for _ in range(50):
+            status_res = pipelines.get_pipeline_run(run_id)
+            if status_res["run"]["status"] in ("success", "error", "stopped"):
+                break
+            time.sleep(0.1)
+
+        final_run = pipelines.get_pipeline_run(run_id)["run"]
+        self.assertEqual(final_run["status"], "error")
+        self.assertEqual(final_run["failedStep"], 2)
+        self.assertEqual(final_run["steps"][0]["status"], "success")
+        self.assertEqual(final_run["steps"][1]["status"], "error")
+        self.assertEqual(final_run["steps"][2]["status"], "skipped")
+
+    def test_pipeline_execution_continue_on_failure(self):
+        cfg = {
+            "apps": {
+                "app_alpha": {
+                    "bundle_id": "com.example.alpha",
+                    "android_package": "com.example.alpha",
+                    "pipelines": [
+                        {
+                            "id": "continue-seq",
+                            "name": "Continue Sequence",
+                            "steps": [
+                                {"command": "echo 'step 1'"},
+                                {"command": "exit 1", "continueOnFailure": True},
+                                {"command": "echo 'step 3'"},
+                            ]
+                        }
+                    ]
+                }
+            }
+        }
+        config.save_deploy_config(cfg)
+
+        run_res = pipelines.run_pipeline("app_alpha", "continue-seq", confirmed=True)
+        self.assertTrue(run_res.get("success"))
+        run_id = run_res["runId"]
+
+        import time
+        for _ in range(50):
+            status_res = pipelines.get_pipeline_run(run_id)
+            if status_res["run"]["status"] in ("success", "error", "stopped"):
+                break
+            time.sleep(0.1)
+
+        final_run = pipelines.get_pipeline_run(run_id)["run"]
+        self.assertEqual(final_run["status"], "success")
+        self.assertEqual(final_run["steps"][0]["status"], "success")
+        self.assertEqual(final_run["steps"][1]["status"], "error")
+        self.assertEqual(final_run["steps"][2]["status"], "success")
+
+    def test_pipeline_app_lock_exclusive(self):
+        cfg = {
+            "apps": {
+                "app_alpha": {
+                    "bundle_id": "com.example.alpha",
+                    "android_package": "com.example.alpha",
+                    "pipelines": [
+                        {
+                            "id": "long-pipe",
+                            "name": "Long Pipeline",
+                            "steps": [
+                                {"command": "sleep 1"},
+                            ]
+                        }
+                    ]
+                }
+            }
+        }
+        config.save_deploy_config(cfg)
+
+        run_res = pipelines.run_pipeline("app_alpha", "long-pipe", confirmed=True)
+        self.assertTrue(run_res.get("success"))
+        run_id = run_res["runId"]
+
+        # Attempt to run another command on app_alpha while pipeline is running
+        busy_res = jobs.execute_command("app_alpha", "echo busy test")
+        self.assertFalse(busy_res.get("success"))
+        self.assertEqual(busy_res.get("code"), "APP_BUSY")
+
+        # Stop pipeline
+        stop_res = pipelines.stop_pipeline_run(run_id)
+        self.assertTrue(stop_res.get("success"))
+
+    def test_pipeline_history_recording(self):
+        cfg = {
+            "apps": {
+                "app_alpha": {
+                    "bundle_id": "com.example.alpha",
+                    "android_package": "com.example.alpha",
+                    "pipelines": [
+                        {
+                            "id": "hist-pipe",
+                            "name": "History Pipeline",
+                            "steps": [
+                                {"command": "echo 'hist step 1'"},
+                            ]
+                        }
+                    ]
+                }
+            }
+        }
+        config.save_deploy_config(cfg)
+
+        run_res = pipelines.run_pipeline("app_alpha", "hist-pipe", confirmed=True)
+        self.assertTrue(run_res.get("success"))
+        run_id = run_res["runId"]
+
+        import time
+        for _ in range(50):
+            status_res = pipelines.get_pipeline_run(run_id)
+            if status_res["run"]["status"] in ("success", "error", "stopped"):
+                break
+            time.sleep(0.1)
+
+        history_file = self.base / ".dev-dashboard" / "deployment_history.jsonl"
+        self.assertTrue(history_file.exists())
+        lines = history_file.read_text(encoding="utf-8").strip().split("\n")
+        parsed = [json.loads(line) for line in lines if line.strip()]
+        pipe_entries = [p for p in parsed if p.get("type") == "pipeline"]
+        self.assertGreaterEqual(len(pipe_entries), 1)
+        entry = pipe_entries[-1]
+        self.assertEqual(entry["id"], run_id)
+        self.assertEqual(entry["name"], "History Pipeline")
+        self.assertEqual(entry["status"], "success")
+        self.assertEqual(len(entry["steps"]), 1)
+        self.assertEqual(entry["steps"][0]["status"], "success")
+

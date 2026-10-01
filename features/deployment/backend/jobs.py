@@ -369,14 +369,14 @@ def execute_command(
 
         should_chain = False
         action_id = ""
-        if status == "success" and template_id in STORE_UPLOAD_TEMPLATE_IDS:
+        if chained_parent_id is None and status == "success" and template_id in STORE_UPLOAD_TEMPLATE_IDS:
             should_chain, action_id = _release_auto_chain_configured(app, env)
 
         with _JOBS_LOCK:
             job = _JOBS.get(job_id)
             if job:
                 job["status"] = "chaining" if should_chain else status
-            if not should_chain:
+            if not should_chain and not _assume_app_lock_held:
                 held = _APP_LOCKS.get(lock_key) or _APP_LOCKS.get(app)
                 if held is not None and (held.get("job_id") == job_id or held.get("job_id") is None):
                     _APP_LOCKS.pop(lock_key, None)
