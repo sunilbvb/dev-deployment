@@ -2338,6 +2338,50 @@ Returns build artifact size delta and uncompressed assets diff.
 ### GET /api/deployment/docs?doc=<id>
 Returns rendered markdown content for repository documentation.
 `
+    },
+    pipelines: {
+        title: "Pipelines Proposal (ADR 0001)",
+        category: "Proposals & ADRs",
+        filename: "0001-pipelines.md",
+        content: `# 🔀 Saved Pipelines Architecture (ADR 0001)
+
+Saved Pipelines chain multi-step build, verification, and release steps into a single 1-click execution flow.
+
+---
+
+## ⚡ Core Concepts
+- **Sequential Execution**: Steps execute one after another in order.
+- **Fail-Fast Safety**: If a step fails, the pipeline aborts immediately to prevent uploading corrupted builds.
+- **Step Templates**: Mix pre-configured templates (\`flutter build appbundle\`, \`fastlane android upload_aab\`) with custom shell commands.
+- **Visual Progress**: Each step card updates with spinning, pass, or fail states in real time.
+`
+    },
+    changelog: {
+        title: "CHANGELOG & Release Notes",
+        category: "Repository Docs",
+        filename: "CHANGELOG.md",
+        content: `# 📋 CHANGELOG & Feature Highlights
+
+## Recent Milestones:
+- **Documentation & Knowledge Hub**: Built-in markdown documentation viewer and offline quickstart guide.
+- **Local APK Hosting & QR Code**: Serve debug/QA builds over local HTTP with instant phone camera install.
+- **Outgoing Webhooks**: Automated notifications for Slack, Discord, and Microsoft Teams.
+- **Certificate & Keystore Sentinel**: Proactive expiry warnings for Apple .p8 keys and Android upload keystores.
+- **Build Size Inspector & Diff**: Instant APK/AAB size regression alerts and uncompressed assets detector.
+`
+    },
+    security: {
+        title: "SECURITY Policy & Architecture",
+        category: "Guidelines",
+        filename: "SECURITY.md",
+        content: `# 🔒 SECURITY Policy & Architectural Controls
+
+## Security Model:
+- **Zero External Dependencies**: Pure Python standard library backend (\`http.server\`, \`hmac\`, \`secrets\`).
+- **Bearer Token Auth**: All mutating API endpoints require valid \`X-API-Token\` generated on startup.
+- **Host & Rebinding Protection**: Validates \`Host\` and \`Origin\` headers to reject DNS rebinding attacks.
+- **Path Traversal Guards**: Strictly enforces resolved canonical paths within allowed workspace boundaries.
+`
     }
 };
 
@@ -2889,6 +2933,11 @@ function exitDemoMode() {
 
 window.startDemoMode = startDemoMode;
 window.exitDemoMode = exitDemoMode;
+window.openDocsModal = openDocsModal;
+window.closeDocsModal = closeDocsModal;
+window.loadDoc = loadDoc;
+window.openServerConsoleModal = openServerConsoleModal;
+window.closeServerConsoleModal = closeServerConsoleModal;
 
 // Event Listeners for Documentation & Server Status
 if (els.openDocsBtn) {
