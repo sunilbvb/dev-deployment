@@ -483,6 +483,7 @@
                     <div id="setupTabs" class="setup-tabs" role="tablist" aria-label="App configuration sections">
                         <button type="button" role="tab" class="setup-tab" data-tab="general" aria-selected="true">General</button>
                         <button type="button" role="tab" class="setup-tab" data-tab="pipelines" aria-selected="false">Pipelines</button>
+                        <button type="button" role="tab" class="setup-tab" data-tab="notifications" aria-selected="false">Notifications</button>
                         <button type="button" role="tab" class="setup-tab" data-tab="keys" aria-selected="false">Keys</button>
                         <button type="button" role="tab" class="setup-tab" data-tab="ios" aria-selected="false">iOS <span class="setup-tab-dot" data-tab-status="ios"></span></button>
                         <button type="button" role="tab" class="setup-tab" data-tab="android" aria-selected="false">Android <span class="setup-tab-dot" data-tab-status="android"></span></button>
@@ -543,6 +544,118 @@
                                         <span>Save Pipeline</span>
                                     </button>
                                 </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Notifications Configuration Card (Slack / Discord / Teams) -->
+                    <div class="ui-card" data-setup-panel="notifications" style="margin-bottom: 16px;">
+                        <div class="ui-card-header" style="display:flex; justify-content:space-between; align-items:center;">
+                            <div>
+                                <h4 class="ui-card-title">Outgoing Webhooks &amp; Team Alerts</h4>
+                                <p class="ui-help-text" style="margin:2px 0 0 0;">Automate team notifications on Slack, Discord, Microsoft Teams, or custom webhooks when builds complete or fail.</p>
+                            </div>
+                        </div>
+                        <div class="ui-card-body">
+                            <!-- App-Specific Webhook Section -->
+                            <div style="margin-bottom: 20px; padding-bottom: 16px; border-bottom: 1px solid var(--ui-border-color);">
+                                <h5 style="margin:0 0 8px 0; font-size:0.95rem; font-weight:600; display:flex; align-items:center; gap:8px;">
+                                    <span>App-Specific Webhook</span>
+                                    <span class="ui-badge" data-variant="info">Per-App</span>
+                                </h5>
+                                <div class="ui-field">
+                                    <label class="ui-control">
+                                        <input id="cfgWebhookEnabled" type="checkbox" class="ui-checkbox" checked>
+                                        <span style="font-weight: 500;">Enable outgoing webhook for this app</span>
+                                    </label>
+                                </div>
+                                <div class="ui-field">
+                                    <label class="ui-label">Webhook URL</label>
+                                    <input id="cfgWebhookUrl" class="ui-input" type="url" placeholder="https://hooks.slack.com/services/... or https://discord.com/api/webhooks/... or Teams URL">
+                                    <span class="ui-help-text">Dedicated URL for this app. If blank, the workspace default webhook below will be used.</span>
+                                </div>
+                                <div style="display:grid; grid-template-columns: 1fr 1fr; gap:12px; margin-bottom:12px;">
+                                    <div class="ui-field" style="margin-bottom:0;">
+                                        <label class="ui-label">Provider Format</label>
+                                        <select id="cfgWebhookProvider" class="ui-select">
+                                            <option value="auto">Auto-Detect (Slack / Discord / Teams)</option>
+                                            <option value="slack">Slack (Block Kit)</option>
+                                            <option value="discord">Discord (Rich Embed)</option>
+                                            <option value="teams">Microsoft Teams (MessageCard)</option>
+                                            <option value="generic">Generic JSON</option>
+                                        </select>
+                                    </div>
+                                    <div class="ui-field" style="margin-bottom:0;">
+                                        <label class="ui-label">Play Console / Target Track</label>
+                                        <input id="cfgPlayConsoleTrack" class="ui-input" type="text" placeholder="e.g. Internal Testing, Production (optional)">
+                                    </div>
+                                </div>
+                                <div class="ui-field" style="margin-bottom: 0;">
+                                    <label class="ui-label">Notify On Events</label>
+                                    <div style="display:flex; gap:16px; margin-top:4px;">
+                                        <label class="ui-control">
+                                            <input id="cfgNotifyOnSuccess" type="checkbox" class="ui-checkbox" checked>
+                                            <span>✅ Successful Deployments</span>
+                                        </label>
+                                        <label class="ui-control">
+                                            <input id="cfgNotifyOnFailure" type="checkbox" class="ui-checkbox" checked>
+                                            <span>❌ Failed Deployments</span>
+                                        </label>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Workspace Fallback Webhook Section -->
+                            <div style="margin-bottom: 16px;">
+                                <h5 style="margin:0 0 8px 0; font-size:0.95rem; font-weight:600; display:flex; align-items:center; gap:8px;">
+                                    <span>Workspace Fallback Webhook</span>
+                                    <span class="ui-badge" data-variant="secondary">Workspace Default</span>
+                                </h5>
+                                <div class="ui-field">
+                                    <label class="ui-control">
+                                        <input id="cfgWorkspaceWebhookEnabled" type="checkbox" class="ui-checkbox" checked>
+                                        <span style="font-weight: 500;">Enable workspace-level fallback notifications</span>
+                                    </label>
+                                </div>
+                                <div class="ui-field">
+                                    <label class="ui-label">Workspace Default Webhook URL</label>
+                                    <input id="cfgWorkspaceWebhookUrl" class="ui-input" type="url" placeholder="https://hooks.slack.com/services/... or https://discord.com/api/webhooks/...">
+                                    <span class="ui-help-text">Used by any app in this workspace that does not define its own webhook URL above.</span>
+                                </div>
+                                <div style="display:grid; grid-template-columns: 1fr 1fr; gap:12px; margin-bottom:12px;">
+                                    <div class="ui-field" style="margin-bottom:0;">
+                                        <label class="ui-label">Workspace Provider Format</label>
+                                        <select id="cfgWorkspaceWebhookProvider" class="ui-select">
+                                            <option value="auto">Auto-Detect</option>
+                                            <option value="slack">Slack (Block Kit)</option>
+                                            <option value="discord">Discord (Rich Embed)</option>
+                                            <option value="teams">Microsoft Teams (MessageCard)</option>
+                                            <option value="generic">Generic JSON</option>
+                                        </select>
+                                    </div>
+                                    <div class="ui-field" style="margin-bottom:0;">
+                                        <label class="ui-label">Workspace Events</label>
+                                        <div style="display:flex; gap:12px; margin-top:8px;">
+                                            <label class="ui-control">
+                                                <input id="cfgWorkspaceNotifySuccess" type="checkbox" class="ui-checkbox" checked>
+                                                <span>✅ Success</span>
+                                            </label>
+                                            <label class="ui-control">
+                                                <input id="cfgWorkspaceNotifyFailure" type="checkbox" class="ui-checkbox" checked>
+                                                <span>❌ Failure</span>
+                                            </label>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Test Webhook Actions -->
+                            <div style="display:flex; align-items:center; justify-content:space-between; padding-top:14px; border-top:1px solid var(--ui-border-color);">
+                                <div id="testWebhookResult" class="cert-status-box" style="display:none; margin:0; flex:1; margin-right:12px; font-size:0.82rem;"></div>
+                                <button id="testWebhookBtn" type="button" class="ui-button" data-variant="secondary">
+                                    <i data-lucide="send"></i>
+                                    <span>Test Webhook</span>
+                                </button>
                             </div>
                         </div>
                     </div>

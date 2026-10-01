@@ -150,6 +150,15 @@ def save_deploy_config(data: dict[str, Any]) -> dict[str, Any]:
     if not isinstance(apps, dict):
         return {"success": False, "error": "Invalid 'apps' section in deploy config"}
 
+    ws_webhook_url = data.get("workspace_webhook_url")
+    if ws_webhook_url is not None and ws_webhook_url != "":
+        if not isinstance(ws_webhook_url, str) or not (ws_webhook_url.startswith("http://") or ws_webhook_url.startswith("https://")) or len(ws_webhook_url) > 2048:
+            return {"success": False, "error": "Invalid workspace webhook URL: must start with http:// or https:// (max 2048 chars)"}
+
+    ws_provider = data.get("workspace_webhook_provider")
+    if ws_provider and str(ws_provider).lower() not in ("auto", "slack", "discord", "teams", "generic"):
+        return {"success": False, "error": f"Invalid workspace webhook provider '{ws_provider}'. Allowed: auto, slack, discord, teams, generic"}
+
     for app_id, app_cfg in apps.items():
         if not isinstance(app_id, str) or not SAFE_ID_PATTERN.match(app_id):
             return {"success": False, "error": f"Invalid app ID '{app_id}'. Must match ^[A-Za-z0-9._-]+$"}
@@ -159,6 +168,14 @@ def save_deploy_config(data: dict[str, Any]) -> dict[str, Any]:
             if val is None or val == "":
                 continue
             if isinstance(val, str):
+                if key == "webhook_url":
+                    if not (val.startswith("http://") or val.startswith("https://")) or len(val) > 2048:
+                        return {"success": False, "error": f"Invalid webhook URL for app '{app_id}': must start with http:// or https:// (max 2048 chars)"}
+                    continue
+                if key == "webhook_provider":
+                    if val.lower() not in ("auto", "slack", "discord", "teams", "generic"):
+                        return {"success": False, "error": f"Invalid webhook provider '{val}' for app '{app_id}'. Allowed: auto, slack, discord, teams, generic"}
+                    continue
                 is_id_field = (
                     any(key == prefix or key.startswith(f"{prefix}_") for prefix in (
                         "bundle_id", "android_id", "android_package", "ios_bundle_id", "android_bundle_id"
