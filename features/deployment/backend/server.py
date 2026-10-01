@@ -193,6 +193,11 @@ class DeploymentHandler(http.server.SimpleHTTPRequestHandler):
             if parsed.path == "/api/deployment/health":
                 self.write_json(router.check_system_health())
                 return
+            if parsed.path == "/api/deployment/doctor":
+                app_id = query.get("app", [""])[0] or None
+                flavor = query.get("flavor", ["prod"])[0]
+                self.write_json(router.diagnose_app(app_id=app_id, flavor=flavor))
+                return
             if parsed.path == "/api/deployment/apps":
                 self.write_json(router.get_apps())
                 return

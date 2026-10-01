@@ -1,4 +1,5 @@
 import credentials
+import doctor
 import picker
 import pipelines
 from config import (
@@ -68,3 +69,5 @@ resolve_pipeline = pipelines.resolve_pipeline
 run_pipeline = pipelines.run_pipeline
 stop_pipeline_run = pipelines.stop_pipeline_run
 get_pipeline_run = pipelines.get_pipeline_run
+diagnose_app = doctor.diagnose_app
+
