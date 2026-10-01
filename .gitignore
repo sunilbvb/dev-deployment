@@ -6,6 +6,7 @@
 .Trashes
 ehthumbs.db
 Thumbs.db
+__MACOSX/
 
 # IDE and Editor Files
 .idea/
@@ -16,6 +17,14 @@ Thumbs.db
 *.swp
 *.swo
 *~
+
+# Archives and Packages
+*.zip
+*.tar
+*.tar.gz
+*.tgz
+*.rar
+*.7z
 
 # Python Cache & Build Artifacts
 __pycache__/
@@ -30,7 +39,10 @@ build/
 dist/
 *.egg-info/
 .pytest_cache/
+.ruff_cache/
+.mypy_cache/
 .coverage
+htmlcov/
 
 # Process & Log Files
 *.pid
