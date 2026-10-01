@@ -40,6 +40,10 @@
         <div class="ui-page-title-row">
             <h1 class="ui-page-title">Deployment Console</h1>
             <div class="ui-page-actions">
+                <button id="openDoctorBtn" class="ui-button" data-variant="secondary" data-size="sm" type="button" title="Pre-flight Diagnostics (App Doctor)">
+                    <i data-lucide="stethoscope"></i>
+                    <span>App Doctor</span>
+                </button>
                 <button id="openSetupBtn" class="ui-button" data-variant="secondary" data-size="sm" type="button" title="Deployment Setup">
                     <i data-lucide="settings-2"></i>
                     <span>Configure</span>
@@ -109,6 +113,10 @@
                     <button id="runButton" class="ui-button" data-variant="primary" type="button" disabled>
                         <i data-lucide="play"></i>
                         <span>Run</span>
+                    </button>
+                    <button id="doctorPanelBtn" class="ui-button" data-variant="secondary" type="button" title="Run Pre-flight Doctor diagnostics on this app">
+                        <i data-lucide="stethoscope"></i>
+                        <span>Doctor</span>
                     </button>
                     <button id="stopJobBtn" class="ui-button" data-variant="danger" type="button" disabled>
                         <i data-lucide="square"></i>
@@ -203,6 +211,57 @@
                 <i data-lucide="rocket"></i>
                 <span>Yes, Deploy to Production</span>
             </button>
+        </div>
+    </div>
+</div>
+
+<!-- ═══════════════════════════ APP DOCTOR DIAGNOSTICS MODAL ═══════════════════════════ -->
+<div id="doctorOverlay" class="ui-modal-backdrop" role="dialog" aria-modal="true" aria-label="Pre-flight App Doctor">
+    <div class="ui-modal" data-size="lg" style="max-width: 840px; width: 92%; max-height: 88vh; display: flex; flex-direction: column;">
+        <div class="ui-modal-header" style="display: flex; align-items: center; justify-content: space-between; padding: 16px 20px;">
+            <div style="display: flex; align-items: center; gap: 12px;">
+                <div style="background: rgba(99, 102, 241, 0.15); color: #818cf8; width: 38px; height: 38px; border-radius: 8px; display: flex; align-items: center; justify-content: center;">
+                    <i data-lucide="stethoscope" style="width: 20px; height: 20px;"></i>
+                </div>
+                <div>
+                    <h3 class="ui-modal-title" style="margin: 0; font-size: 1.1rem; font-weight: 700;">App Doctor · Pre-flight Diagnostics</h3>
+                    <div id="doctorSubtitle" style="font-size: 0.78rem; color: var(--ui-text-muted); margin-top: 2px;">
+                        Verifying SDKs, toolchains, build environments, and credentials.
+                    </div>
+                </div>
+            </div>
+            <button id="closeDoctorModalBtn" class="ui-modal-close" type="button" aria-label="Close">&times;</button>
+        </div>
+        <div class="ui-modal-body" style="padding: 20px; overflow-y: auto; flex: 1;">
+            <!-- Overall Status Banner -->
+            <div id="doctorStatusBanner" class="doctor-status-banner" data-status="pending" style="border-radius: 8px; padding: 14px 18px; margin-bottom: 18px; display: flex; align-items: center; justify-content: space-between; gap: 16px;">
+                <div style="display: flex; align-items: center; gap: 12px;">
+                    <div id="doctorOverallIcon" style="font-size: 1.6rem; line-height: 1;">🩺</div>
+                    <div>
+                        <div id="doctorOverallTitle" style="font-weight: 700; font-size: 0.95rem;">Checking environment...</div>
+                        <div id="doctorOverallSummary" style="font-size: 0.8rem; opacity: 0.9;">Running pre-flight checks</div>
+                    </div>
+                </div>
+                <div id="doctorScorePills" style="display: flex; gap: 6px; flex-wrap: wrap;"></div>
+            </div>
+
+            <!-- Checklist Container -->
+            <div id="doctorChecklistContainer" style="display: flex; flex-direction: column; gap: 16px;">
+                <div class="empty-state">Running diagnostics...</div>
+            </div>
+        </div>
+        <div class="ui-modal-footer" style="display: flex; align-items: center; justify-content: space-between; padding: 14px 20px; border-top: 1px solid var(--ui-border-color); background: var(--ui-bg-secondary, #1e293b);">
+            <div id="doctorFooterDuration" style="font-size: 0.75rem; color: var(--ui-text-muted);">Diagnostics completed in — ms</div>
+            <div style="display: flex; gap: 8px;">
+                <button id="copyDoctorReportBtn" class="ui-button" data-variant="secondary" data-size="sm" type="button" title="Copy markdown report to clipboard">
+                    <i data-lucide="copy"></i>
+                    <span>Copy Report</span>
+                </button>
+                <button id="recheckDoctorBtn" class="ui-button" data-variant="primary" data-size="sm" type="button">
+                    <i data-lucide="refresh-cw"></i>
+                    <span>Run Doctor Again</span>
+                </button>
+            </div>
         </div>
     </div>
 </div>

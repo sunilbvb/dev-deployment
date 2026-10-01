@@ -1259,3 +1259,107 @@ class TestPipelines(unittest.TestCase):
         self.assertEqual(len(entry["steps"]), 1)
         self.assertEqual(entry["steps"][0]["status"], "success")
 
+
+class TestAppDoctor(unittest.TestCase):
+
+    def setUp(self):
+        self.td = tempfile.TemporaryDirectory()
+        self.base = Path(self.td.name).resolve()
+        self.orig_ws = config.WORKSPACE_ROOT
+        config.WORKSPACE_ROOT = self.base
+
+        # Create mock Flutter app
+        self.app_dir = self.base / "app_alpha"
+        self.app_dir.mkdir(parents=True)
+        (self.app_dir / "pubspec.yaml").write_text("name: app_alpha\nversion: 2.1.0+33\n", encoding="utf-8")
+        (self.app_dir / "pubspec.lock").write_text("# lock\n", encoding="utf-8")
+        (self.app_dir / "android").mkdir(parents=True)
+        gradlew = self.app_dir / "android" / "gradlew"
+        gradlew.write_text("#!/bin/sh\necho gradle\n", encoding="utf-8")
+        gradlew.chmod(0o755)
+
+        cfg_dir = self.base / ".dev-dashboard"
+        cfg_dir.mkdir(parents=True, exist_ok=True)
+        (cfg_dir / "deploy_config.json").write_text(json.dumps({
+            "apps": {
+                "app_alpha": {
+                    "android_package": "com.example.alpha",
+                    "bundle_id": "com.example.alpha",
+                }
+            }
+        }), encoding="utf-8")
+
+    def tearDown(self):
+        config.WORKSPACE_ROOT = self.orig_ws
+        self.td.cleanup()
+
+    def test_diagnose_app_success(self):
+        import doctor
+        res = doctor.diagnose_app("app_alpha")
+        self.assertTrue(res["success"])
+        self.assertEqual(res["app"], "app_alpha")
+        self.assertIn(res["overallStatus"], ("pass", "warn", "fail"))
+        self.assertGreater(len(res["checks"]), 0)
+        self.assertIn("App Doctor Diagnostic Report", res["reportMarkdown"])
+
+        # Check pubspec check
+        pub_check = next((c for c in res["checks"] if c["id"] == "pubspec_yaml"), None)
+        self.assertIsNotNone(pub_check)
+        self.assertEqual(pub_check["status"], "pass")
+        self.assertEqual(pub_check["version"], "2.1.0+33")
+
+        # Check gradlew check
+        gw_check = next((c for c in res["checks"] if c["id"] == "android_gradlew"), None)
+        self.assertIsNotNone(gw_check)
+        self.assertEqual(gw_check["status"], "pass")
+
+    def test_diagnose_app_unexecutable_gradlew(self):
+        import doctor
+        gradlew = self.app_dir / "android" / "gradlew"
+        gradlew.chmod(0o644)  # remove execute permissions
+
+        res = doctor.diagnose_app("app_alpha")
+        self.assertTrue(res["success"])
+        gw_check = next((c for c in res["checks"] if c["id"] == "android_gradlew"), None)
+        self.assertIsNotNone(gw_check)
+        self.assertEqual(gw_check["status"], "fail")
+        self.assertIn("chmod +x", gw_check["hint"])
+
+    def test_diagnose_app_missing_pubspec_lock(self):
+        import doctor
+        (self.app_dir / "pubspec.lock").unlink()
+
+        res = doctor.diagnose_app("app_alpha")
+        self.assertTrue(res["success"])
+        lock_check = next((c for c in res["checks"] if c["id"] == "pubspec_lock"), None)
+        self.assertIsNotNone(lock_check)
+        self.assertEqual(lock_check["status"], "warn")
+        self.assertIn("flutter pub get", lock_check["hint"])
+
+    def test_server_doctor_endpoint(self):
+        import http.client
+        import http.server
+        import threading
+        import server
+
+        httpd = http.server.ThreadingHTTPServer(("127.0.0.1", 0), server.DeploymentHandler)
+        port = httpd.server_address[1]
+        t = threading.Thread(target=httpd.serve_forever)
+        t.daemon = True
+        t.start()
+
+        try:
+            token = server._get_auth_token()
+            conn = http.client.HTTPConnection("127.0.0.1", port)
+            headers = {"X-API-Token": token}
+            conn.request("GET", "/api/deployment/doctor?app=app_alpha", headers=headers)
+            res = conn.getresponse()
+            self.assertEqual(res.status, 200)
+            data = json.loads(res.read().decode("utf-8"))
+            self.assertTrue(data.get("success"))
+            self.assertEqual(data.get("app"), "app_alpha")
+        finally:
+            httpd.shutdown()
+            httpd.server_close()
+
+
