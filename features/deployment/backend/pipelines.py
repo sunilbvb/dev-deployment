@@ -77,6 +77,7 @@ def _record_pipeline_history(run: dict[str, Any]) -> None:
         "finishedAt": finished_at,
         "completedAt": int(finished_at * 1000) if finished_at else None,
         "durationSeconds": duration_sec,
+        "artifact": run.get("artifact"),
     }
 
     with jobs._HISTORY_LOCK:
@@ -401,6 +402,9 @@ def _execute_pipeline_worker(run_id: str, app: str, lock_key: str) -> None:
             step["status"] = final_status
             step["returnCode"] = final_job.get("return_code")
             step["finishedAt"] = finished_ts
+            if final_job.get("artifact"):
+                step["artifact"] = final_job["artifact"]
+                run["artifact"] = final_job["artifact"]
             started = step.get("startedAt") or finished_ts
             step["durationSeconds"] = int(finished_ts - started)
 

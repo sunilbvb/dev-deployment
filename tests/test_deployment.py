@@ -1363,3 +1363,154 @@ class TestAppDoctor(unittest.TestCase):
             httpd.server_close()
 
 
+class TestApkHostingAndQr(unittest.TestCase):
+    def setUp(self):
+        self.tmp_dir = tempfile.TemporaryDirectory()
+        self.ws_dir = Path(self.tmp_dir.name)
+        self.app_dir = self.ws_dir / "apps" / "test_apk_app"
+        self.apk_dir = self.app_dir / "build" / "app" / "outputs" / "flutter-apk"
+        self.apk_dir.mkdir(parents=True, exist_ok=True)
+        self.apk_file = self.apk_dir / "app-release.apk"
+        self.apk_content = b"PK\x03\x04mock_android_apk_binary_payload"
+        self.apk_file.write_bytes(self.apk_content)
+
+        # Mock deploy config
+        deploy_cfg = {
+            "version": 1,
+            "apps": {
+                "test_apk_app": {
+                    "name": "Test APK App",
+                    "path": "apps/test_apk_app",
+                }
+            }
+        }
+        (self.ws_dir / "deploy_config.json").write_text(json.dumps(deploy_cfg), encoding="utf-8")
+
+        import config
+        self.orig_ws = config.WORKSPACE_ROOT
+        config.WORKSPACE_ROOT = self.ws_dir
+
+    def tearDown(self):
+        import config
+        config.WORKSPACE_ROOT = self.orig_ws
+        self.tmp_dir.cleanup()
+
+    def test_qr_generation(self):
+        import qr
+        url = "http://192.168.1.100:18112/api/deployment/download/job_12345?token=abcdef"
+
+        # Test QR Matrix
+        matrix = qr.generate_qr(url)
+        self.assertGreaterEqual(len(matrix), 21)
+        self.assertEqual(len(matrix), len(matrix[0]))
+
+        # Test QR SVG
+        svg = qr.qr_svg(url, box_size=6)
+        self.assertIn("<svg", svg)
+        self.assertIn("xmlns=\"http://www.w3.org/2000/svg\"", svg)
+        self.assertIn("viewBox=", svg)
+        self.assertIn("<rect", svg)
+
+        # Test QR ASCII
+        ascii_art = qr.qr_ascii(url)
+        self.assertTrue(len(ascii_art) > 50)
+        self.assertTrue(any(c in ascii_art for c in ("█", "▀", "▄")))
+
+    def test_lan_ip_discovery(self):
+        import artifacts
+        lan_ip = artifacts.get_lan_ip()
+        self.assertIsInstance(lan_ip, str)
+        # Should be a valid IPv4 address
+        parts = lan_ip.split(".")
+        self.assertEqual(len(parts), 4)
+        for p in parts:
+            val = int(p)
+            self.assertTrue(0 <= val <= 255)
+
+    def test_is_lan_host_validation(self):
+        import server
+        self.assertTrue(server._is_lan_host("127.0.0.1"))
+        self.assertTrue(server._is_lan_host("192.168.1.18"))
+        self.assertTrue(server._is_lan_host("10.0.0.1"))
+        self.assertTrue(server._is_lan_host("172.20.0.1"))
+        self.assertTrue(server._is_lan_host("phone.local"))
+        self.assertFalse(server._is_lan_host("8.8.8.8"))
+        self.assertFalse(server._is_lan_host("evil.attacker.com"))
+        self.assertFalse(server._is_lan_host(""))
+
+    def test_find_apk_artifact(self):
+        import artifacts
+        art = artifacts.find_apk_artifact("test_apk_app")
+        self.assertIsNotNone(art)
+        self.assertEqual(art["filename"], "app-release.apk")
+        self.assertEqual(art["sizeBytes"], len(self.apk_content))
+        self.assertTrue(Path(art["path"]).is_file())
+
+    def test_resolve_safe_apk_path(self):
+        import artifacts
+        resolved = artifacts.resolve_safe_apk_path("test_apk_app")
+        self.assertIsNotNone(resolved)
+        self.assertEqual(resolved.resolve(), self.apk_file.resolve())
+
+        # Path traversal rejection
+        self.assertIsNone(artifacts.resolve_safe_apk_path("../etc/passwd"))
+        self.assertIsNone(artifacts.resolve_safe_apk_path("../../app.apk"))
+        self.assertIsNone(artifacts.resolve_safe_apk_path("non_existent_app"))
+
+    def test_server_apk_download_and_info(self):
+        import http.client
+        import http.server
+        import server
+        import threading
+
+        httpd = http.server.ThreadingHTTPServer(("127.0.0.1", 0), server.DeploymentHandler)
+        port = httpd.server_address[1]
+        t = threading.Thread(target=httpd.serve_forever)
+        t.daemon = True
+        t.start()
+
+        try:
+            token = server._get_auth_token()
+
+            # 1. Test /api/deployment/apk-info
+            conn = http.client.HTTPConnection("127.0.0.1", port)
+            conn.request("GET", "/api/deployment/apk-info?app=test_apk_app", headers={"X-API-Token": token})
+            res = conn.getresponse()
+            self.assertEqual(res.status, 200)
+            data = json.loads(res.read().decode("utf-8"))
+            self.assertTrue(data.get("success"))
+            self.assertTrue(data.get("hasApk"))
+            self.assertEqual(data.get("filename"), "app-release.apk")
+            self.assertIn("downloadUrl", data)
+            self.assertIn("qrSvg", data)
+            self.assertIn("qrAscii", data)
+
+            # 2. Test /api/deployment/download/<target>?token=<token> (Phone camera flow)
+            conn2 = http.client.HTTPConnection("127.0.0.1", port)
+            conn2.request("GET", f"/api/deployment/download/test_apk_app?token={token}")
+            res2 = conn2.getresponse()
+            self.assertEqual(res2.status, 200)
+            self.assertEqual(res2.getheader("Content-Type"), "application/vnd.android.package-archive")
+            self.assertIn("app-release.apk", res2.getheader("Content-Disposition", ""))
+            body = res2.read()
+            self.assertEqual(body, self.apk_content)
+
+            # 3. Test Unauthorized download (no token)
+            conn3 = http.client.HTTPConnection("127.0.0.1", port)
+            conn3.request("GET", "/api/deployment/download/test_apk_app")
+            res3 = conn3.getresponse()
+            self.assertEqual(res3.status, 401)
+
+            # 4. Test /api/deployment/qr endpoint
+            conn4 = http.client.HTTPConnection("127.0.0.1", port)
+            conn4.request("GET", f"/api/deployment/qr?text=http://test.url&token={token}")
+            res4 = conn4.getresponse()
+            self.assertEqual(res4.status, 200)
+            self.assertEqual(res4.getheader("Content-Type"), "image/svg+xml")
+            qr_body = res4.read().decode("utf-8")
+            self.assertIn("<svg", qr_body)
+        finally:
+            httpd.shutdown()
+            httpd.server_close()
+
+

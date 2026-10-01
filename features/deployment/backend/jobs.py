@@ -119,6 +119,7 @@ def _record_history_entry(job_id: str, chained_job_id: Optional[str] = None) -> 
             "chainedJobId": chained_job_id or job.get("chained_job_id"),
             "errorExcerpt": error_excerpt,
             "outputExcerpt": output_excerpt,
+            "artifact": job.get("artifact"),
         }
 
     history_file = _get_history_file()
@@ -366,6 +367,18 @@ def execute_command(
             status = "stopped" if job.get("status") == "stopping" else ("success" if process.returncode == 0 else "error")
             job["finished_at"] = finished_ts
             job.pop("process", None)
+            if status == "success":
+                try:
+                    import artifacts
+                    artifact = artifacts.find_apk_artifact(
+                        app_id=app,
+                        flavor=flavor or env,
+                        started_after=job.get("started_at"),
+                    )
+                    if artifact:
+                        job["artifact"] = artifact
+                except Exception:
+                    logging.exception("Failed to scan for build artifacts")
 
         should_chain = False
         action_id = ""

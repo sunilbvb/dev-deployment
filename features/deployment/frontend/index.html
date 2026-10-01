@@ -136,6 +136,27 @@
             </div>
         </div>
         <div class="ui-card-body">
+            <div id="apkInstallBanner" class="apk-install-banner hidden">
+                <div class="apk-install-info">
+                    <div style="background: rgba(16, 185, 129, 0.2); color: #34d399; width: 36px; height: 36px; border-radius: 8px; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
+                        <i data-lucide="smartphone" style="width: 20px; height: 20px;"></i>
+                    </div>
+                    <div>
+                        <div class="apk-install-title">Android APK Ready: <span id="apkBannerFilename">app-release.apk</span> (<span id="apkBannerSize">-</span>)</div>
+                        <div class="apk-install-subtitle">Scan QR code on same Wi-Fi or download directly to install on test device</div>
+                    </div>
+                </div>
+                <div class="apk-install-actions">
+                    <button id="openQrModalBtn" type="button" class="ui-button" data-variant="primary" data-size="sm">
+                        <i data-lucide="qr-code"></i>
+                        <span>Scan to Install</span>
+                    </button>
+                    <a id="bannerDownloadBtn" href="#" class="ui-button" data-variant="secondary" data-size="sm" title="Direct download" download>
+                        <i data-lucide="download"></i>
+                    </a>
+                </div>
+            </div>
+
             <div class="filter-row" style="margin-bottom: 16px;">
                 <div class="ui-segmented-control" id="outputTabs" aria-label="Output view">
                     <button class="ui-segment active" type="button" data-view="live">Live Terminal</button>
@@ -262,6 +283,55 @@
                     <span>Run Doctor Again</span>
                 </button>
             </div>
+        </div>
+    </div>
+</div>
+
+<!-- ═══════════════════════════ LOCAL APK & QR CODE MODAL ═══════════════════════════ -->
+<div id="qrModalOverlay" class="ui-modal-backdrop" role="dialog" aria-modal="true" aria-label="Scan to Install APK">
+    <div class="ui-modal" data-size="sm" style="max-width: 480px; width: 92%; display: flex; flex-direction: column;">
+        <div class="ui-modal-header" style="display: flex; align-items: center; justify-content: space-between; padding: 16px 20px;">
+            <div style="display: flex; align-items: center; gap: 12px;">
+                <div style="background: rgba(16, 185, 129, 0.15); color: #10b981; width: 38px; height: 38px; border-radius: 8px; display: flex; align-items: center; justify-content: center;">
+                    <i data-lucide="qr-code" style="width: 20px; height: 20px;"></i>
+                </div>
+                <div>
+                    <h3 class="ui-modal-title" style="margin: 0; font-size: 1.1rem; font-weight: 700;">Scan to Install APK</h3>
+                    <div class="modal-subtitle" style="font-size: 0.78rem; color: var(--ui-text-muted); margin-top: 2px;">
+                        Point your Android phone camera on the same Wi-Fi
+                    </div>
+                </div>
+            </div>
+            <button id="closeQrModalBtn" class="ui-modal-close" type="button" aria-label="Close">&times;</button>
+        </div>
+        <div class="ui-modal-body" style="padding: 20px; display: flex; flex-direction: column; align-items: center; text-align: center;">
+            <div id="qrCodeContainer" class="qr-code-box" style="background: #ffffff; padding: 16px; border-radius: 12px; margin-bottom: 16px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); display: flex; align-items: center; justify-content: center; min-width: 220px; min-height: 220px;">
+                <!-- Injected SVG QR -->
+            </div>
+            <div style="width: 100%; text-align: left; background: var(--ui-bg-secondary, #1e293b); border: 1px solid var(--ui-border-color); border-radius: 8px; padding: 12px 14px; margin-bottom: 16px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                    <span style="font-size: 0.75rem; text-transform: uppercase; font-weight: 700; color: var(--ui-text-muted);">Package</span>
+                    <span id="qrApkSize" style="font-size: 0.75rem; font-weight: 600; color: #10b981;">-</span>
+                </div>
+                <div id="qrApkFilename" style="font-family: var(--ui-font-mono, monospace); font-size: 0.82rem; word-break: break-all; font-weight: 600; color: var(--ui-text-primary);">app-release.apk</div>
+                <div id="qrApkPath" style="font-size: 0.72rem; color: var(--ui-text-muted); margin-top: 4px; word-break: break-all;">-</div>
+            </div>
+            <div style="width: 100%; display: flex; flex-direction: column; gap: 8px;">
+                <div style="display: flex; gap: 8px;">
+                    <input id="qrDownloadUrlInput" class="ui-input" type="text" readonly style="flex: 1; font-size: 0.78rem; font-family: monospace;">
+                    <button id="copyQrUrlBtn" type="button" class="ui-button" data-variant="secondary" title="Copy Wi-Fi download link">
+                        <i data-lucide="copy"></i>
+                        <span>Copy</span>
+                    </button>
+                </div>
+                <a id="directDownloadApkBtn" href="#" class="ui-button" data-variant="primary" style="text-decoration: none; justify-content: center;" download>
+                    <i data-lucide="download"></i>
+                    <span>Download APK to Computer</span>
+                </a>
+            </div>
+        </div>
+        <div class="ui-modal-footer" style="padding: 12px 20px; font-size: 0.75rem; color: var(--ui-text-muted); background: var(--ui-bg-secondary, #1e293b); border-top: 1px solid var(--ui-border-color); text-align: center;">
+            📶 Ensure phone is on the same Wi-Fi network (<span id="qrLanIpLabel">-</span>). No USB cable required!
         </div>
     </div>
 </div>

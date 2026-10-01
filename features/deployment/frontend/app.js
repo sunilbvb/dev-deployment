@@ -71,6 +71,22 @@ const els = {
     doctorFooterDuration: document.getElementById('doctorFooterDuration'),
     copyDoctorReportBtn: document.getElementById('copyDoctorReportBtn'),
     recheckDoctorBtn: document.getElementById('recheckDoctorBtn'),
+    // APK banner & QR Modal
+    apkInstallBanner: document.getElementById('apkInstallBanner'),
+    apkBannerFilename: document.getElementById('apkBannerFilename'),
+    apkBannerSize: document.getElementById('apkBannerSize'),
+    openQrModalBtn: document.getElementById('openQrModalBtn'),
+    bannerDownloadBtn: document.getElementById('bannerDownloadBtn'),
+    qrModalOverlay: document.getElementById('qrModalOverlay'),
+    closeQrModalBtn: document.getElementById('closeQrModalBtn'),
+    qrCodeContainer: document.getElementById('qrCodeContainer'),
+    qrApkSize: document.getElementById('qrApkSize'),
+    qrApkFilename: document.getElementById('qrApkFilename'),
+    qrApkPath: document.getElementById('qrApkPath'),
+    qrDownloadUrlInput: document.getElementById('qrDownloadUrlInput'),
+    copyQrUrlBtn: document.getElementById('copyQrUrlBtn'),
+    directDownloadApkBtn: document.getElementById('directDownloadApkBtn'),
+    qrLanIpLabel: document.getElementById('qrLanIpLabel'),
 };
 
 // C9: Tab-isolated workspace - attach X-Workspace header to all fetch requests
@@ -559,6 +575,7 @@ async function executeSelected(confirmed = false) {
     state.activeJobId = null;
     state.stdoutLength = 0;
     state.stderrLength = 0;
+    if (els.apkInstallBanner) els.apkInstallBanner.classList.add('hidden');
     els.runButton.disabled = true;
     els.stopJobBtn.disabled = true;
     startTimer();
@@ -636,6 +653,7 @@ async function pollJob(jobId) {
         if (job.status === 'success') {
             writeTerminal(`Completed successfully: ${job.command}`, 'success');
             showToast('Deployment command completed');
+            checkAndDisplayApk(jobId, job.app, job.flavor || job.env);
         } else if (job.status === 'stopped') {
             writeTerminal(`Stopped: ${job.command}`, 'error');
             showToast('Deployment command stopped');
@@ -667,6 +685,7 @@ async function executePipelineSelected(confirmed = false) {
     state.pipelineLastStepIndex = 0;
     state.stdoutLength = 0;
     state.stderrLength = 0;
+    if (els.apkInstallBanner) els.apkInstallBanner.classList.add('hidden');
     els.runButton.disabled = true;
     els.stopJobBtn.disabled = true;
     startTimer();
@@ -754,6 +773,7 @@ async function pollPipelineRun(runId) {
         if (run.status === 'success') {
             writeTerminal(`Pipeline completed successfully: ${run.name}`, 'success');
             showToast('Pipeline completed successfully');
+            checkAndDisplayApk(run.currentJobId || '', run.app, run.flavor);
         } else if (run.status === 'stopped') {
             writeTerminal(`Pipeline stopped: ${run.name}`, 'warning');
             showToast('Pipeline stopped');
@@ -838,11 +858,12 @@ function renderHistory() {
                 return `<span style="color: ${sColor}; font-weight: 500;">Step ${idx + 1} (${escapeHtml(s.name || s.templateId || 'Custom')}): ${escapeHtml(s.status || 'unknown')}</span>`;
             }).join(' &nbsp;·&nbsp; ');
             const failedInfo = entry.failedStep ? ` · failed at step #${entry.failedStep}` : '';
+            const apkBtn = entry.artifact ? ` &nbsp;·&nbsp; <button type="button" class="ui-button" data-variant="secondary" data-size="xs" style="padding:1px 6px; font-size:11px; color:#10b981;" onclick="openQrModalForTarget('${escapeHtml(entry.id)}', '${escapeHtml(entry.app || '')}', '${escapeHtml(entry.flavor || '')}')"><i data-lucide="qr-code" style="width:12px;height:12px;"></i> APK QR</button>` : '';
             return `
                 <div class="terminal-line history-row pipeline-history-row" style="flex-direction: column; align-items: flex-start; gap: 4px;">
                     <div>
                         <span class="${statusClass}">PIPELINE ${escapeHtml((entry.status || '').toUpperCase())}</span>
-                        &nbsp;${escapeHtml(time)} · ${escapeHtml(entry.app || '')} · <strong>${escapeHtml(entry.name || entry.pipelineId || 'Pipeline')}</strong> (${stepsCount} steps) · ${escapeHtml(entry.flavor || '')} · ${duration} · #${escapeHtml(entry.id || '')}${failedInfo}
+                        &nbsp;${escapeHtml(time)} · ${escapeHtml(entry.app || '')} · <strong>${escapeHtml(entry.name || entry.pipelineId || 'Pipeline')}</strong> (${stepsCount} steps) · ${escapeHtml(entry.flavor || '')} · ${duration} · #${escapeHtml(entry.id || '')}${failedInfo}${apkBtn}
                     </div>
                     ${stepsSummary ? `<div style="font-size: 0.78rem; padding-left: 12px; opacity: 0.9;">${stepsSummary}</div>` : ''}
                 </div>
@@ -853,14 +874,16 @@ function renderHistory() {
         const duration = entry.durationSeconds != null ? `${entry.durationSeconds}s` : '—';
         const chained = entry.chainedJobId ? ` · chained → ${escapeHtml(entry.chainedJobId)}` : '';
         const excerpt = entry.errorExcerpt || entry.outputExcerpt || '';
+        const apkBtn = entry.artifact ? ` · <button type="button" class="ui-button" data-variant="secondary" data-size="xs" style="padding:1px 6px; font-size:11px; color:#10b981;" onclick="openQrModalForTarget('${escapeHtml(entry.id)}', '${escapeHtml(entry.app || '')}', '${escapeHtml(entry.flavor || '')}')"><i data-lucide="qr-code" style="width:12px;height:12px;"></i> APK QR</button>` : '';
         return `
             <div class="terminal-line history-row">
                 <span class="${statusClass}">${escapeHtml((entry.status || '').toUpperCase())}</span>
-                &nbsp;${escapeHtml(time)} · ${escapeHtml(entry.app || '')} · ${escapeHtml(entry.templateId || '')} · ${escapeHtml(entry.flavor || '')} · ${duration} · #${escapeHtml(entry.id || '')}${chained}
+                &nbsp;${escapeHtml(time)} · ${escapeHtml(entry.app || '')} · ${escapeHtml(entry.templateId || '')} · ${escapeHtml(entry.flavor || '')} · ${duration} · #${escapeHtml(entry.id || '')}${chained}${apkBtn}
                 ${excerpt ? `<pre class="history-excerpt">${escapeHtml(excerpt)}</pre>` : ''}
             </div>
         `;
     }).join('');
+    refreshIcons();
 }
 
 els.appGrid.addEventListener('click', event => {
@@ -1391,6 +1414,130 @@ wsModalEls.confirmBtn.addEventListener('click', async () => {
         wsModalEls.confirmBtn.disabled = !importCandidate;
     }
 });
+
+// ═══════════════════════════ Local APK & QR Code ═══════════════════════════
+
+let currentApkInfo = null;
+
+function writeTerminalBox(content, title = '') {
+    const box = document.createElement('div');
+    box.className = 'qr-terminal-box';
+    if (title) {
+        const header = document.createElement('div');
+        header.style.cssText = 'font-weight:700; margin-bottom:6px; color:#34d399; font-size:12px;';
+        header.textContent = title;
+        box.appendChild(header);
+    }
+    const pre = document.createElement('pre');
+    pre.style.cssText = 'margin:0; font-family:monospace; font-size:11px; line-height:1.15;';
+    pre.textContent = content;
+    box.appendChild(pre);
+    els.terminalOutput.appendChild(box);
+    els.terminalOutput.scrollTop = els.terminalOutput.scrollHeight;
+}
+
+async function checkAndDisplayApk(jobId, app, flavor) {
+    try {
+        const targetApp = app || state.selectedApp || '';
+        const targetFlavor = flavor || state.selectedEnv || '';
+        const res = await fetch(api(`/api/deployment/apk-info?jobId=${encodeURIComponent(jobId || '')}&app=${encodeURIComponent(targetApp)}&flavor=${encodeURIComponent(targetFlavor)}`));
+        const data = await res.json();
+        if (data.success && data.hasApk) {
+            currentApkInfo = data;
+
+            // 1. Update banner in UI
+            if (els.apkInstallBanner) {
+                if (els.apkBannerFilename) els.apkBannerFilename.textContent = data.filename;
+                if (els.apkBannerSize) els.apkBannerSize.textContent = data.sizeFormatted;
+                if (els.bannerDownloadBtn) {
+                    els.bannerDownloadBtn.href = data.localUrl || data.downloadUrl;
+                    els.bannerDownloadBtn.setAttribute('download', data.filename);
+                }
+                els.apkInstallBanner.classList.remove('hidden');
+                refreshIcons();
+            }
+
+            // 2. Write info and ASCII QR code to terminal
+            writeTerminal(`📲 Android APK ready: ${data.filename} (${data.sizeFormatted})`, 'success');
+            writeTerminal(`📥 Wi-Fi Download Link: ${data.downloadUrl}`);
+            if (data.qrAscii) {
+                writeTerminalBox(data.qrAscii, `Scan on Wi-Fi (${data.lanIp}) to Install:`);
+            }
+        }
+    } catch (err) {
+        console.warn('Could not inspect APK artifacts:', err);
+    }
+}
+
+function openQrModal(apkData = currentApkInfo) {
+    if (!apkData) return;
+    if (els.qrCodeContainer) {
+        els.qrCodeContainer.innerHTML = apkData.qrSvg || '<p>QR Code unavailable</p>';
+    }
+    if (els.qrApkFilename) els.qrApkFilename.textContent = apkData.filename || '-';
+    if (els.qrApkSize) els.qrApkSize.textContent = apkData.sizeFormatted || '-';
+    if (els.qrApkPath) els.qrApkPath.textContent = apkData.path || '-';
+    if (els.qrDownloadUrlInput) els.qrDownloadUrlInput.value = apkData.downloadUrl || '';
+    if (els.directDownloadApkBtn) {
+        els.directDownloadApkBtn.href = apkData.localUrl || apkData.downloadUrl || '#';
+        els.directDownloadApkBtn.setAttribute('download', apkData.filename || 'app.apk');
+    }
+    if (els.qrLanIpLabel) els.qrLanIpLabel.textContent = apkData.lanIp || 'local Wi-Fi';
+
+    if (els.qrModalOverlay) {
+        els.qrModalOverlay.classList.add('ui-active');
+    }
+    refreshIcons();
+}
+
+function closeQrModal() {
+    if (els.qrModalOverlay) {
+        els.qrModalOverlay.classList.remove('ui-active');
+    }
+}
+
+async function openQrModalForTarget(targetId, app = '', flavor = '') {
+    try {
+        const res = await fetch(api(`/api/deployment/apk-info?jobId=${encodeURIComponent(targetId)}&app=${encodeURIComponent(app)}&flavor=${encodeURIComponent(flavor)}`));
+        const data = await res.json();
+        if (data.success && data.hasApk) {
+            currentApkInfo = data;
+            openQrModal(data);
+        } else {
+            showToast(data.message || 'No APK found for this build', 'error');
+        }
+    } catch (err) {
+        showToast('Failed to load APK details', 'error');
+    }
+}
+
+window.openQrModalForTarget = openQrModalForTarget;
+
+if (els.openQrModalBtn) {
+    els.openQrModalBtn.addEventListener('click', () => openQrModal());
+}
+if (els.closeQrModalBtn) {
+    els.closeQrModalBtn.addEventListener('click', closeQrModal);
+}
+if (els.qrModalOverlay) {
+    els.qrModalOverlay.addEventListener('click', (e) => {
+        if (e.target === els.qrModalOverlay) closeQrModal();
+    });
+}
+if (els.copyQrUrlBtn) {
+    els.copyQrUrlBtn.addEventListener('click', async () => {
+        if (els.qrDownloadUrlInput && els.qrDownloadUrlInput.value) {
+            try {
+                await navigator.clipboard.writeText(els.qrDownloadUrlInput.value);
+                showToast('Wi-Fi download URL copied!');
+            } catch (_) {
+                els.qrDownloadUrlInput.select();
+                document.execCommand('copy');
+                showToast('Wi-Fi download URL copied!');
+            }
+        }
+    });
+}
 
 (async () => {
     await loadWorkspaceInfo();

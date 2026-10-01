@@ -4,6 +4,7 @@ import base64
 import hashlib
 import hmac
 import http.server
+import ipaddress
 import json
 import logging
 import os
@@ -90,6 +91,21 @@ def _content_type(path: Path) -> str:
     return "application/octet-stream"
 
 
+def _is_lan_host(host: str) -> bool:
+    """Check if host is a local private network address or loopback."""
+    if not host or host in ("0.0.0.0", "::", "0"):
+        return False
+    if host.endswith(".local"):
+        return True
+    try:
+        ip = ipaddress.ip_address(host)
+        if ip.is_unspecified or ip.is_multicast or ip.is_reserved:
+            return False
+        return ip.is_private or ip.is_loopback
+    except ValueError:
+        return False
+
+
 class DeploymentHandler(http.server.SimpleHTTPRequestHandler):
     def _is_allowed_host(self) -> bool:
         host_header = self.headers.get("Host", "").strip()
@@ -100,7 +116,7 @@ class DeploymentHandler(http.server.SimpleHTTPRequestHandler):
         bind_host = getattr(self.server, "server_name", None) or getattr(self.server, "server_address", [None])[0]
         if bind_host and isinstance(bind_host, str):
             allowed_hosts.add(bind_host.lower())
-        return host_name in allowed_hosts
+        return host_name in allowed_hosts or _is_lan_host(host_name)
 
     def _is_allowed_origin(self, origin: str) -> bool:
         if not origin:
@@ -111,7 +127,7 @@ class DeploymentHandler(http.server.SimpleHTTPRequestHandler):
         bind_host = getattr(self.server, "server_name", None) or getattr(self.server, "server_address", [None])[0]
         if bind_host and isinstance(bind_host, str):
             allowed_hosts.add(bind_host.lower())
-        return hostname in allowed_hosts
+        return hostname in allowed_hosts or _is_lan_host(hostname)
 
     def end_headers(self) -> None:
         origin = self.headers.get("Origin", "")
@@ -148,6 +164,54 @@ class DeploymentHandler(http.server.SimpleHTTPRequestHandler):
             return False
         return hmac.compare_digest(token, expected_token)
 
+    def _verify_auth_with_query(self, parsed_query: Optional[dict[str, list[str]]] = None) -> bool:
+        expected_token = _get_auth_token()
+        if not expected_token:
+            return False
+        token = self.headers.get("X-API-Token", "").strip()
+        if not token and parsed_query:
+            token = parsed_query.get("token", parsed_query.get("auth", [""]))[0].strip()
+        if not token:
+            return False
+        return hmac.compare_digest(token, expected_token)
+
+    def serve_apk_download(self, target: str, query: dict[str, list[str]], is_head: bool = False) -> None:
+        if not self._verify_auth_with_query(query):
+            self.write_json({"success": False, "error": "Unauthorized: valid token required"}, status=401)
+            return
+
+        cand_path = router.resolve_safe_apk_path(target)
+        if not cand_path or not cand_path.exists() or not cand_path.is_file():
+            self.write_json({"success": False, "error": f"APK not found for target '{target}'"}, status=404)
+            return
+
+        try:
+            size = cand_path.stat().st_size
+            self.send_response(200)
+            self.send_header("Content-Type", "application/vnd.android.package-archive")
+            self.send_header("Content-Disposition", f'attachment; filename="{cand_path.name}"')
+            self.send_header("Content-Length", str(size))
+            self.send_header("Cache-Control", "no-cache, must-revalidate")
+            self.end_headers()
+            if not is_head:
+                with cand_path.open("rb") as f:
+                    while chunk := f.read(65536):
+                        self.wfile.write(chunk)
+        except Exception:
+            logging.exception("Failed to stream APK download: %s", cand_path)
+
+    def do_HEAD(self) -> None:
+        if not self._is_allowed_host():
+            self.send_error(403, "Invalid Host header: DNS rebinding rejected")
+            return
+        parsed = urlparse(self.path)
+        if parsed.path.startswith("/api/deployment/download/"):
+            target = parsed.path.split("/api/deployment/download/", 1)[1].strip()
+            query = parse_qs(parsed.query)
+            self.serve_apk_download(target, query, is_head=True)
+            return
+        super().do_HEAD()
+
     def _extract_request_workspace(self, parsed_query: Optional[dict[str, list[str]]] = None) -> Any:
         ws_val = self.headers.get("X-Workspace", "").strip()
         if not ws_val and parsed_query:
@@ -177,9 +241,18 @@ class DeploymentHandler(http.server.SimpleHTTPRequestHandler):
         try:
             # Enforce API authentication on all GET endpoints
             if parsed.path.startswith("/api/"):
-                if not self._verify_auth():
-                    self.write_json({"success": False, "error": "Unauthorized: valid X-API-Token header required"}, status=401)
-                    return
+                if parsed.path.startswith("/api/deployment/download/"):
+                    if not self._verify_auth_with_query(query):
+                        self.write_json({"success": False, "error": "Unauthorized: valid token required"}, status=401)
+                        return
+                elif parsed.path == "/api/deployment/qr" and (query.get("token") or query.get("auth")):
+                    if not self._verify_auth_with_query(query):
+                        self.write_json({"success": False, "error": "Unauthorized: valid token required"}, status=401)
+                        return
+                else:
+                    if not self._verify_auth():
+                        self.write_json({"success": False, "error": "Unauthorized: valid X-API-Token header required"}, status=401)
+                        return
 
             if parsed.path == "/api/deployment/running-jobs":
                 self.write_json({"success": True, "runningJobs": router.get_running_jobs()})
@@ -245,6 +318,42 @@ class DeploymentHandler(http.server.SimpleHTTPRequestHandler):
                     query.get("app", [""])[0],
                     query.get("flavor", ["prod"])[0],
                 ))
+                return
+            if parsed.path.startswith("/api/deployment/download/"):
+                target = parsed.path.split("/api/deployment/download/", 1)[1].strip()
+                self.serve_apk_download(target, query)
+                return
+            if parsed.path == "/api/deployment/apk-info":
+                job_id = query.get("jobId", query.get("id", [""]))[0] or None
+                app_id = query.get("app", [""])[0] or None
+                flavor = query.get("flavor", [""])[0]
+                port = getattr(self.server, "server_port", 18112) or 18112
+                host_override = query.get("host", [""])[0]
+                self.write_json(router.get_apk_download_info(
+                    job_id=job_id,
+                    app_id=app_id,
+                    flavor=flavor,
+                    port=port,
+                    token=_get_auth_token(),
+                    host_override=host_override,
+                ))
+                return
+            if parsed.path == "/api/deployment/qr":
+                text = query.get("text", [""])[0]
+                if not text:
+                    self.write_json({"success": False, "error": "Missing 'text' parameter"}, status=400)
+                    return
+                try:
+                    box_size = int(query.get("box_size", ["6"])[0])
+                except (ValueError, TypeError):
+                    box_size = 6
+                svg_content = router.qr_svg(text, box_size=box_size)
+                body = svg_content.encode("utf-8")
+                self.send_response(200)
+                self.send_header("Content-Type", "image/svg+xml")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
                 return
             if parsed.path.startswith("/api/"):
                 self.write_json({"success": False, "error": f"Unknown endpoint: {parsed.path}"}, status=404)
@@ -621,7 +730,7 @@ class DeploymentHandler(http.server.SimpleHTTPRequestHandler):
 def main() -> int:
     parser = argparse.ArgumentParser(description="Deployment Console web app")
     parser.add_argument("--port", type=int, default=18112)
-    parser.add_argument("--host", default="localhost", help="Bind address (default: localhost)")
+    parser.add_argument("--host", default="0.0.0.0", help="Bind address (default: 0.0.0.0)")
     args = parser.parse_args()
 
     token = _get_auth_token()
@@ -634,7 +743,10 @@ def main() -> int:
         logging.exception("Failed to migrate inline .p8 keys out of deploy_config.json")
 
     server = http.server.ThreadingHTTPServer((args.host, args.port), DeploymentHandler)
-    print(f"Deployment app: http://{args.host}:{args.port}")
+    lan_ip = router.get_lan_ip()
+    print(f"Deployment app: http://localhost:{args.port}")
+    if lan_ip and lan_ip != "127.0.0.1":
+        print(f"Wi-Fi / LAN:    http://{lan_ip}:{args.port}")
     try:
         server.serve_forever()
     except KeyboardInterrupt:
