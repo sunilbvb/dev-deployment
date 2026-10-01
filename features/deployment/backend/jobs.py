@@ -120,6 +120,7 @@ def _record_history_entry(job_id: str, chained_job_id: Optional[str] = None) -> 
             "errorExcerpt": error_excerpt,
             "outputExcerpt": output_excerpt,
             "artifact": job.get("artifact"),
+            "buildSize": job.get("buildSize"),
         }
 
     history_file = _get_history_file()
@@ -370,16 +371,16 @@ def execute_command(
             job.pop("process", None)
             if status == "success":
                 try:
-                    import artifacts
-                    artifact = artifacts.find_apk_artifact(
-                        app_id=app,
-                        flavor=flavor or env,
-                        started_after=job.get("started_at"),
-                    )
-                    if artifact:
-                        job["artifact"] = artifact
+                    import build_size
+                    bs_res = build_size.inspect_and_diff_job(job)
+                    if bs_res:
+                        out = job.get("output", "")
+                        summary_box = f"\n📦 Build Size Inspector: {bs_res['summary']}\n"
+                        if bs_res.get("warnings"):
+                            summary_box += "".join(f"⚠️  {w}\n" for w in bs_res["warnings"])
+                        job["output"] = (out + f"\n{summary_box}").lstrip()
                 except Exception:
-                    logging.exception("Failed to scan for build artifacts")
+                    logging.exception("Failed to scan and diff build size")
 
         should_chain = False
         action_id = ""

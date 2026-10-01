@@ -218,6 +218,8 @@ def build_slack_payload(event: dict[str, Any]) -> dict[str, Any]:
     ]
 
     extra_parts = []
+    if event.get("buildSizeSummary"):
+        extra_parts.append(f"*Build Size:* {event['buildSizeSummary']}")
     if track:
         extra_parts.append(f"*Track / Target:* {track}")
     if commit.get("hash") or commit.get("subject"):
@@ -284,6 +286,9 @@ def build_discord_payload(event: dict[str, Any]) -> dict[str, Any]:
         {"name": "Status", "value": status_label, "inline": True},
     ]
 
+    if event.get("buildSizeSummary"):
+        fields.append({"name": "Build Size", "value": event["buildSizeSummary"], "inline": False})
+
     if track:
         fields.append({"name": "Track / Target", "value": track, "inline": False})
 
@@ -339,6 +344,9 @@ def build_teams_payload(event: dict[str, Any]) -> dict[str, Any]:
         {"name": "Duration", "value": duration},
         {"name": "Status", "value": status_label},
     ]
+
+    if event.get("buildSizeSummary"):
+        facts.append({"name": "Build Size", "value": event["buildSizeSummary"]})
 
     if track:
         facts.append({"name": "Track", "value": track})
@@ -497,6 +505,7 @@ def _compile_event_data(
     artifact: Optional[dict[str, Any]] = None,
     ws_root: Optional[Path] = None,
     error_excerpt: str = "",
+    build_size: Optional[dict[str, Any]] = None,
 ) -> dict[str, Any]:
     """Assemble all parameters required for rich card rendering."""
     ws = ws_root or get_workspace_root()
@@ -525,6 +534,8 @@ def _compile_event_data(
         except Exception:
             pass
 
+    build_size_summary = (build_size or {}).get("summary", "")
+
     return {
         "app": app,
         "appName": app_details.get("name") or app,
@@ -540,6 +551,7 @@ def _compile_event_data(
         "command": command,
         "templateId": template_id,
         "errorExcerpt": error_excerpt,
+        "buildSizeSummary": build_size_summary,
     }
 
 
@@ -581,6 +593,7 @@ def notify_job_finished(job: dict[str, Any], ws_root: Optional[Path] = None) -> 
         artifact=job.get("artifact"),
         ws_root=ws_root,
         error_excerpt=error_excerpt,
+        build_size=job.get("buildSize"),
     )
 
     provider = detect_webhook_provider(cfg["url"], cfg.get("provider", "auto"))

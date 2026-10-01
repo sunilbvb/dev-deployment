@@ -164,6 +164,22 @@
                 </div>
             </div>
 
+            <!-- Build Size & Diff Banner -->
+            <div id="buildSizeBanner" class="cert-status-box hidden" data-status="ok" style="margin-bottom: 14px; cursor: pointer; display: none;" title="Click to view Build Size Inspector &amp; Diff">
+                <div style="display: flex; align-items: center; justify-content: space-between; width: 100%;">
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <span style="font-size: 1.1rem; line-height: 1;">📦</span>
+                        <div>
+                            <div style="font-weight: 600; font-size: 0.82rem;" id="buildSizeSummaryText">Build Size: Checking...</div>
+                            <div id="buildSizeSubtext" style="font-size: 0.74rem; opacity: 0.85;">Fast size comparison against previous run</div>
+                        </div>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <span id="buildSizeBadge" class="ui-badge" data-variant="secondary">Inspect Diff &rarr;</span>
+                    </div>
+                </div>
+            </div>
+
             <div class="filter-row" style="margin-bottom: 16px;">
                 <div class="ui-segmented-control" id="outputTabs" aria-label="Output view">
                     <button class="ui-segment active" type="button" data-view="live">Live Terminal</button>
@@ -407,6 +423,72 @@
             <button id="closeSentinelBtn" class="ui-button" data-variant="primary" type="button">
                 <span>Close</span>
             </button>
+        </div>
+    </div>
+</div>
+
+<!-- ═══════════════════════════ BUILD SIZE INSPECTOR & DIFF MODAL ═══════════════════════════ -->
+<div id="buildSizeModalOverlay" class="ui-modal-backdrop" role="dialog" aria-modal="true" aria-label="Build Size Inspector &amp; Diff">
+    <div class="ui-modal" data-size="lg" style="max-width: 860px; max-height: 88vh; display: flex; flex-direction: column;">
+        <div class="ui-modal-header">
+            <div>
+                <div style="display:flex; align-items:center; gap:8px;">
+                    <h3 class="ui-modal-title">Build Size Inspector &amp; Diff</h3>
+                    <span id="buildSizeModalBadge" class="ui-badge" data-variant="warning">Size Diff</span>
+                </div>
+                <p id="buildSizeModalSubtitle" class="modal-subtitle" style="font-size: 0.8rem; color: var(--ui-muted, #9aa6b8); margin: 2px 0 0 0;">
+                    Fast size comparison against previous run and asset bloat detection.
+                </p>
+            </div>
+            <button id="closeBuildSizeModalBtn" class="ui-modal-close" type="button">&times;</button>
+        </div>
+        <div class="ui-modal-body" style="padding: 20px; overflow-y: auto; flex: 1;">
+            <!-- Stat cards row -->
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin-bottom: 16px;">
+                <div class="ui-card" style="padding: 14px; text-align: center;">
+                    <div style="font-size: 0.72rem; color: var(--ui-muted, #9aa6b8); margin-bottom: 4px; font-weight: 600;">CURRENT BUILD SIZE</div>
+                    <div id="bsStatCurrentSize" style="font-size: 1.4rem; font-weight: 700;">-</div>
+                    <div id="bsStatCurrentType" style="font-size: 0.72rem; color: var(--ui-primary, #6366f1);">-</div>
+                </div>
+                <div class="ui-card" style="padding: 14px; text-align: center;">
+                    <div style="font-size: 0.72rem; color: var(--ui-muted, #9aa6b8); margin-bottom: 4px; font-weight: 600;">PREVIOUS RUN</div>
+                    <div id="bsStatPreviousSize" style="font-size: 1.4rem; font-weight: 700;">-</div>
+                    <div id="bsStatPreviousMeta" style="font-size: 0.72rem; color: var(--ui-muted, #9aa6b8);">-</div>
+                </div>
+                <div class="ui-card" style="padding: 14px; text-align: center;">
+                    <div style="font-size: 0.72rem; color: var(--ui-muted, #9aa6b8); margin-bottom: 4px; font-weight: 600;">SIZE DELTA</div>
+                    <div id="bsStatDelta" style="font-size: 1.4rem; font-weight: 700;">-</div>
+                    <div id="bsStatPercent" style="font-size: 0.72rem; font-weight: 600;">-</div>
+                </div>
+                <div class="ui-card" style="padding: 14px; text-align: center;">
+                    <div style="font-size: 0.72rem; color: var(--ui-muted, #9aa6b8); margin-bottom: 4px; font-weight: 600;">COMPRESSION</div>
+                    <div id="bsStatCompression" style="font-size: 1.4rem; font-weight: 700;">-</div>
+                    <div id="bsStatUncompressed" style="font-size: 0.72rem; color: var(--ui-muted, #9aa6b8);">-</div>
+                </div>
+            </div>
+
+            <!-- Warnings & Bloat Alerts Container -->
+            <div id="buildSizeWarningsContainer" style="display: flex; flex-direction: column; gap: 8px; margin-bottom: 16px;"></div>
+
+            <!-- Details Tabs: Diff vs Largest Assets -->
+            <div style="margin-bottom: 14px; display: flex; gap: 8px; border-bottom: 1px solid var(--ui-border-color); padding-bottom: 8px;">
+                <button id="bsTabDiffBtn" class="ui-button" data-variant="primary" data-size="sm" type="button">Asset Changes (Diff)</button>
+                <button id="bsTabLargestBtn" class="ui-button" data-variant="secondary" data-size="sm" type="button">Largest Assets Inside Build</button>
+            </div>
+
+            <!-- View 1: Asset Diff Table -->
+            <div id="bsDiffTableView">
+                <div id="bsDiffTableContainer"></div>
+            </div>
+
+            <!-- View 2: Largest Assets Table -->
+            <div id="bsLargestTableView" style="display: none;">
+                <div id="bsLargestTableContainer"></div>
+            </div>
+        </div>
+        <div class="ui-modal-footer" style="display: flex; justify-content: space-between; align-items: center; padding: 14px 20px;">
+            <span id="bsModalFooterPath" style="font-size: 0.75rem; color: var(--ui-muted, #9aa6b8); font-family: monospace; overflow: hidden; text-overflow: ellipsis; max-width: 550px;">-</span>
+            <button id="closeBuildSizeBtn" class="ui-button" data-variant="primary" type="button">Close</button>
         </div>
     </div>
 </div>
