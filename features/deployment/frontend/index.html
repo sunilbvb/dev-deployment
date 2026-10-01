@@ -40,6 +40,10 @@
         <div class="ui-page-title-row">
             <h1 class="ui-page-title">Deployment Console</h1>
             <div class="ui-page-actions">
+                <div id="sentinelHeaderBadge" class="ui-badge hidden" data-variant="warning" role="button" tabindex="0" title="Click to view Sentinel alerts" style="cursor: pointer; display: none; align-items: center; gap: 6px; font-weight: 600; padding: 5px 10px; font-size: 0.78rem;">
+                    <i data-lucide="shield-alert" style="width: 14px; height: 14px;"></i>
+                    <span id="sentinelHeaderBadgeText">Sentinel Alert</span>
+                </div>
                 <button id="openDoctorBtn" class="ui-button" data-variant="secondary" data-size="sm" type="button" title="Pre-flight Diagnostics (App Doctor)">
                     <i data-lucide="stethoscope"></i>
                     <span>App Doctor</span>
@@ -94,6 +98,9 @@
                     <strong id="selectedAppName">None</strong>
                 </div>
             </div>
+
+            <!-- Sentinel Expiry & Config Alert Banner -->
+            <div id="sentinelAlertBanner" class="cert-status-box hidden" data-status="warning" style="margin-bottom: 14px; cursor: pointer; display: none;" title="Click to view Sentinel details"></div>
 
             <div id="commandGrid">
                 <div class="empty-state">Select an app to load deployment commands.</div>
@@ -332,6 +339,74 @@
         </div>
         <div class="ui-modal-footer" style="padding: 12px 20px; font-size: 0.75rem; color: var(--ui-text-muted); background: var(--ui-bg-secondary, #1e293b); border-top: 1px solid var(--ui-border-color); text-align: center;">
             📶 Ensure phone is on the same Wi-Fi network (<span id="qrLanIpLabel">-</span>). No USB cable required!
+        </div>
+    </div>
+</div>
+
+<!-- ═══════════════════════════ SENTINEL DETAILS MODAL ═══════════════════════════ -->
+<div id="sentinelModalOverlay" class="ui-modal-backdrop" role="dialog" aria-modal="true" aria-label="Certificate &amp; Keystore Sentinel">
+    <div class="ui-modal" data-size="lg" style="max-width: 840px; max-height: 88vh; display: flex; flex-direction: column;">
+        <div class="ui-modal-header">
+            <div>
+                <div style="display:flex; align-items:center; gap:8px;">
+                    <h3 class="ui-modal-title">Certificate &amp; Keystore Expiry Sentinel</h3>
+                    <span id="sentinelModalBadge" class="ui-badge" data-variant="warning">Sentinel Alert</span>
+                </div>
+                <p class="modal-subtitle" style="font-size: 0.8rem; color: var(--ui-muted, #9aa6b8); margin: 2px 0 0 0;">
+                    Monitors Apple .p8 &amp; distribution certificates, Android keystore expiration (&le;30 days), and Firebase project ID consistency to prevent panic releases.
+                </p>
+            </div>
+            <button id="closeSentinelModalBtn" class="ui-modal-close" type="button">&times;</button>
+        </div>
+        <div class="ui-modal-body" style="padding: 20px; overflow-y: auto; flex: 1;">
+            <div id="sentinelModalAlerts" style="display: flex; flex-direction: column; gap: 10px; margin-bottom: 20px;"></div>
+
+            <div style="display: grid; grid-template-columns: 1fr; gap: 16px;">
+                <!-- 1. Apple Section -->
+                <div class="ui-card">
+                    <div class="ui-card-header" style="display: flex; justify-content: space-between; align-items: center;">
+                        <h4 class="ui-card-title" style="display: flex; align-items: center; gap: 8px;">
+                            <i data-lucide="apple" style="width: 16px; height: 16px;"></i>
+                            <span>Apple .p8 &amp; Distribution Certificates</span>
+                        </h4>
+                        <span id="sentinelAppleStatusBadge" class="ui-badge" data-variant="secondary">Checking...</span>
+                    </div>
+                    <div class="ui-card-body" id="sentinelAppleDetails"></div>
+                </div>
+
+                <!-- 2. Android Section -->
+                <div class="ui-card">
+                    <div class="ui-card-header" style="display: flex; justify-content: space-between; align-items: center;">
+                        <h4 class="ui-card-title" style="display: flex; align-items: center; gap: 8px;">
+                            <i data-lucide="smartphone" style="width: 16px; height: 16px;"></i>
+                            <span>Android Keystore &amp; Upload Key</span>
+                        </h4>
+                        <span id="sentinelAndroidStatusBadge" class="ui-badge" data-variant="secondary">Checking...</span>
+                    </div>
+                    <div class="ui-card-body" id="sentinelAndroidDetails"></div>
+                </div>
+
+                <!-- 3. Firebase Section -->
+                <div class="ui-card">
+                    <div class="ui-card-header" style="display: flex; justify-content: space-between; align-items: center;">
+                        <h4 class="ui-card-title" style="display: flex; align-items: center; gap: 8px;">
+                            <i data-lucide="flame" style="width: 16px; height: 16px;"></i>
+                            <span>Firebase Project ID Consistency</span>
+                        </h4>
+                        <span id="sentinelFirebaseStatusBadge" class="ui-badge" data-variant="secondary">Checking...</span>
+                    </div>
+                    <div class="ui-card-body" id="sentinelFirebaseDetails"></div>
+                </div>
+            </div>
+        </div>
+        <div class="ui-modal-footer" style="display: flex; justify-content: space-between; align-items: center; padding: 16px 20px;">
+            <button id="recheckSentinelBtn" class="ui-button" data-variant="secondary" type="button">
+                <i data-lucide="refresh-cw"></i>
+                <span>Re-check Sentinel</span>
+            </button>
+            <button id="closeSentinelBtn" class="ui-button" data-variant="primary" type="button">
+                <span>Close</span>
+            </button>
         </div>
     </div>
 </div>

@@ -1867,4 +1867,212 @@ class TestOutgoingWebhooks(unittest.TestCase):
             receiver_httpd.server_close()
 
 
+class TestCertificateAndKeystoreSentinel(unittest.TestCase):
+
+    def setUp(self):
+        self.temp_dir = tempfile.TemporaryDirectory()
+        self.ws_root = Path(self.temp_dir.name).resolve()
+        self._orig_ws = config.WORKSPACE_ROOT
+        config.WORKSPACE_ROOT = self.ws_root
+
+        self.app_dir = self.ws_root / "test_app"
+        self.app_dir.mkdir(parents=True, exist_ok=True)
+        (self.app_dir / "android" / "app").mkdir(parents=True, exist_ok=True)
+        (self.app_dir / "ios" / "Runner").mkdir(parents=True, exist_ok=True)
+
+        # Register app in apps_config.json and apps.json
+        cfg_dir = self.ws_root / ".dev-dashboard"
+        cfg_dir.mkdir(parents=True, exist_ok=True)
+        apps_data = json.dumps([{"id": "test_app", "name": "Test App", "path": str(self.app_dir)}])
+        (cfg_dir / "apps_config.json").write_text(apps_data, encoding="utf-8")
+        (cfg_dir / "apps.json").write_text(apps_data, encoding="utf-8")
+
+    def tearDown(self):
+        config.WORKSPACE_ROOT = self._orig_ws
+        self.temp_dir.cleanup()
+
+    def test_asn1_validity_extraction(self):
+        import sentinel
+
+        # Construct raw byte sequence containing ASN.1 validity structure
+        # Validity sequence: 0x30, len=0x20, UTCTime(0x17, 0x0d, "240101000000Z"), UTCTime(0x17, 0x0d, "350101000000Z")
+        raw = b"PREFIX_PADDING\x30\x20\x17\x0d240101000000Z\x17\x0d350101000000ZSUFFIX_PADDING"
+        extracted = sentinel.extract_validity_from_keystore_bytes(raw)
+        self.assertEqual(len(extracted), 1)
+        self.assertEqual(extracted[0], ("2024-01-01", "2035-01-01"))
+
+        # GeneralizedTime format: 0x18, len=0x0f, "20240101000000Z"
+        raw_gen = b"\x30\x24\x18\x0f20240101000000Z\x18\x0f20380101000000Z"
+        extracted_gen = sentinel.extract_validity_from_keystore_bytes(raw_gen)
+        self.assertEqual(len(extracted_gen), 1)
+        self.assertEqual(extracted_gen[0], ("2024-01-01", "2038-01-01"))
+
+    def test_android_keystore_expiry_detection(self):
+        import sentinel
+
+        # 1. When no keystore exists
+        res = sentinel.check_android_keystore_expiry("test_app", ws_root=self.ws_root)
+        self.assertTrue(res["applicable"])
+        self.assertEqual(res["status"], "missing")
+
+        # 2. Keystore with future expiration date via ASN.1 fallback
+        ks_file = self.app_dir / "android" / "app" / "upload-keystore.jks"
+        raw = b"\x30\x20\x17\x0d240101000000Z\x17\x0d400101000000Z"  # Expires in 2040
+        ks_file.write_bytes(raw)
+
+        res_future = sentinel.check_android_keystore_expiry("test_app", ws_root=self.ws_root)
+        self.assertTrue(res_future["applicable"])
+        self.assertEqual(res_future["status"], "ok")
+        self.assertEqual(res_future["validTo"], "2040-01-01")
+        self.assertEqual(len(res_future["alerts"]), 0)
+
+        # 3. Keystore expired in past
+        raw_expired = b"\x30\x20\x17\x0d200101000000Z\x17\x0d220101000000Z"  # Expired in 2022
+        ks_file.write_bytes(raw_expired)
+
+        res_expired = sentinel.check_android_keystore_expiry("test_app", ws_root=self.ws_root)
+        self.assertEqual(res_expired["status"], "critical")
+        self.assertTrue(any(a["severity"] == "critical" and "Expired" in a["title"] for a in res_expired["alerts"]))
+
+    def test_apple_expiry_detection(self):
+        import unittest.mock as mock
+        from datetime import datetime, timedelta
+        import sentinel
+
+        # 1. No Apple files -> applicable is True (searches for profiles/keys)
+        res = sentinel.check_apple_expiry("test_app", ws_root=self.ws_root)
+        self.assertTrue(res["applicable"])
+
+        # 2. Mock p8 with expiring metadata
+        soon_date = (datetime.now() + timedelta(days=15)).strftime("%Y-%m-%d")
+        mock_p8_info = {
+            "key_id": "ABC1234567",
+            "p8_path": str(self.app_dir / "AuthKey_ABC1234567.p8"),
+            "expires_at": soon_date,
+        }
+        (self.app_dir / "AuthKey_ABC1234567.p8").write_text("-----BEGIN PRIVATE KEY-----\nfake\n-----END PRIVATE KEY-----")
+
+        with mock.patch("sentinel._inspect_p8_key", return_value=mock_p8_info):
+            res_apple = sentinel.check_apple_expiry("test_app", ws_root=self.ws_root)
+            self.assertEqual(res_apple["status"], "warning")
+            self.assertTrue(any(a["id"] == "apple_api_key_expiring" for a in res_apple["alerts"]))
+
+    def test_firebase_project_id_mismatch(self):
+        import sentinel
+
+        # 1. Android google-services.json
+        android_fb = self.app_dir / "android" / "app" / "google-services.json"
+        android_fb.write_text(json.dumps({
+            "project_info": {"project_id": "my-cool-app-prod", "project_number": "12345"},
+            "client": [{"client_info": {"android_client_info": {"package_name": "com.example.test_app"}}}],
+        }), encoding="utf-8")
+
+        # iOS GoogleService-Info.plist matching
+        ios_fb = self.app_dir / "ios" / "Runner" / "GoogleService-Info.plist"
+        ios_fb.write_text("""<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>PROJECT_ID</key>
+    <string>my-cool-app-prod</string>
+    <key>BUNDLE_ID</key>
+    <string>com.example.test_app</string>
+</dict>
+</plist>""", encoding="utf-8")
+
+        res_match = sentinel.check_firebase_mismatch("test_app", flavor="prod", ws_root=self.ws_root)
+        self.assertEqual(res_match["status"], "ok")
+        self.assertEqual(len(res_match["alerts"]), 0)
+
+        # 2. Cross-platform Mismatch (Android points to dev, iOS points to prod)
+        ios_fb.write_text("""<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>PROJECT_ID</key>
+    <string>different-project-id</string>
+</dict>
+</plist>""", encoding="utf-8")
+
+        res_mismatch = sentinel.check_firebase_mismatch("test_app", flavor="prod", ws_root=self.ws_root)
+        self.assertEqual(res_mismatch["status"], "critical")
+        self.assertTrue(any(a["id"] == "firebase_project_mismatch" for a in res_mismatch["alerts"]))
+
+        # 3. Production flavor using dev project ID
+        android_fb.write_text(json.dumps({
+            "project_info": {"project_id": "my-cool-app-dev"},
+        }), encoding="utf-8")
+        ios_fb.write_text("""<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>PROJECT_ID</key>
+    <string>my-cool-app-dev</string>
+</dict>
+</plist>""", encoding="utf-8")
+
+        res_dev_in_prod = sentinel.check_firebase_mismatch("test_app", flavor="prod", ws_root=self.ws_root)
+        self.assertEqual(res_dev_in_prod["status"], "warning")
+        self.assertTrue(any("Production Flavor using Non-Prod Firebase" in a["title"] for a in res_dev_in_prod["alerts"]))
+
+    def test_app_and_workspace_sentinel_aggregation(self):
+        import sentinel
+
+        res = sentinel.check_app_sentinel("test_app", ws_root=self.ws_root)
+        self.assertTrue(res["success"])
+        self.assertIn("badge", res)
+        self.assertIn("checks", res)
+
+        ws_res = sentinel.check_workspace_sentinel(ws_root=self.ws_root)
+        self.assertTrue(ws_res["success"])
+        self.assertIn("badge", ws_res)
+        self.assertIn("apps", ws_res)
+        self.assertIn("test_app", ws_res["apps"])
+
+    def test_doctor_integration_sentinel(self):
+        import doctor
+
+        diag = doctor.diagnose_app(app_id="test_app", flavor="prod", ws_root=self.ws_root)
+        self.assertTrue(diag["success"])
+        # Should have sentinel-integrated checks in credentials category
+        check_names = [c["name"] for c in diag["checks"]]
+        self.assertTrue(any("Sentinel" in name or "Upload Key" in name or "Expiry" in name for name in check_names))
+
+    def test_server_sentinel_endpoint(self):
+        import http.client
+        import http.server
+        import server
+        import threading
+
+        httpd = http.server.ThreadingHTTPServer(("127.0.0.1", 0), server.DeploymentHandler)
+        port = httpd.server_address[1]
+        t = threading.Thread(target=httpd.serve_forever, daemon=True)
+        t.start()
+
+        try:
+            token = server._get_auth_token()
+            conn = http.client.HTTPConnection("127.0.0.1", port)
+
+            # 1. Test workspace sentinel
+            conn.request("GET", "/api/deployment/sentinel", headers={"X-API-Token": token})
+            res = conn.getresponse()
+            self.assertEqual(res.status, 200)
+            data = json.loads(res.read().decode("utf-8"))
+            self.assertTrue(data.get("success"))
+            self.assertIn("badge", data)
+
+            # 2. Test app-specific sentinel
+            conn.request("GET", "/api/deployment/sentinel?app=test_app&flavor=prod", headers={"X-API-Token": token})
+            res2 = conn.getresponse()
+            self.assertEqual(res2.status, 200)
+            data2 = json.loads(res2.read().decode("utf-8"))
+            self.assertTrue(data2.get("success"))
+            self.assertEqual(data2.get("app"), "test_app")
+            self.assertIn("checks", data2)
+        finally:
+            httpd.shutdown()
+            httpd.server_close()
+
+
+
 
