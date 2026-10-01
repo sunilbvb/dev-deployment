@@ -40,6 +40,14 @@
         <div class="ui-page-title-row">
             <h1 class="ui-page-title">Deployment Console</h1>
             <div class="ui-page-actions">
+                <div id="serverStatusBadge" class="ui-badge" data-variant="secondary" role="button" tabindex="0" title="Click to view Server Console & launch steps" style="cursor: pointer; display: inline-flex; align-items: center; gap: 6px; font-weight: 600; padding: 5px 10px; font-size: 0.78rem;">
+                    <span id="serverStatusDot" style="width: 8px; height: 8px; border-radius: 50%; background: #94a3b8; display: inline-block;"></span>
+                    <span id="serverStatusText">Server: Checking...</span>
+                </div>
+                <button id="openDocsBtn" class="ui-button" data-variant="secondary" data-size="sm" type="button" title="Documentation & Quickstart Guide">
+                    <i data-lucide="book-open"></i>
+                    <span>Docs &amp; Guide</span>
+                </button>
                 <div id="sentinelHeaderBadge" class="ui-badge hidden" data-variant="warning" role="button" tabindex="0" title="Click to view Sentinel alerts" style="cursor: pointer; display: none; align-items: center; gap: 6px; font-weight: 600; padding: 5px 10px; font-size: 0.78rem;">
                     <i data-lucide="shield-alert" style="width: 14px; height: 14px;"></i>
                     <span id="sentinelHeaderBadgeText">Sentinel Alert</span>
@@ -66,6 +74,60 @@
             </div>
         </div>
     </header>
+
+    <!-- Server Offline / Getting Started Welcome Banner -->
+    <div id="serverOfflineBanner" class="cert-status-box hidden" data-status="warning" style="margin-bottom: 16px; padding: 14px 18px; border-radius: 10px; display: none;">
+        <div style="display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; flex-wrap: wrap;">
+            <div style="display: flex; gap: 12px; max-width: 680px;">
+                <span style="font-size: 1.4rem; line-height: 1;">👋</span>
+                <div>
+                    <div style="font-weight: 700; font-size: 0.95rem; margin-bottom: 4px;">Welcome to Dev Deployment Console! (Server Offline)</div>
+                    <div style="font-size: 0.8rem; opacity: 0.9; margin-bottom: 8px; line-height: 1.4;">
+                        You opened the frontend console directly. To connect your real Flutter apps and execute builds, run the local backend server:
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 8px; background: rgba(0, 0, 0, 0.3); padding: 6px 12px; border-radius: 6px; font-family: monospace; font-size: 0.82rem; border: 1px solid rgba(255, 255, 255, 0.1); width: fit-content;">
+                        <span style="user-select: all;" id="offlineCommandSnippet">./start.sh</span>
+                        <button id="copyStartCommandBtn" class="ui-button" data-variant="ghost" data-size="xs" type="button" title="Copy command" style="padding: 2px 6px;">
+                            <i data-lucide="copy" style="width: 12px; height: 12px;"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+            <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 8px;">
+                <div style="display: flex; gap: 8px;">
+                    <button id="startDemoModeBtn" class="ui-button" data-variant="primary" data-size="sm" type="button">
+                        <i data-lucide="sparkles"></i>
+                        <span>Explore Interactive Demo</span>
+                    </button>
+                    <button id="bannerOpenDocsBtn" class="ui-button" data-variant="secondary" data-size="sm" type="button">
+                        <i data-lucide="book-open"></i>
+                        <span>Read Documentation</span>
+                    </button>
+                </div>
+                <div style="font-size: 0.72rem; opacity: 0.8; display: flex; align-items: center; gap: 6px;">
+                    <span class="loading-spinner-inline" style="width: 8px; height: 8px; border: 2px solid #f59e0b; border-top-color: transparent; border-radius: 50%; display: inline-block; animation: spin 1s linear infinite;"></span>
+                    <span>Listening on port 18112 (auto-connects when started)...</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Demo Mode Active Indicator Banner -->
+    <div id="demoModeBanner" class="cert-status-box hidden" data-status="info" style="margin-bottom: 16px; padding: 10px 16px; border-radius: 10px; display: none;">
+        <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;">
+            <div style="display: flex; align-items: center; gap: 8px;">
+                <span style="font-size: 1.1rem;">🧪</span>
+                <div>
+                    <strong style="font-size: 0.85rem;">Interactive Demo Mode Active:</strong>
+                    <span style="font-size: 0.8rem; opacity: 0.9;">Exploring sample Flutter monorepo with simulated builds, diagnostics, and size diffs.</span>
+                </div>
+            </div>
+            <div style="display: flex; align-items: center; gap: 8px;">
+                <span style="font-size: 0.75rem; font-family: monospace; opacity: 0.85;">Run ./start.sh to connect real apps</span>
+                <button id="exitDemoModeBtn" class="ui-button" data-variant="secondary" data-size="xs" type="button">Exit Demo</button>
+            </div>
+        </div>
+    </div>
 
     <section class="workspace-grid">
         <aside class="ui-panel app-panel">
@@ -1019,6 +1081,137 @@
                     </div>
                 </form>
             </div>
+        </div>
+    </div>
+<!-- ═══════════════════════════ DOCUMENTATION & KNOWLEDGE HUB MODAL ═══════════════════════════ -->
+<div id="docsModalOverlay" class="ui-modal-backdrop" role="dialog" aria-modal="true" aria-label="Documentation Hub">
+    <div class="ui-modal" data-size="lg" style="height: 88vh; max-width: 960px; display: flex; flex-direction: column;">
+        <div class="ui-modal-header" style="padding: 16px 20px;">
+            <div>
+                <h3 class="ui-modal-title" style="display: flex; align-items: center; gap: 8px;">
+                    <i data-lucide="book-open" style="color: var(--ui-primary, #6366f1);"></i>
+                    <span>Documentation &amp; Learning Hub</span>
+                </h3>
+                <p class="modal-subtitle" style="font-size: 0.8rem; color: var(--ui-muted, #9aa6b8); margin: 0;">Everything you need to know about Dev Deployment Console, architecture, features, and markdown docs.</p>
+            </div>
+            <button id="closeDocsModalBtn" class="ui-modal-close" type="button">&times;</button>
+        </div>
+        <div class="ui-modal-body" style="padding: 0; display: flex; flex: 1; overflow: hidden;">
+            <!-- Docs Navigation Sidebar -->
+            <aside class="ui-sidebar" style="height: 100%; width: 250px; border-right: 1px solid var(--ui-border-color); border-radius: 0; background: transparent; padding: 14px 10px; flex-shrink: 0; display: flex; flex-direction: column; overflow-y: auto;">
+                <div style="font-size: 0.68rem; font-weight: 700; text-transform: uppercase; color: var(--ui-text-muted); margin-bottom: 6px; padding-left: 8px;">Getting Started</div>
+                <div id="docsNavGettingStarted" style="display: flex; flex-direction: column; gap: 2px; margin-bottom: 14px;">
+                    <button class="ui-button docs-nav-item active" data-doc="overview" type="button" style="justify-content: flex-start; text-align: left; padding: 7px 10px; font-size: 0.8rem; width: 100%;">
+                        <i data-lucide="compass" style="width: 14px; height: 14px;"></i>
+                        <span>Overview &amp; Guide</span>
+                    </button>
+                    <button class="ui-button docs-nav-item" data-doc="readme" type="button" style="justify-content: flex-start; text-align: left; padding: 7px 10px; font-size: 0.8rem; width: 100%;">
+                        <i data-lucide="file-text" style="width: 14px; height: 14px;"></i>
+                        <span>README.md</span>
+                    </button>
+                </div>
+
+                <div style="font-size: 0.68rem; font-weight: 700; text-transform: uppercase; color: var(--ui-text-muted); margin-bottom: 6px; padding-left: 8px;">Architecture &amp; Design</div>
+                <div id="docsNavArch" style="display: flex; flex-direction: column; gap: 2px; margin-bottom: 14px;">
+                    <button class="ui-button docs-nav-item" data-doc="architecture" type="button" style="justify-content: flex-start; text-align: left; padding: 7px 10px; font-size: 0.8rem; width: 100%;">
+                        <i data-lucide="cpu" style="width: 14px; height: 14px;"></i>
+                        <span>ARCHITECTURE.md</span>
+                    </button>
+                    <button class="ui-button docs-nav-item" data-doc="pipelines" type="button" style="justify-content: flex-start; text-align: left; padding: 7px 10px; font-size: 0.8rem; width: 100%;">
+                        <i data-lucide="git-branch" style="width: 14px; height: 14px;"></i>
+                        <span>Pipelines (ADR 0001)</span>
+                    </button>
+                    <button class="ui-button docs-nav-item" data-doc="api" type="button" style="justify-content: flex-start; text-align: left; padding: 7px 10px; font-size: 0.8rem; width: 100%;">
+                        <i data-lucide="code" style="width: 14px; height: 14px;"></i>
+                        <span>REST API.md</span>
+                    </button>
+                </div>
+
+                <div style="font-size: 0.68rem; font-weight: 700; text-transform: uppercase; color: var(--ui-text-muted); margin-bottom: 6px; padding-left: 8px;">Support &amp; Community</div>
+                <div id="docsNavSupport" style="display: flex; flex-direction: column; gap: 2px;">
+                    <button class="ui-button docs-nav-item" data-doc="faq" type="button" style="justify-content: flex-start; text-align: left; padding: 7px 10px; font-size: 0.8rem; width: 100%;">
+                        <i data-lucide="help-circle" style="width: 14px; height: 14px;"></i>
+                        <span>FAQ &amp; Troubleshoot</span>
+                    </button>
+                    <button class="ui-button docs-nav-item" data-doc="changelog" type="button" style="justify-content: flex-start; text-align: left; padding: 7px 10px; font-size: 0.8rem; width: 100%;">
+                        <i data-lucide="history" style="width: 14px; height: 14px;"></i>
+                        <span>CHANGELOG.md</span>
+                    </button>
+                    <button class="ui-button docs-nav-item" data-doc="security" type="button" style="justify-content: flex-start; text-align: left; padding: 7px 10px; font-size: 0.8rem; width: 100%;">
+                        <i data-lucide="shield-check" style="width: 14px; height: 14px;"></i>
+                        <span>SECURITY.md</span>
+                    </button>
+                </div>
+            </aside>
+
+            <!-- Docs Content Viewer -->
+            <div style="flex: 1; display: flex; flex-direction: column; height: 100%; overflow: hidden;">
+                <div style="padding: 10px 20px; border-bottom: 1px solid var(--ui-border-color); display: flex; justify-content: space-between; align-items: center; background: rgba(0, 0, 0, 0.05);">
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <span id="docsCurrentCategory" class="ui-badge" data-variant="secondary">Getting Started</span>
+                        <h4 id="docsCurrentTitle" style="margin: 0; font-size: 0.95rem; font-weight: 700;">Console Overview &amp; Quickstart</h4>
+                    </div>
+                    <span id="docsCurrentFilename" style="font-size: 0.72rem; font-family: monospace; color: var(--ui-muted, #9aa6b8);">Overview</span>
+                </div>
+                <div id="docsContentArea" style="flex: 1; padding: 24px 28px; overflow-y: auto; line-height: 1.6; font-size: 0.88rem;">
+                    <!-- Rendered markdown/HTML will be inserted here -->
+                </div>
+            </div>
+        </div>
+        <div class="ui-modal-footer" style="display: flex; justify-content: space-between; align-items: center; padding: 12px 20px;">
+            <span id="docsFooterPath" style="font-size: 0.75rem; color: var(--ui-muted, #9aa6b8); font-family: monospace;">Viewing built-in documentation</span>
+            <button id="closeDocsBtn" class="ui-button" data-variant="secondary" type="button">Close</button>
+        </div>
+    </div>
+</div>
+
+<!-- ═══════════════════════════ SERVER CONSOLE & STATUS MODAL ═══════════════════════════ -->
+<div id="serverConsoleModalOverlay" class="ui-modal-backdrop" role="dialog" aria-modal="true" aria-label="Server Console">
+    <div class="ui-modal" data-size="sm" style="max-width: 580px;">
+        <div class="ui-modal-header" style="padding: 16px 20px;">
+            <div>
+                <h3 class="ui-modal-title" style="display: flex; align-items: center; gap: 8px;">
+                    <i data-lucide="terminal" style="color: var(--ui-primary, #6366f1);"></i>
+                    <span>Deployment Server Console</span>
+                </h3>
+                <p class="modal-subtitle" style="font-size: 0.8rem; color: var(--ui-muted, #9aa6b8); margin: 0;">Local Python HTTP backend status, port, auth token, and launch steps.</p>
+            </div>
+            <button id="closeServerConsoleModalBtn" class="ui-modal-close" type="button">&times;</button>
+        </div>
+        <div class="ui-modal-body" style="padding: 20px; display: flex; flex-direction: column; gap: 16px;">
+            <div id="serverConsoleStatusCard" class="ui-card" style="padding: 16px; border-left: 4px solid var(--ui-primary, #6366f1);">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                    <span style="font-weight: 700; font-size: 0.9rem;" id="serverModalStatusTitle">Checking Server...</span>
+                    <span id="serverModalStatusBadge" class="ui-badge" data-variant="secondary">Checking</span>
+                </div>
+                <div style="font-size: 0.8rem; opacity: 0.9; display: flex; flex-direction: column; gap: 4px;" id="serverModalDetails">
+                    <div><strong>URL:</strong> <code id="serverModalUrl">http://localhost:18112</code></div>
+                    <div><strong>Port:</strong> <span id="serverModalPort">18112</span></div>
+                    <div><strong>PID:</strong> <span id="serverModalPid">-</span></div>
+                    <div><strong>Python:</strong> <span id="serverModalPython">-</span></div>
+                </div>
+            </div>
+
+            <div>
+                <label class="ui-label" style="font-weight: 600; margin-bottom: 6px; display: block;">Terminal Launch Command</label>
+                <p style="font-size: 0.78rem; color: var(--ui-text-muted); margin-bottom: 8px;">Run this command in your repository terminal to launch the backend server:</p>
+                <div style="display: flex; align-items: center; justify-content: space-between; background: #0f172a; padding: 10px 14px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.1); font-family: monospace; font-size: 0.85rem; color: #38bdf8;">
+                    <code id="serverConsoleSnippet">./start.sh</code>
+                    <button id="copyServerSnippetBtn" class="ui-button" data-variant="secondary" data-size="xs" type="button">Copy</button>
+                </div>
+            </div>
+
+            <div class="ui-card" style="padding: 14px; background: rgba(0,0,0,0.02); font-size: 0.78rem; color: var(--ui-text-muted);">
+                <strong style="color: var(--ui-text-primary); display: block; margin-bottom: 4px;">Zero-Dependency Architecture</strong>
+                This server runs on pure Python standard library (`http.server`, `subprocess`, `zipfile`, `json`). No `pip install` required.
+            </div>
+        </div>
+        <div class="ui-modal-footer" style="display: flex; justify-content: space-between; align-items: center; padding: 14px 20px;">
+            <button id="testServerReconnectBtn" class="ui-button" data-variant="secondary" data-size="sm" type="button">
+                <i data-lucide="refresh-cw"></i>
+                <span>Check Connection</span>
+            </button>
+            <button id="closeServerConsoleBtn" class="ui-button" data-variant="primary" type="button">Close</button>
         </div>
     </div>
 </div>

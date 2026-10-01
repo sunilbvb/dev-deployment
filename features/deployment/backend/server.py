@@ -249,6 +249,9 @@ class DeploymentHandler(http.server.SimpleHTTPRequestHandler):
                     if not self._verify_auth_with_query(query):
                         self.write_json({"success": False, "error": "Unauthorized: valid token required"}, status=401)
                         return
+                elif parsed.path == "/api/deployment/server-status":
+                    # Heartbeat status ping allows frontend to detect when server comes online
+                    pass
                 else:
                     if not self._verify_auth():
                         self.write_json({"success": False, "error": "Unauthorized: valid X-API-Token header required"}, status=401)
@@ -284,6 +287,17 @@ class DeploymentHandler(http.server.SimpleHTTPRequestHandler):
                 app_id = query.get("app", [""])[0] or None
                 flavor = query.get("flavor", ["prod"])[0]
                 self.write_json(router.get_build_size_info(job_id=job_id, app_id=app_id, flavor=flavor))
+                return
+            if parsed.path == "/api/deployment/server-status":
+                port = self.server.server_address[1] if self.server else 18112
+                self.write_json(router.get_server_status_info(port=port))
+                return
+            if parsed.path == "/api/deployment/docs":
+                doc_name = query.get("doc", ["overview"])[0]
+                self.write_json(router.get_doc_content(doc_id=doc_name))
+                return
+            if parsed.path == "/api/deployment/docs/list":
+                self.write_json({"success": True, "docs": router.list_available_docs()})
                 return
             if parsed.path == "/api/deployment/apps":
                 self.write_json(router.get_apps())

@@ -1,6 +1,7 @@
 import artifacts
 import build_size
 import credentials
+import docs_provider
 import doctor
 import notifications
 import picker
@@ -99,5 +100,8 @@ inspect_archive_contents = build_size.inspect_archive_contents
 compare_build_size = build_size.compare_build_size
 inspect_and_diff_job = build_size.inspect_and_diff_job
 get_build_size_info = build_size.get_build_size_info
+get_doc_content = docs_provider.get_doc_content
+list_available_docs = docs_provider.list_available_docs
+get_server_status_info = docs_provider.get_server_status_info
 
 
