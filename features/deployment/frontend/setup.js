@@ -39,6 +39,20 @@ const setupEls = {
     p8CurrentKeyInfo: document.getElementById('p8CurrentKeyInfo'),
     p8CurrentKeyId: document.getElementById('p8CurrentKeyId'),
     p8CurrentKeyPath: document.getElementById('p8CurrentKeyPath'),
+    // Notification webhook elements
+    webhookUrl: document.getElementById('cfgWebhookUrl'),
+    webhookEnabled: document.getElementById('cfgWebhookEnabled'),
+    webhookProvider: document.getElementById('cfgWebhookProvider'),
+    notifyOnSuccess: document.getElementById('cfgNotifyOnSuccess'),
+    notifyOnFailure: document.getElementById('cfgNotifyOnFailure'),
+    playConsoleTrack: document.getElementById('cfgPlayConsoleTrack'),
+    wsWebhookUrl: document.getElementById('cfgWorkspaceWebhookUrl'),
+    wsWebhookEnabled: document.getElementById('cfgWorkspaceWebhookEnabled'),
+    wsWebhookProvider: document.getElementById('cfgWorkspaceWebhookProvider'),
+    wsNotifyOnSuccess: document.getElementById('cfgWorkspaceNotifySuccess'),
+    wsNotifyOnFailure: document.getElementById('cfgWorkspaceNotifyFailure'),
+    testWebhookBtn: document.getElementById('testWebhookBtn'),
+    testWebhookResult: document.getElementById('testWebhookResult'),
 };
 
 // Add App Elements
@@ -337,6 +351,27 @@ function selectSetupApp(appId) {
     setupEls.autoReleaseAction.value = cfg.auto_release_action || 'release_push';
     setupEls.autoReleaseFlavors.value = (cfg.auto_release_flavors || ['prod']).join(', ');
 
+    // Populate notification settings (app & workspace fallback)
+    const depCfg = setupState.deployConfig || {};
+    if (setupEls.webhookUrl) {
+        setupEls.webhookUrl.value = cfg.webhook_url || '';
+        setupEls.webhookEnabled.checked = cfg.webhook_enabled !== false;
+        setupEls.webhookProvider.value = cfg.webhook_provider || 'auto';
+        setupEls.notifyOnSuccess.checked = cfg.notify_on_success !== false;
+        setupEls.notifyOnFailure.checked = cfg.notify_on_failure !== false;
+        setupEls.playConsoleTrack.value = cfg.play_console_track || '';
+    }
+    if (setupEls.wsWebhookUrl) {
+        setupEls.wsWebhookUrl.value = depCfg.workspace_webhook_url || '';
+        setupEls.wsWebhookEnabled.checked = depCfg.workspace_webhook_enabled !== false;
+        setupEls.wsWebhookProvider.value = depCfg.workspace_webhook_provider || 'auto';
+        setupEls.wsNotifyOnSuccess.checked = depCfg.workspace_notify_on_success !== false;
+        setupEls.wsNotifyOnFailure.checked = depCfg.workspace_notify_on_failure !== false;
+    }
+    if (setupEls.testWebhookResult) {
+        setupEls.testWebhookResult.style.display = 'none';
+    }
+
     renderP8KeyInfo(null);
     credEls.scanResults.innerHTML = '';
     loadCredentialStatus(appId);
@@ -398,6 +433,12 @@ function readFormValues() {
             ? setupEls.autoReleaseFlavors.value.split(',').map(s => s.trim().toLowerCase()).filter(Boolean)
             : ['prod'],
         pipelines: existingCfg.pipelines || [],
+        webhook_url: setupEls.webhookUrl ? setupEls.webhookUrl.value.trim() : (existingCfg.webhook_url || ''),
+        webhook_enabled: setupEls.webhookEnabled ? setupEls.webhookEnabled.checked : (existingCfg.webhook_enabled !== false),
+        webhook_provider: setupEls.webhookProvider ? setupEls.webhookProvider.value : (existingCfg.webhook_provider || 'auto'),
+        notify_on_success: setupEls.notifyOnSuccess ? setupEls.notifyOnSuccess.checked : (existingCfg.notify_on_success !== false),
+        notify_on_failure: setupEls.notifyOnFailure ? setupEls.notifyOnFailure.checked : (existingCfg.notify_on_failure !== false),
+        play_console_track: setupEls.playConsoleTrack ? setupEls.playConsoleTrack.value.trim() : (existingCfg.play_console_track || ''),
     };
 
     if (flavors.length === 0) {
@@ -462,6 +503,14 @@ async function saveDeployConfig() {
     }
 
     setupState.deployConfig.apps[setupState.selectedAppId] = values;
+
+    if (setupEls.wsWebhookUrl) {
+        setupState.deployConfig.workspace_webhook_url = setupEls.wsWebhookUrl.value.trim();
+        setupState.deployConfig.workspace_webhook_enabled = setupEls.wsWebhookEnabled.checked;
+        setupState.deployConfig.workspace_webhook_provider = setupEls.wsWebhookProvider.value;
+        setupState.deployConfig.workspace_notify_on_success = setupEls.wsNotifyOnSuccess.checked;
+        setupState.deployConfig.workspace_notify_on_failure = setupEls.wsNotifyOnFailure.checked;
+    }
 
     const res = await fetch('/api/deployment/deploy-config/save', {
         method: 'POST',
@@ -804,6 +853,63 @@ setupEls.overlay.addEventListener('click', e => { if (e.target === setupEls.over
 setupEls.saveBtn.addEventListener('click', saveDeployConfig);
 setupEls.regenerateBtn.addEventListener('click', regenerateAllCommands);
 setupEls.scanBtn.addEventListener('click', autoScanConfig);
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Outgoing Webhooks (Slack / Discord / Teams) Test
+// ─────────────────────────────────────────────────────────────────────────────
+
+async function runWebhookTest() {
+    if (!setupEls.testWebhookBtn) return;
+    const appUrl = setupEls.webhookUrl ? setupEls.webhookUrl.value.trim() : '';
+    const wsUrl = setupEls.wsWebhookUrl ? setupEls.wsWebhookUrl.value.trim() : '';
+    const url = appUrl || wsUrl;
+    if (!url) {
+        showToast('Please enter a Webhook URL (app or workspace) to test.', 'warning');
+        return;
+    }
+    const provider = appUrl ? setupEls.webhookProvider.value : setupEls.wsWebhookProvider.value;
+    setupEls.testWebhookBtn.disabled = true;
+    setupEls.testWebhookBtn.querySelector('span').textContent = 'Testing...';
+    if (setupEls.testWebhookResult) {
+        setupEls.testWebhookResult.style.display = 'block';
+        setupEls.testWebhookResult.dataset.status = 'unknown';
+        setupEls.testWebhookResult.textContent = 'Posting test notification card...';
+    }
+
+    try {
+        const res = await postJson('/api/deployment/notifications/test', {
+            url,
+            provider,
+            app: setupState.selectedAppId || '',
+        });
+        if (res.success) {
+            if (setupEls.testWebhookResult) {
+                setupEls.testWebhookResult.dataset.status = 'valid';
+                setupEls.testWebhookResult.innerHTML = `✅ Delivered to <strong>${escapeHtml((res.provider || provider).toUpperCase())}</strong> (HTTP ${res.statusCode})! Check your channel.`;
+            }
+            showToast('✅ Webhook test card delivered!');
+        } else {
+            if (setupEls.testWebhookResult) {
+                setupEls.testWebhookResult.dataset.status = 'error';
+                setupEls.testWebhookResult.innerHTML = `❌ Delivery failed: ${escapeHtml(res.error || ('HTTP ' + res.statusCode))}`;
+            }
+            showToast('Webhook test failed: ' + (res.error || 'HTTP error'));
+        }
+    } catch (err) {
+        if (setupEls.testWebhookResult) {
+            setupEls.testWebhookResult.dataset.status = 'error';
+            setupEls.testWebhookResult.innerHTML = `❌ Network error: ${escapeHtml(err.message)}`;
+        }
+        showToast('Network error: ' + err.message);
+    } finally {
+        setupEls.testWebhookBtn.disabled = false;
+        setupEls.testWebhookBtn.querySelector('span').textContent = 'Test Webhook';
+    }
+}
+
+if (setupEls.testWebhookBtn) {
+    setupEls.testWebhookBtn.addEventListener('click', runWebhookTest);
+}
 
 document.addEventListener('keydown', e => {
     if (e.key === 'Escape') { closeSetupModal(); }

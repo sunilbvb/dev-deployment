@@ -314,6 +314,7 @@ def execute_command(
             "env": env,
             "flavor": flavor or env,
             "chained_job_id": chained_parent_id,
+            "is_pipeline_step": bool(_assume_app_lock_held),
             "started_at": time.time(),
             "workspace": str(ws_root.resolve()),
         }
@@ -399,6 +400,13 @@ def execute_command(
             _trigger_chained_release(app, env, action_id, job_id)
         else:
             _record_history_entry(job_id)
+            try:
+                import notifications
+                with _JOBS_LOCK:
+                    finished_job_copy = dict(_JOBS.get(job_id) or {})
+                notifications.notify_job_finished(finished_job_copy)
+            except Exception:
+                logging.exception("Failed to dispatch outgoing notification for job %s", job_id)
 
         _prune_jobs()
 

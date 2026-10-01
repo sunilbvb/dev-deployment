@@ -439,6 +439,11 @@ def _execute_pipeline_worker(run_id: str, app: str, lock_key: str) -> None:
             jobs._APP_LOCKS.pop(app, None)
 
     _record_pipeline_history(run)
+    try:
+        import notifications
+        notifications.notify_pipeline_finished(run)
+    except Exception:
+        logging.exception("Failed to dispatch outgoing notification for pipeline %s", run_id)
     _prune_pipeline_runs()
 
 

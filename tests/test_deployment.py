@@ -1514,3 +1514,357 @@ class TestApkHostingAndQr(unittest.TestCase):
             httpd.server_close()
 
 
+class TestOutgoingWebhooks(unittest.TestCase):
+    def setUp(self):
+        self.tmp_dir = tempfile.TemporaryDirectory()
+        self.ws_root = Path(self.tmp_dir.name)
+        (self.ws_root / ".dev-dashboard").mkdir(parents=True, exist_ok=True)
+        (self.ws_root / "pubspec.yaml").write_text("name: webhook_test_app\nversion: 2.1.0+42\n", encoding="utf-8")
+        self.token = config.set_request_workspace(self.ws_root)
+
+    def tearDown(self):
+        config.reset_request_workspace(self.token)
+        self.tmp_dir.cleanup()
+
+    def test_detect_webhook_provider(self):
+        import notifications
+
+        # Auto-detection from URL
+        self.assertEqual(notifications.detect_webhook_provider("https://hooks.slack.com/services/T00/B00/X123"), "slack")
+        self.assertEqual(notifications.detect_webhook_provider("https://discord.com/api/webhooks/12345/abcdef"), "discord")
+        self.assertEqual(notifications.detect_webhook_provider("https://discordapp.com/api/webhooks/12345/abcdef"), "discord")
+        self.assertEqual(notifications.detect_webhook_provider("https://myorg.webhook.office.com/webhookb2/guid"), "teams")
+        self.assertEqual(notifications.detect_webhook_provider("https://api.mycompany.com/webhook/receiver"), "generic")
+
+        # Overrides
+        self.assertEqual(notifications.detect_webhook_provider("https://api.mycompany.com/custom", override="slack"), "slack")
+        self.assertEqual(notifications.detect_webhook_provider("https://api.mycompany.com/custom", override="discord"), "discord")
+        self.assertEqual(notifications.detect_webhook_provider("https://api.mycompany.com/custom", override="teams"), "teams")
+        self.assertEqual(notifications.detect_webhook_provider("https://hooks.slack.com/services/x", override="generic"), "generic")
+
+    def test_format_duration(self):
+        import notifications
+
+        self.assertEqual(notifications.format_duration(0), "0s")
+        self.assertEqual(notifications.format_duration(42), "42s")
+        self.assertEqual(notifications.format_duration(60), "1m")
+        self.assertEqual(notifications.format_duration(84), "1m 24s")
+        self.assertEqual(notifications.format_duration(125), "2m 5s")
+        self.assertEqual(notifications.format_duration(None), "unknown")
+
+    def test_get_git_commit_summary(self):
+        import notifications
+
+        # For the real repository root
+        summary = notifications.get_git_commit_summary(Path(__file__).resolve().parents[1])
+        self.assertIsInstance(summary, dict)
+        self.assertIn("hash", summary)
+        self.assertIn("subject", summary)
+        self.assertIn("author", summary)
+        # Verify valid non-empty values
+        self.assertTrue(len(summary["hash"]) > 0)
+        self.assertTrue(len(summary["subject"]) > 0)
+
+    def test_build_webhook_payloads(self):
+        import notifications
+
+        sample_event = {
+            "app": "my_app",
+            "appName": "My Super App",
+            "flavor": "prod",
+            "platform": "Android (APK)",
+            "version": "2.1.0 (42)",
+            "status": "success",
+            "durationSeconds": 84,
+            "durationFormatted": "1m 24s",
+            "commit": {"hash": "abc1234", "subject": "fix: release build", "author": "QA"},
+            "downloadUrl": "http://192.168.1.10:18112/api/deployment/download/my_app",
+            "track": "Internal Testing",
+        }
+
+        # 1. Slack payload
+        slack = notifications.build_slack_payload(sample_event)
+        self.assertIn("text", slack)
+        self.assertIn("blocks", slack)
+        self.assertTrue(any(b.get("type") == "header" and "SUCCEEDED" in b.get("text", {}).get("text", "").upper() for b in slack["blocks"]))
+        # Should have download APK action button
+        action_blocks = [b for b in slack["blocks"] if b.get("type") == "actions"]
+        self.assertTrue(len(action_blocks) > 0)
+        self.assertEqual(action_blocks[0]["elements"][0]["url"], sample_event["downloadUrl"])
+
+        # 2. Discord payload
+        discord = notifications.build_discord_payload(sample_event)
+        self.assertIn("embeds", discord)
+        embed = discord["embeds"][0]
+        self.assertEqual(embed["color"], 0x10B981)
+        self.assertIn("SUCCEEDED", embed["title"].upper())
+        self.assertTrue(any(f["name"] == "App" and f["value"] == "My Super App" for f in embed["fields"]))
+        self.assertTrue(any("Download APK" in f["value"] for f in embed["fields"]))
+
+        # 3. Microsoft Teams payload
+        teams = notifications.build_teams_payload(sample_event)
+        self.assertEqual(teams.get("@type"), "MessageCard")
+        self.assertEqual(teams.get("themeColor"), "10B981")
+        self.assertIn("potentialAction", teams)
+        self.assertEqual(teams["potentialAction"][0]["targets"][0]["uri"], sample_event["downloadUrl"])
+
+        # 4. Generic payload
+        generic = notifications.build_generic_payload(sample_event)
+        self.assertEqual(generic.get("event"), "deployment_finished")
+        self.assertEqual(generic.get("app"), "my_app")
+        self.assertEqual(generic.get("version"), "2.1.0 (42)")
+
+    def test_send_outgoing_webhook_http_mock(self):
+        import http.server
+        import notifications
+        import threading
+
+        received_requests = []
+
+        class MockWebhookHandler(http.server.BaseHTTPRequestHandler):
+            def do_POST(self):
+                length = int(self.headers.get("Content-Length", 0))
+                body = self.rfile.read(length)
+                received_requests.append({
+                    "path": self.path,
+                    "content_type": self.headers.get("Content-Type"),
+                    "body": json.loads(body.decode("utf-8")),
+                })
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.end_headers()
+                self.wfile.write(b'{"ok": true}')
+
+            def log_message(self, format, *args):
+                pass
+
+        httpd = http.server.ThreadingHTTPServer(("127.0.0.1", 0), MockWebhookHandler)
+        port = httpd.server_address[1]
+        t = threading.Thread(target=httpd.serve_forever)
+        t.daemon = True
+        t.start()
+
+        try:
+            url = f"http://127.0.0.1:{port}/slack-webhook"
+            payload = {"text": "Hello Slack"}
+            res = notifications.send_outgoing_webhook(url, payload)
+            self.assertTrue(res.get("success"))
+            self.assertEqual(res.get("statusCode"), 200)
+            self.assertEqual(len(received_requests), 1)
+            self.assertEqual(received_requests[0]["body"], payload)
+            self.assertIn("application/json", received_requests[0]["content_type"])
+
+            # Test invalid URL
+            invalid_res = notifications.send_outgoing_webhook("ftp://invalid.com", payload)
+            self.assertFalse(invalid_res.get("success"))
+        finally:
+            httpd.shutdown()
+            httpd.server_close()
+
+    def test_save_deploy_config_validation(self):
+        # 1. Valid webhook config
+        valid_cfg = {
+            "workspace_webhook_url": "https://hooks.slack.com/services/ABC",
+            "workspace_webhook_provider": "slack",
+            "apps": {
+                "test_app": {
+                    "webhook_url": "https://discord.com/api/webhooks/123/xyz",
+                    "webhook_provider": "discord",
+                    "webhook_enabled": True,
+                    "notify_on_success": True,
+                    "notify_on_failure": True,
+                },
+            },
+        }
+        res = config.save_deploy_config(valid_cfg)
+        self.assertTrue(res.get("success"), res.get("error"))
+
+        # 2. Invalid app webhook URL
+        invalid_app_cfg = {
+            "apps": {
+                "test_app": {
+                    "webhook_url": "ftp://not-an-http-url",
+                },
+            },
+        }
+        res2 = config.save_deploy_config(invalid_app_cfg)
+        self.assertFalse(res2.get("success"))
+        self.assertIn("must start with http:// or https://", res2.get("error"))
+
+        # 3. Invalid workspace webhook URL
+        invalid_ws_cfg = {
+            "workspace_webhook_url": "invalid://url",
+            "apps": {},
+        }
+        res3 = config.save_deploy_config(invalid_ws_cfg)
+        self.assertFalse(res3.get("success"))
+        self.assertIn("must start with http:// or https://", res3.get("error"))
+
+        # 4. Invalid provider
+        invalid_prov_cfg = {
+            "apps": {
+                "test_app": {
+                    "webhook_provider": "telegram_not_supported",
+                },
+            },
+        }
+        res4 = config.save_deploy_config(invalid_prov_cfg)
+        self.assertFalse(res4.get("success"))
+        self.assertIn("Invalid webhook provider", res4.get("error"))
+
+    def test_notify_job_finished_and_pipeline(self):
+        import http.server
+        import notifications
+        import threading
+        import time
+
+        received = []
+
+        class MockWebhookHandler(http.server.BaseHTTPRequestHandler):
+            def do_POST(self):
+                length = int(self.headers.get("Content-Length", 0))
+                body = self.rfile.read(length)
+                received.append(json.loads(body.decode("utf-8")))
+                self.send_response(200)
+                self.end_headers()
+                self.wfile.write(b'{"ok": true}')
+
+            def log_message(self, format, *args):
+                pass
+
+        httpd = http.server.ThreadingHTTPServer(("127.0.0.1", 0), MockWebhookHandler)
+        port = httpd.server_address[1]
+        t = threading.Thread(target=httpd.serve_forever)
+        t.daemon = True
+        t.start()
+
+        try:
+            webhook_url = f"http://127.0.0.1:{port}/notify"
+            # Configure app webhook
+            config.save_deploy_config({
+                "apps": {
+                    "app_notify": {
+                        "webhook_url": webhook_url,
+                        "webhook_provider": "generic",
+                        "webhook_enabled": True,
+                        "notify_on_success": True,
+                        "notify_on_failure": True,
+                    }
+                }
+            })
+
+            # 1. Normal job finish notification
+            job = {
+                "id": "job_123",
+                "app": "app_notify",
+                "status": "success",
+                "started_at": time.time() - 15,
+                "finished_at": time.time(),
+                "flavor": "prod",
+                "command": "flutter build apk --release",
+            }
+            notifications.notify_job_finished(job, ws_root=self.ws_root)
+            time.sleep(0.3)
+            self.assertEqual(len(received), 1)
+            self.assertEqual(received[0]["event"], "deployment_finished")
+            self.assertEqual(received[0]["status"], "success")
+
+            # 2. Pipeline step job (should be suppressed)
+            job_step = {
+                "id": "job_step_456",
+                "app": "app_notify",
+                "status": "success",
+                "is_pipeline_step": True,
+            }
+            notifications.notify_job_finished(job_step, ws_root=self.ws_root)
+            time.sleep(0.2)
+            self.assertEqual(len(received), 1)  # Still 1, no duplicate sent
+
+            # 3. Pipeline completed notification
+            pipe_run = {
+                "id": "pipe_run_789",
+                "name": "Full Release Pipeline",
+                "app": "app_notify",
+                "flavor": "prod",
+                "status": "success",
+                "startedAt": time.time() - 50,
+                "finishedAt": time.time(),
+                "durationSeconds": 50,
+                "steps": [{"name": "Build APK"}, {"name": "Upload"}],
+            }
+            notifications.notify_pipeline_finished(pipe_run, ws_root=self.ws_root)
+            time.sleep(0.3)
+            self.assertEqual(len(received), 2)
+            self.assertEqual(received[1]["event"], "deployment_finished")
+            self.assertIn("Pipeline", received[1]["command"])
+
+            # 4. Test Webhook endpoint directly
+            test_res = notifications.test_webhook(webhook_url, provider="generic", app_id="app_notify", ws_root=self.ws_root)
+            time.sleep(0.2)
+            self.assertTrue(test_res.get("success"))
+            self.assertEqual(len(received), 3)
+        finally:
+            httpd.shutdown()
+            httpd.server_close()
+
+    def test_server_notifications_test_endpoint(self):
+        import http.client
+        import http.server
+        import server
+        import threading
+
+        # Start mock target receiver
+        receiver_data = []
+
+        class MockReceiver(http.server.BaseHTTPRequestHandler):
+            def do_POST(self):
+                length = int(self.headers.get("Content-Length", 0))
+                body = self.rfile.read(length)
+                receiver_data.append(json.loads(body.decode("utf-8")))
+                self.send_response(200)
+                self.end_headers()
+                self.wfile.write(b'{"status": "ok"}')
+
+            def log_message(self, format, *args):
+                pass
+
+        receiver_httpd = http.server.ThreadingHTTPServer(("127.0.0.1", 0), MockReceiver)
+        receiver_port = receiver_httpd.server_address[1]
+        t_receiver = threading.Thread(target=receiver_httpd.serve_forever, daemon=True)
+        t_receiver.start()
+
+        # Start deployment console server
+        httpd = http.server.ThreadingHTTPServer(("127.0.0.1", 0), server.DeploymentHandler)
+        port = httpd.server_address[1]
+        t = threading.Thread(target=httpd.serve_forever, daemon=True)
+        t.start()
+
+        try:
+            token = server._get_auth_token()
+            conn = http.client.HTTPConnection("127.0.0.1", port)
+            req_payload = json.dumps({
+                "url": f"http://127.0.0.1:{receiver_port}/webhook",
+                "provider": "slack",
+                "app": "webhook_test_app",
+            }).encode("utf-8")
+            conn.request(
+                "POST",
+                "/api/deployment/notifications/test",
+                body=req_payload,
+                headers={"Content-Type": "application/json", "X-API-Token": token},
+            )
+            res = conn.getresponse()
+            self.assertEqual(res.status, 200)
+            data = json.loads(res.read().decode("utf-8"))
+            self.assertTrue(data.get("success"))
+            self.assertEqual(data.get("provider"), "slack")
+            self.assertEqual(len(receiver_data), 1)
+            self.assertIn("blocks", receiver_data[0])
+        finally:
+            httpd.shutdown()
+            httpd.server_close()
+            receiver_httpd.shutdown()
+            receiver_httpd.server_close()
+
+
+

@@ -578,6 +578,13 @@ class DeploymentHandler(http.server.SimpleHTTPRequestHandler):
             if parsed.path == "/api/deployment/pipelines/stop":
                 self.write_json(router.stop_pipeline_run(str(data.get("runId") or "")))
                 return
+            if parsed.path == "/api/deployment/notifications/test":
+                self.write_json(router.test_webhook(
+                    url=str(data.get("url") or ""),
+                    provider=str(data.get("provider") or "auto"),
+                    app_id=str(data.get("app") or ""),
+                ))
+                return
 
             if parsed.path == "/api/deployment/execute":
                 app_id = str(data.get("app") or "")

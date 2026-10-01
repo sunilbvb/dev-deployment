@@ -1,6 +1,7 @@
 import artifacts
 import credentials
 import doctor
+import notifications
 import picker
 import pipelines
 import qr
@@ -80,4 +81,10 @@ qr_svg = qr.qr_svg
 qr_ascii = qr.qr_ascii
 generate_qr = qr.generate_qr
 generate_qr_matrix = qr.generate_qr_matrix
+test_webhook = notifications.test_webhook
+detect_webhook_provider = notifications.detect_webhook_provider
+send_outgoing_webhook = notifications.send_outgoing_webhook
+notify_job_finished = notifications.notify_job_finished
+notify_pipeline_finished = notifications.notify_pipeline_finished
+get_webhook_config_for_app = notifications.get_webhook_config_for_app
 
