@@ -280,6 +280,21 @@ The tool keeps workspace detection strictly decoupled from execution:
 - Each app discovered inside `apps/` or `packages/` maintains its own dedicated entry in `.dev-dashboard/deploy_config.json` with independent package names, bundle IDs, keystores, and flavor definitions.
 - When executing commands, the tool passes `-C tool/makefiles/<app>` or runs native Flutter commands directly scoped inside the specific application directory (`cwd=<app_path>`), completely avoiding build cache collisions between sibling apps.
 
+### How does the tool ingest project data—does it use local file paths or Git URLs?
+The tool is designed as a **local-first build engine**, meaning it operates directly on physical directory paths on the host workstation or build server rather than pulling in-memory Git URLs:
+
+1. **How It Accesses Project Files:**
+   - **Local Workstation:** You point to the directory where your code already lives (e.g. `/home/user/IdeaProjects/my-app` or native folder picker).
+   - **Dedicated Build Server:** You clone your Git repository onto the server disk (e.g. `git clone https://github.com/org/app.git /var/repos/app`), then import `/var/repos/app` into the dashboard.
+
+2. **Why Local Directory Paths Instead of Streaming Remote Git URLs?**
+   - **Mobile Compilers Require Local Trees:** Compilers (`gradle`, `xcodebuild`, `flutter`) require a physical file system, CocoaPods symlinks, Android SDK build-tools, and platform headers.
+   - **Preserves Build Caches:** Retains Gradle build caches, CocoaPods caches, and `.dart_tool/` artifacts, reducing build times from 15 minutes down to 30 seconds.
+   - **Instant Edit-and-Test Workflow:** Developers can make changes in their local IDE, switch to the browser, and immediately click **Run** without being forced to commit and push untested code to GitHub.
+
+3. **Automating Git Sync on Build Servers:**
+   On a shared server, you can keep the local directory in sync with remote Git automatically by adding a pre-build step in **Saved Pipelines** (e.g., `git fetch && git checkout main && git pull origin main`) or triggering it via the incoming webhook API.
+
 ---
 
 ## 5. Configuration & Auto-Scanning
