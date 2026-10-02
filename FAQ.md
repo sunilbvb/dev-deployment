@@ -659,6 +659,28 @@ The stylesheet loader in `index.html` implements progressive fallbacks:
 4. **Access Control:**
    Keep the server behind corporate VPN (WireGuard, Tailscale) or internal company LAN with firewall protection.
 
+### If we build our own build server for client projects, how is it secured compared to Codemagic and Bitrise?
+Building your own internal build server is **often significantly more secure than public cloud CI** for client and enterprise projects. Here is how security is enforced across all layers:
+
+1. **True Data Sovereignty (Zero Third-Party Code Exposure):**
+   - **Codemagic / Bitrise:** Client intellectual property, proprietary algorithms, and App Store signing keys must be transmitted to third-party commercial cloud infrastructure.
+   - **Private Build Server:** Client source code and private keystores **never leave your organization's infrastructure**. This directly satisfies strict client NDAs, SOC 2, ISO 27001, HIPAA, and banking security requirements.
+
+2. **Network Perimeter & VPN Shielding:**
+   - The build server does not have a public IP and is never exposed directly to the internet.
+   - Access is restricted exclusively to authenticated employees via your corporate VPN (WireGuard, Tailscale, OpenVPN) or office LAN.
+   - Host firewall (`ufw` on Linux, `pf` on macOS) drops all unauthenticated inbound traffic.
+
+3. **Multi-Client Repository Isolation:**
+   - **Granular GitHub Deploy Keys:** Each client repository uses its own distinct, scoped SSH Deploy Key (`~/.ssh/config` per host/repo). A key for Client A cannot access Client B's codebase.
+   - **File System Permissions:** Projects and keys reside in separated directories with Unix file permissions (`chmod 700 /var/repos/client-a`, `chmod 600 ~/.config/dev-deployment/keys/*`), preventing cross-project inspection.
+
+4. **Zero-Trust Backend Application Hardening:**
+   - **Bearer Auth Tokens:** Mutating API calls require `X-API-Token` generated securely with `chmod 600` permissions.
+   - **DNS Rebinding Protection:** Rejects unauthorized `Host` headers (`403 DNS Rebinding Rejected`).
+   - **Strict Template Whitelisting:** Raw shell commands cannot be injected via API; the backend only executes pre-approved, parameterized command templates.
+   - **Path Traversal Guards:** Downloads and artifact retrievals strictly validate canonical paths within designated workspace boundaries.
+
 ---
 
 ## 17. Troubleshooting & Common Error Solutions
