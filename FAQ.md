@@ -200,6 +200,11 @@ You can import multiple separate git repositories simultaneously:
 - Project selection is scoped per browser tab via the `X-Workspace` HTTP header. Two developers or two browser windows can operate on different projects simultaneously without cross-talk.
 - Removing a project tab (clicking **×**) only detaches the tab from the dashboard view; your local directory, git history, and `.dev-dashboard/` configuration are never deleted.
 
+### How does the tool handle multiple apps in a monorepo that share the same Flutter version or Melos scripts?
+The tool keeps workspace detection strictly decoupled from execution:
+- Each app discovered inside `apps/` or `packages/` maintains its own dedicated entry in `.dev-dashboard/deploy_config.json` with independent package names, bundle IDs, keystores, and flavor definitions.
+- When executing commands, the tool passes `-C tool/makefiles/<app>` or runs native Flutter commands directly scoped inside the specific application directory (`cwd=<app_path>`), completely avoiding build cache collisions between sibling apps.
+
 ---
 
 ## 5. Configuration & Auto-Scanning
@@ -279,6 +284,11 @@ The Sentinel is a background monitoring subsystem designed to eliminate release 
 - If any asset requires attention, a glowing amber or red **Sentinel Alert** badge appears in the dashboard top bar.
 - Clicking the badge opens the Sentinel Inspection Drawer displaying days remaining, expiration dates, cert fingerprints, and direct links to update keys.
 
+### How does the Sentinel calculate expiration dates for Apple `.p8` keys and Android `.jks` files?
+- **Android Keystores:** The backend invokes the standard JDK `keytool -list -v -keystore <keystore_path>` via non-blocking subprocess, parses the `Valid from: ... until: <DATE>` certificate fields, and computes the exact remaining lifespan.
+- **Apple Distribution Certificates:** On macOS, the Sentinel queries the login keychain via `security find-certificate -a -c "Apple Distribution"` and parses OpenSSL expiration attributes. If builds were previously executed, it also parses the embedded `embedded.mobileprovision` property list from the latest `.app` or `.ipa` bundle.
+- **Apple .p8 Keys:** The Sentinel validates PKCS#8 syntax, key ID lengths, and checks against App Store Connect expiration limits.
+
 ---
 
 ## 9. Build Size Inspector & Asset Diffing
@@ -291,6 +301,11 @@ Every time an APK or App Bundle (AAB) is generated, the backend automatically an
 
 ### Why does it warn about uncompressed raw assets (`ZIP_STORED`)?
 Android App Bundles compress assets using DEFLATE. If a developer accidentally adds huge uncompressed files (e.g. raw 4K videos, uncompressed test databases, or heavy JSON datasets) using `ZIP_STORED` (compression method 0) exceeding **500 KB**, the Build Size Inspector flags them immediately with a list of offending filenames so they can be optimized before shipping to users.
+
+### How does the Build Size Inspector inspect archives without extracting them to disk?
+The inspector uses Python's standard `zipfile.ZipFile` in read-only mode to parse only the **ZIP Central Directory** located at the end of the `.apk` or `.aab` file:
+- It reads uncompressed and compressed byte lengths, CRC32 checksums, and compression method headers (`0` for `ZIP_STORED`, `8` for `ZIP_DEFLATED`) in milliseconds without unpacking the archive into a temporary folder.
+- It extracts the file list, sorts assets by compressed size, and matches filenames against the previous build run to produce the exact file-level diff table displayed in the modal.
 
 ---
 
@@ -331,6 +346,12 @@ Ensure:
 2. Your host firewall allows incoming connections on port 18112.
 3. If running on Linux/macOS with multiple network adapters, ensure the IP shown in the QR code matches your LAN Wi-Fi adapter (configure `HOST_OVERRIDE` or `--host` if needed).
 
+### Can QA testers scan the QR code if their mobile devices are on cellular data instead of Wi-Fi?
+The default QR code serves files over your workstation's local LAN IP (e.g. `http://192.168.1.50:18112`), which requires the test phone to be on the same Wi-Fi network. If testers are remote or on cellular data:
+1. Expose port 18112 securely using a reverse proxy or tunnel (such as `cloudflared tunnel` or `ngrok http 18112`).
+2. Pass `--host <public-tunnel-domain>` or set `HOST_OVERRIDE` so the QR code and download links automatically generate public HTTPS URLs.
+3. Alternatively, use the automated Fastlane lane to upload directly to Firebase App Distribution or Google Play Internal Testing.
+
 ---
 
 ## 12. Saved Pipelines & Chained Workflows
@@ -349,6 +370,11 @@ The Visual Pipeline Builder allows you to construct and customize workflows visu
 Unless a step explicitly has "Continue on failure" enabled:
 - If a step fails, all subsequent steps are immediately marked as **Skipped**.
 - The pipeline execution halts, releasing the exclusive app busy lock and logging the exact step and output that caused the failure.
+
+### What happens if a pipeline step fails—can I re-run only the failed step?
+- When a step fails without "Continue on Failure", the pipeline immediately stops, logs the exit code and stderr, and releases the execution lock.
+- While the pipeline itself records the failed state in history, you can immediately re-run the specific failed action as a standalone command from the main dashboard command grid to debug the issue.
+- Once fixed, you can re-trigger the pipeline or duplicate it in the Visual Pipeline Editor to test specific stages.
 
 ---
 
