@@ -320,7 +320,9 @@ Every tracked file and what it owns. Paths are relative to the repository root.
 
 | File | What it owns |
 |---|---|
-| `android/android_utils.sh` | `buildAAB`, `buildAABRaw`, `deployAAB`, `uploadAAB`, `uploadAndroid`, `buildAndUploadAndroid`, `findAabFile`; package name and Play key resolved generically |
+| `android/android_utils.sh` | Coordinator hub: sources `android_diagnostics.sh`, `android_build.sh`, `android_upload.sh`; holds `flutterAndroidFlavor`, `findAabFile`, `buildAndUploadAndroid`, `deployAAB` |
+| `android/android_build.sh` | Pure build automation: `buildAAB`, `buildAABRaw`, clean build wipe, JDK resolution, Dart defines generation |
+| `android/android_upload.sh` | Google Play Store uploads: `runWithAndroidEnv`, `uploadAndroid`, `uploadAAB`, retry wrapper integration |
 | `android/android_diagnostics.sh` | Error messages (missing AAB, missing service account with all lookup locations, upload failures) |
 
 ---
@@ -340,7 +342,15 @@ Every tracked file and what it owns. Paths are relative to the repository root.
 
 | File | What it owns |
 |---|---|
-| `release/release_changelog_tagger.dart` | Release tool: discovers apps/packages in any layout, collects commits since the last tag (with exact per-package path matching), compiles the changelog, bumps versions, commits, creates annotated tags, pushes; prints the commit table, every mutating git command with its result and a release summary; pushes an existing local release; branch and ancestry guards |
+| `release/release_changelog_tagger.dart` | Release CLI entrypoint & coordinator: imports and exports all `src/` modules; handles main execution flow |
+| `release/src/models.dart` | Data models and CLI parsing: `GitCommit`, `PackageInfo`, `ReleaseOptions`, `ReleaseMode`, `parseArgs`, `printHelp` |
+| `release/src/git_ops.dart` | Git execution engine, commit history reader, tag finders, push runner, and release undo rollback |
+| `release/src/workspace_scanner.dart` | Monorepo package scanning, file ownership detection, dependency resolution, and unreleased status report |
+| `release/src/branch_governance.dart` | Branch allowlist enforcement, ancestry linearity verification, and tag collision safeguards |
+| `release/src/changelog_builder.dart` | Markdown changelog compilation, conventional commit categorizer, commit tables, and changelog prepender |
+| `release/src/semver_ops.dart` | Semantic version string bumper (patch/minor/major/build) and `pubspec.yaml` updater |
+| `release/src/store_notes.dart` | Consumer-friendly App Store / Play Store "What's New" release notes generator |
+| `release/src/release_notifier.dart` | Formatted release summary printer and Google Chat / Slack webhook broadcaster |
 | `release_changelog_tagger.dart` | Backward-compatibility entrypoint delegating to `release/release_changelog_tagger.dart` |
 
 ---
