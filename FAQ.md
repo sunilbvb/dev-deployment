@@ -65,6 +65,9 @@ Or export it permanently in your `~/.zshrc` / `~/.bashrc`:
 export PATH="/opt/homebrew/opt/python@3.12/libexec/bin:$PATH"
 ```
 
+### How are new developer questions added to this FAQ?
+Whenever a developer or team member asks a meaningful question or clarifies system behavior, it should be directly documented in this [`FAQ.md`](file:///home/sunil-bakale/IdeaProjects/dev-deployment/FAQ.md). This establishes a continuous **living documentation** practice so knowledge is never lost in chat threads and the whole team learns together.
+
 ---
 
 ## 2. Server Management & 1-Click Launchers (Zero-Terminal Startup)
@@ -338,15 +341,26 @@ This occurs if the version declared in `pubspec.yaml` was already tagged in git.
 
 ## 14. Outgoing Webhooks & Universal CI/CD Ingestion
 
+### Does the console support Slack, Discord, Microsoft Teams, and other platforms for webhooks?
+**Yes, absolutely.** The tool provides complete bidirectional webhook support:
+
+1. **Outgoing Notifications (Team Delivery Alerts):**
+   - **Slack:** Interactive Block Kit cards with status emojis, build duration, flavor tags, Git commit hash/author, and direct `📱 Download APK` interactive buttons.
+   - **Discord:** Rich Embeds with color status bars (green for success, amber for stopped, red for failure), build size summaries, and clickable markdown install links.
+   - **Microsoft Teams:** Office 365 Connector MessageCard format with structured key-value fact lists and OpenURI action buttons.
+   - **Google Chat:** Cards v2 format with structured widgets and commit metadata.
+   - **WhatsApp:** Push notifications via Meta Cloud API or Twilio for on-call release leads.
+   - **Custom Payload Templates & Generic JSON:** Customizable payload formatting with runtime variable interpolation (`{appName}`, `{flavor}`, `{status}`, `{duration}`, `{downloadUrl}`, `{track}`, `{commitHash}`).
+
+2. **Incoming Webhooks (Remote CI/CD & ChatOps Triggering):**
+   - **GitHub Actions & GitLab CI:** Trigger parameterized builds from remote pipelines via signed POST requests.
+   - **Slack Slash Command:** Trigger builds directly from Slack channels using `/deploy <app> <flavor> <command>`.
+   - **cURL / HTTP APIs:** Automated triggers from any terminal or orchestration system.
+
+3. **Multi-Channel Dispatch:**
+   - Configure multiple channels per app or across the workspace (e.g. notify Slack `#engineering` AND Discord `#qa-builds` simultaneously).
+
 ### Which platforms are supported for team build notifications?
-The webhook engine supports:
-- **Slack:** Interactive Block Kit cards with color bars and direct action buttons.
-- **Discord:** Rich Embeds with color status indicators.
-- **Microsoft Teams:** Adaptive MessageCard format.
-- **Google Chat:** Cards v2 format with formatted sections and commit metadata.
-- **WhatsApp:** Direct push to Meta Cloud API, Twilio, or gateway webhooks with recipient numbers in E.164 format.
-- **Custom Payload Template:** Generic JSON or text engine for Telegram, Mattermost, Zapier, Webex, PagerDuty, or internal services.
-- **Generic JSON:** Direct webhook payload for custom backend microservices.
 
 ### Can I broadcast build notifications to multiple channels simultaneously?
 **Yes!** The **Multi-Destination Webhook Channels** system allows configuring as many outgoing channels as needed per application (e.g., `#dev-releases` on Slack, `#ops-alerts` on Discord, and an on-call WhatsApp number), alongside a workspace-level default fallback. Each channel can be enabled/disabled independently and filtered for Success, Failure, or both.
