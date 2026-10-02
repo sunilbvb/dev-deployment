@@ -37,6 +37,8 @@ venv/
 .venv/
 build/
 dist/
+!frontend/developer-dashboard-ui/dist/
+!frontend/developer-dashboard-ui/dist/**
 *.egg-info/
 .pytest_cache/
 .ruff_cache/

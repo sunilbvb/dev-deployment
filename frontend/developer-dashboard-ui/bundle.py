@@ -67,6 +67,7 @@ def bundle():
     # Write to target files
     ui_css_path = DIST_DIR / "ui.css"
     dev_ui_css_path = DIST_DIR / "developer-dashboard-ui.css"
+    legacy_ui_kit_path = PROJECT_ROOT.parent / "css" / "developer-dashboard-ui-kit.css"
 
     with open(ui_css_path, "w", encoding="utf-8") as f:
         f.write(full_css)
@@ -74,9 +75,15 @@ def bundle():
     with open(dev_ui_css_path, "w", encoding="utf-8") as f:
         f.write(full_css)
 
+    if legacy_ui_kit_path.parent.exists():
+        with open(legacy_ui_kit_path, "w", encoding="utf-8") as f:
+            f.write(full_css)
+
     print("✅ Success! Bundled CSS written to:")
     print(f"  - {ui_css_path.relative_to(PROJECT_ROOT)}")
     print(f"  - {dev_ui_css_path.relative_to(PROJECT_ROOT)}")
+    if legacy_ui_kit_path.parent.exists():
+        print(f"  - {legacy_ui_kit_path.relative_to(PROJECT_ROOT.parent.parent)}")
 
 if __name__ == "__main__":
     bundle()
