@@ -477,6 +477,22 @@ Git requires **zero setup or credentials configuration** within the console itse
 3. **Automated Tagging & Remote Pushes:** The release tool (`release_changelog_tagger.dart`) parses Conventional Commits, bumps version tags in `pubspec.yaml`, writes `CHANGELOG.md`, creates annotated Git tags, and pushes commits and tags to your remote `origin` repository using your local Git credentials.
 4. **Remote Git Triggering (GitHub / GitLab CI):** To trigger builds automatically when developers push code or merge PRs on GitHub, configure a repository webhook pointing to `http://<HOST>:18112/api/deployment/webhook/incoming/github` with a matching `WEBHOOK_SECRET`.
 
+### How does the tool access private Git repositories—does it ask for Git permissions?
+**No. The tool never asks for or stores your GitHub passwords, personal access tokens (PATs), or OAuth scopes.**
+
+Because the tool executes standard system `git` commands (`git pull`, `git fetch`, `git push`) locally under your workstation or server user account, it automatically inherits your machine's existing Git authentication:
+
+1. **SSH Keys (`git@github.com:...`):**
+   If you have an SSH key configured in `~/.ssh/id_ed25519` or `~/.ssh/id_rsa` added to your GitHub account (or a Deploy Key on your build server), Git authenticates transparently without user intervention.
+2. **GitHub CLI (`gh`):**
+   If you use the GitHub CLI (`gh auth login`), Git's credential helper automatically authenticates private repository operations.
+3. **OS Credential Manager / Keychain (HTTPS):**
+   If you cloned via HTTPS (`https://github.com/org/private-repo.git`), Git retrieves the stored token from your OS Keychain (macOS Keychain, Linux `libsecret` / `git-credential-cache`, or Git Credential Manager).
+4. **On a Dedicated Build Server:**
+   Add a read-only or read-write **GitHub Deploy Key** in your GitHub repository settings under **Settings → Deploy Keys**, and attach the private key to the server's `~/.ssh/config`. Once the server can run `git pull` from the terminal, the Deployment Console can sync it automatically.
+
+This zero-credential design is significantly safer: your private GitHub credentials never pass through web forms or get saved in plaintext dashboard config files.
+
 ### How does the automated release tool generate changelogs?
 The release tool (`release_changelog_tagger.dart`) parses the git log since the previous release tag:
 - It categorizes commits according to the **Conventional Commits** specification:
