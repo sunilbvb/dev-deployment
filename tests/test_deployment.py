@@ -2440,3 +2440,117 @@ class TestDocumentationAndServerStatus(unittest.TestCase):
             httpd.shutdown()
             httpd.server_close()
 
+    def test_google_chat_webhook_payload_and_detection(self):
+        import notifications
+
+        # 1. Detection
+        url = "https://chat.googleapis.com/v1/spaces/AAAA1234/messages?key=AIzaSy&token=abc"
+        self.assertEqual(notifications.detect_webhook_provider(url), "google_chat")
+
+        # 2. Card v2 Payload
+        event_data = {
+            "app": "test_app",
+            "appName": "Test App",
+            "flavor": "prod",
+            "platform": "Android (AAB)",
+            "version": "1.2.0",
+            "status": "success",
+            "durationFormatted": "1m 12s",
+            "commit": {"hash": "abcd123", "subject": "fix: bug", "author": "dev"},
+            "downloadUrl": "https://example.com/dl/app.apk",
+            "track": "Production",
+            "buildSizeSummary": "21.5 MB (+0.8 MB)",
+        }
+        payload = notifications.build_webhook_payload("google_chat", event_data)
+        self.assertIn("cardsV2", payload)
+        self.assertIn("text", payload)
+        card = payload["cardsV2"][0]["card"]
+        self.assertIn("SUCCEEDED", card["header"]["title"])
+        self.assertIn("Test App", card["header"]["title"])
+        sections = card["sections"]
+        self.assertTrue(len(sections) > 0)
+        widgets = sections[0]["widgets"]
+        # Verify app, platform, track, and download button are present
+        has_app_widget = any("Test App" in str(w) for w in widgets)
+        has_track_widget = any("Production" in str(w) for w in widgets)
+        has_btn_widget = any("Download APK" in str(w) for w in widgets)
+        self.assertTrue(has_app_widget)
+        self.assertTrue(has_track_widget)
+        self.assertTrue(has_btn_widget)
+
+    def test_pipeline_save_delete_and_api_endpoints(self):
+        import pipelines
+        import http.server
+        import server
+        import threading
+
+        # 1. Backend save & delete functions
+        pipe_data = {
+            "name": "Full Release Flow",
+            "flavor": "prod",
+            "steps": [
+                {"name": "Build AAB", "templateId": "build_aab", "continueOnFailure": False},
+                {"name": "Custom Test", "command": "flutter test", "continueOnFailure": True},
+            ],
+        }
+        save_res = pipelines.save_pipeline("test_app", pipe_data)
+        self.assertTrue(save_res["success"])
+        saved_id = save_res["pipeline"]["id"]
+        self.assertTrue(saved_id.startswith("full-release-flow"))
+
+        # Verify pipeline is in get_pipelines
+        all_pipes = pipelines.get_pipelines("test_app")["pipelines"]
+        self.assertTrue(any(p["id"] == saved_id for p in all_pipes))
+
+        # 2. Server API endpoints
+        httpd = http.server.ThreadingHTTPServer(("127.0.0.1", 0), server.DeploymentHandler)
+        port = httpd.server_address[1]
+        t = threading.Thread(target=httpd.serve_forever, daemon=True)
+        t.start()
+
+        try:
+            conn = http.client.HTTPConnection("127.0.0.1", port)
+            token = server._get_auth_token()
+
+            # Save via POST /api/deployment/pipelines/save
+            save_payload = {
+                "app": "test_app",
+                "pipeline": {
+                    "id": "ci-flow-test",
+                    "name": "CI Flow Test",
+                    "steps": [{"name": "Build APK", "templateId": "build_apk"}],
+                }
+            }
+            conn.request(
+                "POST",
+                "/api/deployment/pipelines/save",
+                body=json.dumps(save_payload),
+                headers={"Content-Type": "application/json", "X-API-Token": token},
+            )
+            res_save = conn.getresponse()
+            self.assertEqual(res_save.status, 200)
+            data_save = json.loads(res_save.read().decode("utf-8"))
+            self.assertTrue(data_save["success"])
+            self.assertEqual(data_save["pipeline"]["id"], "ci-flow-test")
+
+            # Delete via POST /api/deployment/pipelines/delete
+            del_payload = {"app": "test_app", "pipelineId": "ci-flow-test"}
+            conn.request(
+                "POST",
+                "/api/deployment/pipelines/delete",
+                body=json.dumps(del_payload),
+                headers={"Content-Type": "application/json", "X-API-Token": token},
+            )
+            res_del = conn.getresponse()
+            self.assertEqual(res_del.status, 200)
+            data_del = json.loads(res_del.read().decode("utf-8"))
+            self.assertTrue(data_del["success"])
+            self.assertEqual(data_del["deletedId"], "ci-flow-test")
+        finally:
+            httpd.shutdown()
+            httpd.server_close()
+
+        # Clean up backend saved pipeline
+        pipelines.delete_pipeline("test_app", saved_id)
+
+

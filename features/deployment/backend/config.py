@@ -156,8 +156,8 @@ def save_deploy_config(data: dict[str, Any]) -> dict[str, Any]:
             return {"success": False, "error": "Invalid workspace webhook URL: must start with http:// or https:// (max 2048 chars)"}
 
     ws_provider = data.get("workspace_webhook_provider")
-    if ws_provider and str(ws_provider).lower() not in ("auto", "slack", "discord", "teams", "generic"):
-        return {"success": False, "error": f"Invalid workspace webhook provider '{ws_provider}'. Allowed: auto, slack, discord, teams, generic"}
+    if ws_provider and str(ws_provider).lower() not in ("auto", "slack", "discord", "teams", "google_chat", "generic"):
+        return {"success": False, "error": f"Invalid workspace webhook provider '{ws_provider}'. Allowed: auto, slack, discord, teams, google_chat, generic"}
 
     for app_id, app_cfg in apps.items():
         if not isinstance(app_id, str) or not SAFE_ID_PATTERN.match(app_id):
@@ -173,8 +173,8 @@ def save_deploy_config(data: dict[str, Any]) -> dict[str, Any]:
                         return {"success": False, "error": f"Invalid webhook URL for app '{app_id}': must start with http:// or https:// (max 2048 chars)"}
                     continue
                 if key == "webhook_provider":
-                    if val.lower() not in ("auto", "slack", "discord", "teams", "generic"):
-                        return {"success": False, "error": f"Invalid webhook provider '{val}' for app '{app_id}'. Allowed: auto, slack, discord, teams, generic"}
+                    if val.lower() not in ("auto", "slack", "discord", "teams", "google_chat", "generic"):
+                        return {"success": False, "error": f"Invalid webhook provider '{val}' for app '{app_id}'. Allowed: auto, slack, discord, teams, google_chat, generic"}
                     continue
                 is_id_field = (
                     any(key == prefix or key.startswith(f"{prefix}_") for prefix in (

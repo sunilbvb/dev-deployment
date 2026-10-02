@@ -34,7 +34,7 @@ from config import (
 def detect_webhook_provider(url: str, override: str = "auto") -> str:
     """Detect destination service from URL hostname or return user override."""
     override_clean = (override or "auto").strip().lower()
-    if override_clean in ("slack", "discord", "teams", "generic"):
+    if override_clean in ("slack", "discord", "teams", "google_chat", "generic"):
         return override_clean
 
     url_lower = (url or "").lower()
@@ -48,6 +48,8 @@ def detect_webhook_provider(url: str, override: str = "auto") -> str:
         or "logic.azure.com" in url_lower
     ):
         return "teams"
+    if "chat.googleapis.com" in url_lower:
+        return "google_chat"
     return "generic"
 
 
@@ -385,6 +387,80 @@ def build_teams_payload(event: dict[str, Any]) -> dict[str, Any]:
     return card
 
 
+def build_google_chat_payload(event: dict[str, Any]) -> dict[str, Any]:
+    """Format Google Chat webhook payload with Card v2 and fallback text."""
+    status = event.get("status", "success").lower()
+    is_success = status == "success"
+    status_icon = "✅" if is_success else "❌"
+    status_label = "SUCCEEDED" if is_success else ("STOPPED" if status == "stopped" else "FAILED")
+
+    app_name = event.get("appName") or event.get("app") or "App"
+    flavor = event.get("flavor") or "default"
+    platform = event.get("platform") or "Mobile"
+    version = event.get("version") or "1.0.0"
+    duration = event.get("durationFormatted") or "0s"
+    commit = event.get("commit") or {}
+    download_url = event.get("downloadUrl") or ""
+    track = event.get("track") or ""
+
+    title = f"{status_icon} [{app_name}] Deploy {status_label} ({flavor})"
+    header_subtitle = f"{platform} · v{version} · {duration}"
+
+    widgets = [
+        {"decoratedText": {"topLabel": "Application", "text": app_name}},
+        {"decoratedText": {"topLabel": "Environment / Flavor", "text": flavor.upper() if flavor else "DEFAULT"}},
+        {"decoratedText": {"topLabel": "Platform", "text": platform}},
+        {"decoratedText": {"topLabel": "Duration", "text": duration}},
+    ]
+
+    if track:
+        widgets.append({"decoratedText": {"topLabel": "Store Track", "text": track}})
+
+    if event.get("buildSizeSummary"):
+        widgets.append({"decoratedText": {"topLabel": "Build Size", "text": event["buildSizeSummary"]}})
+
+    if commit.get("hash") or commit.get("subject"):
+        c_text = f"<b>{commit.get('hash', '')}</b> {commit.get('subject', '')}"
+        if commit.get("author"):
+            c_text += f" ({commit.get('author')})"
+        widgets.append({"decoratedText": {"topLabel": "Git Commit", "text": c_text}})
+
+    if download_url:
+        widgets.append({
+            "buttonList": {
+                "buttons": [
+                    {
+                        "text": "📱 Download APK",
+                        "onClick": {"openLink": {"url": download_url}}
+                    }
+                ]
+            }
+        })
+
+    card = {
+        "header": {
+            "title": title,
+            "subtitle": header_subtitle,
+        },
+        "sections": [
+            {
+                "widgets": widgets
+            }
+        ]
+    }
+
+    fallback_text = f"{title} | {flavor} | {duration}"
+    return {
+        "text": fallback_text,
+        "cardsV2": [
+            {
+                "cardId": "deploy-notification-card",
+                "card": card
+            }
+        ]
+    }
+
+
 def build_generic_payload(event: dict[str, Any]) -> dict[str, Any]:
     """Format clean generic JSON payload for custom webhooks."""
     return {
@@ -403,6 +479,8 @@ def build_webhook_payload(provider: str, event_data: dict[str, Any]) -> dict[str
         return build_discord_payload(event_data)
     if provider_clean == "teams":
         return build_teams_payload(event_data)
+    if provider_clean == "google_chat":
+        return build_google_chat_payload(event_data)
     return build_generic_payload(event_data)
 
 
