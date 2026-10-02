@@ -304,7 +304,13 @@ Every tracked file and what it owns. Paths are relative to the repository root.
 | File | What it owns |
 |---|---|
 | `run_build.sh` | Main CLI entrypoint `run_build.sh <action> <app> <env>`: resolves project root, sources `core/json_utils.sh`, executes action |
-| `core/json_utils.sh` | Core shared helpers: `resolveAppDir`, `resolveAndroidPackageName`, `resolvePlayServiceAccount`, `getValueByKey`, `exportAppContents`; Melos helpers `melosScriptExists`, `runMelosOrDirect`; release wrappers `releasePreview` … `releaseUndo`; `deployBothPlatforms` |
+| `core/json_utils.sh` | Modular coordinator hub sourcing domain core scripts and platform utilities |
+| `core/melos_runner.sh` | Melos script detection, naming, argument resolution, and fallback direct execution (`runMelosOrDirect`) |
+| `core/fastlane_utils.sh` | Deployment Fastlane folder and Fastfile locators (`resolveDeploymentFastlaneDir`) |
+| `core/project_resolver.sh` | App folder, package name, service account, and JSON configuration extractors (`resolveAppDir`, `resolvePlayServiceAccount`, `resolveAndroidPackageName`, `getValueByKey`, `exportAppContents`) |
+| `core/retry_utils.sh` | Resilient store upload retry engine with exponential backoff and duplicate-version short-circuiting (`_retryUpload`) |
+| `core/release_commands.sh` | Release tool CLI wrappers (`releasePreview`, `releaseChangelog`, `releaseCommit`, `releaseTag`, `releasePush`, `releaseBumpPatch`, `releaseUndo`) |
+| `core/multiplatform.sh` | Combined Android + iOS build and deploy orchestrator sharing a single version bump (`deployBothPlatforms`) |
 | `core/build_profiles.json` | Named build profiles & environment configurations |
 | `json_utils.sh` | Backward-compatibility delegator sourcing `core/json_utils.sh` |
 
