@@ -1621,10 +1621,11 @@ async function loadWorkspaceInfo() {
             if (!missingBanner) {
                 missingBanner = document.createElement('div');
                 missingBanner.id = 'workspaceMissingBanner';
-                missingBanner.className = 'cert-status-box';
+                missingBanner.className = 'ui-alert cert-status-box';
+                missingBanner.dataset.variant = 'warning';
                 missingBanner.dataset.status = 'warning';
-                missingBanner.style.cssText = 'margin: 12px 24px 0 24px; font-size: 0.82rem;';
-                document.querySelector('.dashboard-container')?.prepend(missingBanner);
+                missingBanner.style.cssText = 'margin: 0 0 16px 0; font-size: 0.82rem;';
+                (document.querySelector('.deployment-shell') || document.querySelector('.ui-page-shell') || document.body)?.prepend(missingBanner);
             }
             missingBanner.textContent = `⚠️ Workspace folder "${data.workspaceMissing}" was not found on disk. Dashboard fell back to "${data.active}". Please select a valid project folder.`;
             missingBanner.style.display = 'block';
