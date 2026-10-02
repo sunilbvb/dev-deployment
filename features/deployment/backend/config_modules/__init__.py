@@ -1,21 +1,40 @@
-"""Deployment configuration coordinator and facade.
+"""Backend configuration modules package.
 
-Maintains 100% backward compatibility with all existing imports while delegating
-to modular components in config_modules:
+Deconstructs monolithic config logic into single-responsibility submodules:
 - workspace: Path resolution, request-scoped context, allowed workspace management
 - storage: Apps, commands, and deploy config file persistence and template loading
 - discovery: Monorepo scanning, Melos parsing, app path resolution, flavor detection
 - scanner: Xcode/Android project inspection, credential discovery, system health diagnostics
 """
 
-import sys
-from typing import Any
-
-import config_modules.discovery as _discovery_mod
-import config_modules.scanner as _scanner_mod
-import config_modules.storage as _storage_mod
-import config_modules.workspace as _ws_mod
-from config_modules.discovery import (
+from .workspace import (
+    DASHBOARD_ROOT,
+    FEATURE_DIR,
+    SAFE_ID_PATTERN,
+    TEMPLATES_FILE,
+    TMP_DIR,
+    WORKSPACE_MISSING,
+    WORKSPACE_ROOT,
+    _ensure_gitignore_has_dashboard,
+    _get_allowed_workspace_roots,
+    _resolve_workspace_root,
+    allow_workspace,
+    get_workspace_root,
+    get_workspaces_list,
+    remove_workspace,
+    reset_request_workspace,
+    set_active_workspace,
+    set_request_workspace,
+)
+from .storage import (
+    get_apps_config_file,
+    get_commands_config_file,
+    get_deploy_config_file,
+    load_deploy_config,
+    load_templates,
+    save_deploy_config,
+)
+from .discovery import (
     MANIFEST_FILES,
     MAX_SCAN_DEPTH,
     PROJECT_INTERNAL_DIRS,
@@ -34,7 +53,7 @@ from config_modules.discovery import (
     get_apps,
     inspect_workspace_path,
 )
-from config_modules.scanner import (
+from .scanner import (
     _scan_android_app_ids,
     _scan_credentials,
     _scan_xcconfig_bundle_ids,
@@ -43,33 +62,6 @@ from config_modules.scanner import (
     rescan_workspace,
     scan_all_apps_config,
     scan_app_config,
-)
-from config_modules.storage import (
-    get_apps_config_file,
-    get_commands_config_file,
-    get_deploy_config_file,
-    load_deploy_config,
-    load_templates,
-    save_deploy_config,
-)
-from config_modules.workspace import (
-    DASHBOARD_ROOT,
-    FEATURE_DIR,
-    SAFE_ID_PATTERN,
-    TEMPLATES_FILE,
-    TMP_DIR,
-    WORKSPACE_MISSING,
-    WORKSPACE_ROOT,
-    _ensure_gitignore_has_dashboard,
-    _get_allowed_workspace_roots,
-    _resolve_workspace_root,
-    allow_workspace,
-    get_workspace_root,
-    get_workspaces_list,
-    remove_workspace,
-    reset_request_workspace,
-    set_active_workspace,
-    set_request_workspace,
 )
 
 __all__ = [
@@ -126,16 +118,3 @@ __all__ = [
     "scan_all_apps_config",
     "scan_app_config",
 ]
-
-
-class _ConfigModule(sys.modules[__name__].__class__):
-    """Module proxy that synchronizes attribute assignments across submodules."""
-
-    def __setattr__(self, name: str, value: Any) -> None:
-        for mod in (_ws_mod, _storage_mod, _discovery_mod, _scanner_mod):
-            if hasattr(mod, name):
-                setattr(mod, name, value)
-        super().__setattr__(name, value)
-
-
-sys.modules[__name__].__class__ = _ConfigModule
