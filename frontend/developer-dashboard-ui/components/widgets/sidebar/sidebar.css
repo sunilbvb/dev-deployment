@@ -59,6 +59,17 @@
   margin-bottom: 2px;
 }
 
+/* <button> tiles: drop the browser's default button chrome. */
+button.ui-sidebar-item {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  font-family: inherit;
+  text-align: left;
+  justify-content: flex-start;
+  gap: 8px;
+}
+
 .ui-sidebar-item:hover {
   background-color: #f1f5f9;
   color: #0f172a;

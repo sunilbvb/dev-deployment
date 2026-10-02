@@ -21,7 +21,7 @@ import router
 
 FRONTEND_DIR = Path(__file__).resolve().parents[1] / "frontend"
 SHARED_FRONTEND_DIR = Path(__file__).resolve().parents[3] / "frontend"
-SHARED_ASSET_PREFIXES = ("css/", "js/", "assets/")
+SHARED_ASSET_PREFIXES = ("css/", "js/", "assets/", "developer-dashboard-ui/")
 
 _SERVER_AUTH_TOKEN = ""
 _ACTIVE_SERVER: Optional[http.server.ThreadingHTTPServer] = None
@@ -428,6 +428,9 @@ class DeploymentHandler(http.server.SimpleHTTPRequestHandler):
     def _is_safe_static_path(self, path: str) -> bool:
         parsed = urlparse(path)
         relative = parsed.path.lstrip("/") or "index.html"
+        if relative.startswith("frontend/"):
+            candidate = (SHARED_FRONTEND_DIR.parent / relative).resolve()
+            return candidate == SHARED_FRONTEND_DIR.parent or SHARED_FRONTEND_DIR.parent in candidate.parents
         base_dir = SHARED_FRONTEND_DIR if relative.startswith(SHARED_ASSET_PREFIXES) else FRONTEND_DIR
         candidate = (base_dir / relative).resolve()
         return candidate == base_dir or base_dir in candidate.parents
@@ -756,6 +759,9 @@ class DeploymentHandler(http.server.SimpleHTTPRequestHandler):
     def translate_path(self, path: str) -> str:
         parsed = urlparse(path)
         relative = parsed.path.lstrip("/") or "index.html"
+
+        if relative.startswith("frontend/"):
+            return str((SHARED_FRONTEND_DIR.parent / relative).resolve())
 
         if relative.startswith(SHARED_ASSET_PREFIXES):
             return str((SHARED_FRONTEND_DIR / relative).resolve())

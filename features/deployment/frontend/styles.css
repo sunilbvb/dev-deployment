@@ -14,42 +14,7 @@ body {
     margin: 0;
 }
 
-/* ── Layout Shell ───────────────────────────────────────────────────────── */
-.deployment-shell {
-    width: 100%;
-    margin: 0;
-    padding: 24px 24px 100px 24px !important;
-    background: var(--ui-bg-surface, #0f172a);
-    border: 1px solid var(--ui-border-color, #334155);
-    border-radius: 16px;
-    box-sizing: border-box;
-}
-
-.topbar {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    gap: 16px;
-    margin-bottom: 24px;
-}
-
-.topbar h1 {
-    font-size: 1.5rem;
-    font-weight: 700;
-    color: var(--ui-text-primary, #f8fafc);
-    margin: 0;
-}
-
-.eyebrow {
-    font-size: 0.65rem;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    color: var(--ui-text-muted, #64748b);
-    margin: 0 0 2px 0;
-}
-
-/* ── Workspace Grid Layout ─────────────────────────────────────────────── */
+/* ── App & Command Section Containers ──────────────────────────────────── */
 .workspace-grid {
     display: flex;
     flex-direction: column;
@@ -57,7 +22,6 @@ body {
     margin-bottom: 20px;
 }
 
-.ui-panel,
 .app-panel,
 .command-panel {
     background: transparent !important;
@@ -67,14 +31,6 @@ body {
     padding: 0 !important;
     margin-bottom: 24px;
     box-sizing: border-box;
-}
-
-.ui-panel:hover,
-.app-panel:hover,
-.command-panel:hover {
-    transform: none !important;
-    border-color: transparent !important;
-    box-shadow: none !important;
 }
 
 .app-panel .ui-card-header,
@@ -89,25 +45,6 @@ body {
 .command-panel .ui-card-body {
     padding: 0 !important;
     background: transparent !important;
-}
-
-/* Ensure Card Titles look modern */
-.ui-card-title {
-    font-size: 0.95rem;
-    font-weight: 600;
-    color: var(--ui-text-primary, #f8fafc);
-}
-
-.ui-card-header {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    padding: 16px 20px;
-    border-bottom: 1px solid var(--ui-border-color, #334155);
-}
-
-.ui-card-body {
-    padding: 20px;
 }
 
 /* ── App Grid & Selection Cards ─────────────────────────────────────────── */
@@ -325,38 +262,52 @@ body {
     color: var(--ui-text-secondary, #cbd5e1);
 }
 
-/* ── iOS Cert/Profile Expiry ──────────────────────────────────────────── */
-.cert-status-box {
+/* ── Status Banners (aligned with developer-dashboard-ui alert tokens) ── */
+.cert-status-box,
+.cert-expiry-banner {
     margin-top: 6px;
-    padding: 10px 12px;
+    padding: 10px 14px;
     border-radius: 6px;
-    font-size: 0.78rem;
+    font-size: 0.8rem;
     line-height: 1.5;
     border: 1px solid var(--ui-border-color, #334155);
-    background: rgba(255, 255, 255, 0.03);
+    background: var(--ui-surface-muted, rgba(255, 255, 255, 0.03));
     color: var(--ui-text-secondary, #cbd5e1);
 }
 .cert-status-box[data-status="ok"],
-.cert-status-box[data-status="valid"] { border-color: var(--ui-success-color, #10b981); color: #34d399; }
-.cert-status-box[data-status="warning"] { border-color: var(--ui-warning-color, #f59e0b); color: var(--ui-warning-color, #f59e0b); }
+.cert-status-box[data-status="valid"] {
+    border-color: rgba(16, 185, 129, 0.35);
+    background-color: rgba(16, 185, 129, 0.1);
+    color: #34d399;
+}
+.cert-status-box[data-status="warning"] {
+    border-color: rgba(245, 158, 11, 0.35);
+    background-color: rgba(245, 158, 11, 0.1);
+    color: #fcd34d;
+}
 .cert-status-box[data-status="expired"],
-.cert-status-box[data-status="error"] { border-color: var(--ui-danger-color, #ef4444); color: var(--ui-danger-color, #ef4444); }
-.cert-status-box[data-status="info"] { border-color: #38bdf8; color: #7dd3fc; background: rgba(56, 189, 248, 0.06); }
+.cert-status-box[data-status="error"] {
+    border-color: rgba(239, 68, 68, 0.35);
+    background-color: rgba(239, 68, 68, 0.1);
+    color: #fca5a5;
+}
+.cert-status-box[data-status="info"] {
+    border-color: rgba(99, 102, 241, 0.35);
+    background-color: rgba(99, 102, 241, 0.1);
+    color: #a5b4fc;
+}
 
 .cert-expiry-banner {
     margin-bottom: 12px;
-    padding: 8px 12px;
-    border-radius: 6px;
-    font-size: 0.78rem;
     font-weight: 600;
-    border: 1px solid var(--ui-warning-color, #f59e0b);
-    background: rgba(245, 158, 11, 0.1);
-    color: var(--ui-warning-color, #f59e0b);
+    border-color: rgba(245, 158, 11, 0.35);
+    background-color: rgba(245, 158, 11, 0.1);
+    color: #fcd34d;
 }
 .cert-expiry-banner[data-status="expired"] {
-    border-color: var(--ui-danger-color, #ef4444);
-    background: rgba(239, 68, 68, 0.1);
-    color: var(--ui-danger-color, #ef4444);
+    border-color: rgba(239, 68, 68, 0.35);
+    background-color: rgba(239, 68, 68, 0.1);
+    color: #fca5a5;
 }
 
 /* ── Prod Deploy Confirm Modal ────────────────────────────────────────── */
@@ -379,24 +330,6 @@ body {
 }
 
 
-/* Setup sidebar tiles are <button>s; the UI kit styles them as links, so the
-   browser's default button chrome (grey fill, border, centred text) leaks through. */
-#setupAppList button.ui-sidebar-item {
-    width: 100%;
-    border: 1px solid transparent;
-    background: transparent;
-    font-family: inherit;
-    text-align: left;
-    justify-content: flex-start;
-    gap: 8px;
-}
-#setupAppList button.ui-sidebar-item:hover {
-    background: var(--ui-surface-2, rgba(148, 163, 184, 0.12));
-}
-#setupAppList button.ui-sidebar-item.ui-active {
-    background: rgba(99, 102, 241, 0.18);
-    border-color: rgba(99, 102, 241, 0.45);
-}
 
 [hidden] { display: none !important; }
 
