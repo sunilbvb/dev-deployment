@@ -460,57 +460,164 @@ class DeploymentHandler(http.server.SimpleHTTPRequestHandler):
 
         ws_token = self._extract_request_workspace()
         try:
-            # --- Webhook endpoint (authenticated via HMAC / shared secret) ---
-            if parsed.path == "/api/deployment/webhook":
+            # --- Universal Webhook Ingestion endpoint (authenticated via HMAC, shared secret, or API token) ---
+            if parsed.path in ("/api/deployment/webhook", "/api/deployment/webhook/incoming") or parsed.path.startswith("/api/deployment/webhook/incoming/"):
                 webhook_secret = os.environ.get("WEBHOOK_SECRET", "").strip()
-                if not webhook_secret:
+                if not webhook_secret and not self._verify_auth():
                     self.write_json({
                         "success": False,
                         "error": "Webhook integration disabled: WEBHOOK_SECRET environment variable is not configured on the server."
                     }, status=503)
                     return
 
-                provided_secret = self.headers.get("X-Webhook-Secret", "").strip()
-                signature_header = self.headers.get("X-Hub-Signature-256", "").strip()
                 valid = False
-                if provided_secret and hmac.compare_digest(provided_secret, webhook_secret):
+                if self._verify_auth():
                     valid = True
-                elif signature_header and signature_header.startswith("sha256="):
-                    expected_sig = hmac.new(webhook_secret.encode("utf-8"), raw_body, hashlib.sha256).hexdigest()
-                    valid = hmac.compare_digest(signature_header[7:], expected_sig)
+                elif webhook_secret:
+                    provided_secret = (self.headers.get("X-Webhook-Secret") or self.headers.get("X-Gitlab-Token") or "").strip()
+                    auth_header = self.headers.get("Authorization", "").strip()
+                    bearer_token = auth_header[7:].strip() if auth_header.lower().startswith("bearer ") else ""
+                    signature_header = self.headers.get("X-Hub-Signature-256", "").strip()
+                    slack_sig = self.headers.get("X-Slack-Signature", "").strip()
+                    q_params = parse_qs(parsed.query)
+                    q_secret = (q_params.get("secret") or q_params.get("token") or [""])[0].strip()
+
+                    if provided_secret and hmac.compare_digest(provided_secret, webhook_secret):
+                        valid = True
+                    elif bearer_token and hmac.compare_digest(bearer_token, webhook_secret):
+                        valid = True
+                    elif q_secret and hmac.compare_digest(q_secret, webhook_secret):
+                        valid = True
+                    elif signature_header and signature_header.startswith("sha256="):
+                        expected_sig = hmac.new(webhook_secret.encode("utf-8"), raw_body, hashlib.sha256).hexdigest()
+                        valid = hmac.compare_digest(signature_header[7:], expected_sig)
+                    elif slack_sig:
+                        slack_time = self.headers.get("X-Slack-Request-Timestamp", "")
+                        sig_basestring = f"v0:{slack_time}:{raw_body.decode('utf-8', errors='replace')}".encode("utf-8")
+                        expected_slack_sig = "v0=" + hmac.new(webhook_secret.encode("utf-8"), sig_basestring, hashlib.sha256).hexdigest()
+                        valid = hmac.compare_digest(slack_sig, expected_slack_sig)
 
                 if not valid:
                     self.write_json({"success": False, "error": "Invalid webhook secret or HMAC signature"}, status=401)
                     return
 
-                try:
-                    data = json.loads(raw_body.decode("utf-8")) if raw_body else {}
-                except Exception:
-                    logging.exception("Failed to parse webhook JSON payload")
-                    data = {}
+                query_params = parse_qs(parsed.query)
+                data = {}
+                is_slack_slash = False
 
-                app_id = str(data.get("app") or "")
-                flavor = str(data.get("flavor") or "prod")
-                template_id = str(data.get("templateId") or "build_aab")
+                if content_type_header.startswith("application/x-www-form-urlencoded"):
+                    form = parse_qs(raw_body.decode("utf-8", errors="replace"))
+                    if "payload" in form:
+                        try:
+                            data = json.loads(form["payload"][0])
+                        except Exception:
+                            data = {}
+                    elif "command" in form or "text" in form:
+                        is_slack_slash = True
+                        raw_text = (form.get("text") or [""])[0].strip()
+                        tokens = raw_text.split()
+                        if tokens:
+                            if tokens[0].lower() in ("pipe", "pipeline", "run-pipeline") and len(tokens) >= 2:
+                                data["pipeline"] = tokens[1]
+                                if len(tokens) >= 3:
+                                    data["app"] = tokens[2]
+                                if len(tokens) >= 4:
+                                    data["flavor"] = tokens[3]
+                            else:
+                                data["app"] = tokens[0]
+                                if len(tokens) >= 2:
+                                    data["flavor"] = tokens[1]
+                                if len(tokens) >= 3:
+                                    data["templateId"] = tokens[2]
+                        data["user_name"] = (form.get("user_name") or [""])[0]
+                        data["channel_name"] = (form.get("channel_name") or [""])[0]
+                else:
+                    try:
+                        data = json.loads(raw_body.decode("utf-8")) if raw_body else {}
+                    except Exception:
+                        logging.exception("Failed to parse webhook JSON payload")
+                        data = {}
+
+                if self.headers.get("X-GitHub-Event", "").strip().lower() == "ping":
+                    self.write_json({"success": True, "message": "Pong! GitHub webhook registered successfully."})
+                    return
+
+                app_id = str(data.get("app") or data.get("app_id") or data.get("appName") or (query_params.get("app") or [""])[0]).strip()
+                flavor = str(data.get("flavor") or (query_params.get("flavor") or ["prod"])[0]).strip()
+                template_id = str(data.get("templateId") or data.get("template_id") or data.get("command") or (query_params.get("templateId") or (query_params.get("command") or [""]))[0]).strip()
+                pipeline_id = str(data.get("pipeline") or data.get("pipeline_id") or data.get("pipelineId") or (query_params.get("pipeline") or [""])[0]).strip()
+
+                if not pipeline_id and not app_id:
+                    inputs = data.get("inputs") or data.get("client_payload")
+                    if isinstance(inputs, dict):
+                        app_id = str(inputs.get("app") or inputs.get("app_id") or inputs.get("appName") or "").strip()
+                        flavor = str(inputs.get("flavor") or flavor).strip()
+                        template_id = str(inputs.get("templateId") or inputs.get("template_id") or template_id).strip()
+                        pipeline_id = str(inputs.get("pipeline") or inputs.get("pipeline_id") or pipeline_id).strip()
+
+                if not app_id and isinstance(data.get("repository"), dict):
+                    repo_name = data["repository"].get("name", "")
+                    all_apps = router.get_apps().get("apps", [])
+                    if any(a.get("id") == repo_name for a in all_apps):
+                        app_id = repo_name
+
+                if pipeline_id:
+                    if not app_id:
+                        all_apps = router.get_apps().get("apps", [])
+                        for a in all_apps:
+                            p_res = router.get_pipelines(a.get("id", ""))
+                            if any(p.get("id") == pipeline_id or p.get("name") == pipeline_id for p in p_res.get("pipelines", [])):
+                                app_id = a.get("id", "")
+                                break
+                    if not app_id:
+                        all_apps = router.get_apps().get("apps", [])
+                        if all_apps:
+                            app_id = all_apps[0].get("id", "")
+
+                    run_res = router.run_pipeline(app_id, pipeline_id, flavor=flavor, confirmed=True)
+                    if is_slack_slash:
+                        msg = f"🚀 Pipeline '{pipeline_id}' started for {app_id}" if run_res.get("success") else f"❌ Failed: {run_res.get('error')}"
+                        run_res["response_type"] = "in_channel"
+                        run_res["text"] = msg
+                    self.write_json(run_res, status=200 if run_res.get("success") else 400)
+                    return
+
+                if not template_id:
+                    template_id = "build_aab"
+
                 cmds = router.get_commands(app_id).get("commands", [])
                 target_cmd = None
                 for c in cmds:
-                    if c.get("templateId") == template_id and (c.get("flavor") in (flavor, "any", "default")):
+                    if template_id and c.get("templateId") == template_id and (c.get("flavor") in (flavor, "any", "default")):
                         target_cmd = c
                         break
+                    if not target_cmd and c.get("key") == template_id:
+                        target_cmd = c
+                        break
+                if not target_cmd and cmds:
+                    for c in cmds:
+                        if c.get("templateId") == template_id or c.get("key") == template_id:
+                            target_cmd = c
+                            break
+
                 if not target_cmd:
                     self.write_json({"success": False, "error": f"No matching command found for app '{app_id}', template '{template_id}', flavor '{flavor}'"}, status=400)
                     return
 
-                self.write_json(router.execute_command(
+                exec_res = router.execute_command(
                     app_id,
                     target_cmd.get("key", ""),
                     target_cmd.get("runner", "custom"),
                     flavor,
-                    template_id,
+                    target_cmd.get("templateId", template_id),
                     flavor,
                     bool(data.get("confirmed") or False),
-                ))
+                )
+                if is_slack_slash:
+                    msg = f"🚀 Command '{target_cmd.get('key')}' started for {app_id}" if exec_res.get("success") else f"❌ Failed: {exec_res.get('error')}"
+                    exec_res["response_type"] = "in_channel"
+                    exec_res["text"] = msg
+                self.write_json(exec_res, status=200 if exec_res.get("success") else 400)
                 return
 
             # --- Multipart upload routes ---
@@ -630,6 +737,9 @@ class DeploymentHandler(http.server.SimpleHTTPRequestHandler):
                     url=str(data.get("url") or ""),
                     provider=str(data.get("provider") or "auto"),
                     app_id=str(data.get("app") or ""),
+                    custom_template=str(data.get("custom_template") or data.get("customTemplate") or ""),
+                    custom_headers=data.get("custom_headers") or data.get("customHeaders"),
+                    phone=str(data.get("phone") or ""),
                 ))
                 return
 

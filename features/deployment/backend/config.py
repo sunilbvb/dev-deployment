@@ -109,10 +109,10 @@ def get_apps_config_file() -> Path:
     return target
 
 
-def get_deploy_config_file() -> Path:
-    ws_root = get_workspace_root()
-    _ensure_gitignore_has_dashboard(ws_root)
-    target_dir = ws_root / ".dev-dashboard"
+def get_deploy_config_file(ws_root: Optional[Path] = None) -> Path:
+    root = ws_root or get_workspace_root()
+    _ensure_gitignore_has_dashboard(root)
+    target_dir = root / ".dev-dashboard"
     target_dir.mkdir(parents=True, exist_ok=True)
     target = target_dir / "deploy_config.json"
     if not target.exists():
@@ -131,8 +131,8 @@ def get_commands_config_file() -> Path:
     return target
 
 
-def load_deploy_config() -> dict[str, Any]:
-    cfg_file = get_deploy_config_file()
+def load_deploy_config(ws_root: Optional[Path] = None) -> dict[str, Any]:
+    cfg_file = get_deploy_config_file(ws_root)
     if not cfg_file.exists():
         return {}
     try:
@@ -150,14 +150,30 @@ def save_deploy_config(data: dict[str, Any]) -> dict[str, Any]:
     if not isinstance(apps, dict):
         return {"success": False, "error": "Invalid 'apps' section in deploy config"}
 
+    ALLOWED_WEBHOOK_PROVIDERS = ("auto", "slack", "discord", "teams", "google_chat", "whatsapp", "custom", "generic")
+
     ws_webhook_url = data.get("workspace_webhook_url")
     if ws_webhook_url is not None and ws_webhook_url != "":
         if not isinstance(ws_webhook_url, str) or not (ws_webhook_url.startswith("http://") or ws_webhook_url.startswith("https://")) or len(ws_webhook_url) > 2048:
             return {"success": False, "error": "Invalid workspace webhook URL: must start with http:// or https:// (max 2048 chars)"}
 
     ws_provider = data.get("workspace_webhook_provider")
-    if ws_provider and str(ws_provider).lower() not in ("auto", "slack", "discord", "teams", "google_chat", "generic"):
-        return {"success": False, "error": f"Invalid workspace webhook provider '{ws_provider}'. Allowed: auto, slack, discord, teams, google_chat, generic"}
+    if ws_provider and str(ws_provider).lower() not in ALLOWED_WEBHOOK_PROVIDERS:
+        return {"success": False, "error": f"Invalid workspace webhook provider '{ws_provider}'. Allowed: {', '.join(ALLOWED_WEBHOOK_PROVIDERS)}"}
+
+    ws_webhooks = data.get("workspace_webhooks")
+    if ws_webhooks is not None:
+        if not isinstance(ws_webhooks, list):
+            return {"success": False, "error": "Invalid 'workspace_webhooks': must be a list"}
+        for w in ws_webhooks:
+            if not isinstance(w, dict):
+                return {"success": False, "error": "Each workspace webhook must be an object"}
+            w_url = w.get("url")
+            if not w_url or not (str(w_url).startswith("http://") or str(w_url).startswith("https://")):
+                return {"success": False, "error": "Each workspace webhook must have a valid URL (http:// or https://)"}
+            w_provider = w.get("provider", "auto")
+            if str(w_provider).lower() not in ALLOWED_WEBHOOK_PROVIDERS:
+                return {"success": False, "error": f"Invalid webhook provider '{w_provider}'. Allowed: {', '.join(ALLOWED_WEBHOOK_PROVIDERS)}"}
 
     for app_id, app_cfg in apps.items():
         if not isinstance(app_id, str) or not SAFE_ID_PATTERN.match(app_id):
@@ -173,8 +189,8 @@ def save_deploy_config(data: dict[str, Any]) -> dict[str, Any]:
                         return {"success": False, "error": f"Invalid webhook URL for app '{app_id}': must start with http:// or https:// (max 2048 chars)"}
                     continue
                 if key == "webhook_provider":
-                    if val.lower() not in ("auto", "slack", "discord", "teams", "google_chat", "generic"):
-                        return {"success": False, "error": f"Invalid webhook provider '{val}' for app '{app_id}'. Allowed: auto, slack, discord, teams, google_chat, generic"}
+                    if val.lower() not in ALLOWED_WEBHOOK_PROVIDERS:
+                        return {"success": False, "error": f"Invalid webhook provider '{val}' for app '{app_id}'. Allowed: {', '.join(ALLOWED_WEBHOOK_PROVIDERS)}"}
                     continue
                 is_id_field = (
                     any(key == prefix or key.startswith(f"{prefix}_") for prefix in (
@@ -203,6 +219,18 @@ def save_deploy_config(data: dict[str, Any]) -> dict[str, Any]:
                                 "success": False,
                                 "error": f"Invalid item '{f}' in list '{key}' for app '{app_id}'. Must match ^[A-Za-z0-9._-]+$",
                             }
+                elif key == "webhooks":
+                    if not isinstance(val, list):
+                        return {"success": False, "error": f"Invalid 'webhooks' in app '{app_id}': must be a list"}
+                    for w in val:
+                        if not isinstance(w, dict):
+                            return {"success": False, "error": f"Each webhook in app '{app_id}' must be an object"}
+                        w_url = w.get("url")
+                        if not w_url or not (str(w_url).startswith("http://") or str(w_url).startswith("https://")):
+                            return {"success": False, "error": f"Each webhook in app '{app_id}' must have a valid URL (http:// or https://)"}
+                        w_provider = w.get("provider", "auto")
+                        if str(w_provider).lower() not in ALLOWED_WEBHOOK_PROVIDERS:
+                            return {"success": False, "error": f"Invalid webhook provider '{w_provider}' in app '{app_id}'. Allowed: {', '.join(ALLOWED_WEBHOOK_PROVIDERS)}"}
                 elif key == "pipelines":
                     if len(val) > 50:
                         return {"success": False, "error": f"Too many pipelines for app '{app_id}' (max 50)"}

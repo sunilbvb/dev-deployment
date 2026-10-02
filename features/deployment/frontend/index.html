@@ -799,6 +799,8 @@
                                             <option value="discord">Discord (Rich Embed)</option>
                                             <option value="teams">Microsoft Teams (MessageCard)</option>
                                             <option value="google_chat">Google Chat (Cards v2)</option>
+                                            <option value="whatsapp">WhatsApp (Meta Cloud API / Twilio / Gateway)</option>
+                                            <option value="custom">Custom Payload Template</option>
                                             <option value="generic">Generic JSON</option>
                                         </select>
                                     </div>
@@ -819,6 +821,27 @@
                                             <span>❌ Failed Deployments</span>
                                         </label>
                                     </div>
+                                </div>
+                            </div>
+
+                            <!-- Multi-Destination Webhook Channels Section -->
+                            <div style="margin-bottom: 20px; padding-bottom: 16px; border-bottom: 1px solid var(--ui-border-color);">
+                                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+                                    <div>
+                                        <h5 style="margin:0 0 2px 0; font-size:0.95rem; font-weight:600; display:flex; align-items:center; gap:8px;">
+                                            <span>Multi-Destination Webhook Channels</span>
+                                            <span class="ui-badge" data-variant="primary" id="webhookChannelsCountBadge">0 Channels</span>
+                                        </h5>
+                                        <span class="ui-help-text">Broadcast build &amp; release events to multiple channels (Slack, Discord, WhatsApp, Teams, Google Chat, or custom services) simultaneously.</span>
+                                    </div>
+                                    <button id="openAddWebhookChannelBtn" type="button" class="ui-button" data-variant="secondary" data-size="sm">
+                                        <i data-lucide="plus"></i>
+                                        <span>Add Channel</span>
+                                    </button>
+                                </div>
+
+                                <div id="webhookChannelsList" style="display:flex; flex-direction:column; gap:8px;">
+                                    <!-- Rendered dynamically by setup.js -->
                                 </div>
                             </div>
 
@@ -848,6 +871,8 @@
                                             <option value="discord">Discord (Rich Embed)</option>
                                             <option value="teams">Microsoft Teams (MessageCard)</option>
                                             <option value="google_chat">Google Chat (Cards v2)</option>
+                                            <option value="whatsapp">WhatsApp (Meta Cloud API / Twilio / Gateway)</option>
+                                            <option value="custom">Custom Payload Template</option>
                                             <option value="generic">Generic JSON</option>
                                         </select>
                                     </div>
@@ -872,8 +897,43 @@
                                 <div id="testWebhookResult" class="cert-status-box" style="display:none; margin:0; flex:1; margin-right:12px; font-size:0.82rem;"></div>
                                 <button id="testWebhookBtn" type="button" class="ui-button" data-variant="secondary">
                                     <i data-lucide="send"></i>
-                                    <span>Test Webhook</span>
+                                    <span>Test Default Webhook</span>
                                 </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Incoming Webhooks Ingestion & CI/CD Triggers Card -->
+                    <div class="ui-card" data-setup-panel="notifications" style="margin-bottom: 16px;">
+                        <div class="ui-card-header" style="display:flex; justify-content:space-between; align-items:center;">
+                            <div>
+                                <h4 class="ui-card-title">Incoming Webhook Ingestion &amp; CI/CD Triggers</h4>
+                                <p class="ui-help-text" style="margin:2px 0 0 0;">Trigger deployments and automated pipelines via HTTP requests from GitHub, GitLab, Slack slash commands, or CI/CD runners.</p>
+                            </div>
+                            <span class="ui-badge" data-variant="success">Universal Ingestion</span>
+                        </div>
+                        <div class="ui-card-body">
+                            <div class="ui-field" style="margin-bottom:14px;">
+                                <label class="ui-label">Incoming Webhook Endpoint</label>
+                                <div style="display:flex; gap:8px;">
+                                    <input id="incomingWebhookUrlDisplay" class="ui-input" type="text" readonly style="font-family:monospace; background:rgba(0,0,0,0.02); flex:1;" value="/api/deployment/webhook/incoming">
+                                    <button id="copyIncomingWebhookUrlBtn" type="button" class="ui-button" data-variant="secondary" data-size="sm">
+                                        <i data-lucide="copy"></i>
+                                        <span>Copy URL</span>
+                                    </button>
+                                </div>
+                                <span class="ui-help-text">Requires <code>WEBHOOK_SECRET</code> configured in your server environment, or an authorized <code>X-API-Token</code>.</span>
+                            </div>
+
+                            <div style="margin-bottom: 12px;">
+                                <div style="display:flex; gap:6px; margin-bottom:10px;" id="incomingWebhookSnippetTabs">
+                                    <button type="button" class="ui-button" data-variant="primary" data-size="xs" data-snippet-tab="curl">cURL</button>
+                                    <button type="button" class="ui-button" data-variant="secondary" data-size="xs" data-snippet-tab="pipeline">Pipeline</button>
+                                    <button type="button" class="ui-button" data-variant="secondary" data-size="xs" data-snippet-tab="github">GitHub Actions</button>
+                                    <button type="button" class="ui-button" data-variant="secondary" data-size="xs" data-snippet-tab="gitlab">GitLab CI</button>
+                                    <button type="button" class="ui-button" data-variant="secondary" data-size="xs" data-snippet-tab="slack">Slack /deploy</button>
+                                </div>
+                                <pre id="incomingWebhookSnippetCode" style="margin:0; padding:12px; background:var(--ui-code-bg, #1e293b); color:#f8fafc; border-radius:6px; font-size:0.8rem; overflow-x:auto; font-family:monospace; line-height:1.45;"></pre>
                             </div>
                         </div>
                     </div>
@@ -1404,6 +1464,129 @@
                 <i data-lucide="plus"></i>
                 <span>Add Step</span>
             </button>
+        </div>
+    </div>
+</div>
+
+<!-- ═══════════════════════════ WEBHOOK CHANNEL MODAL ═══════════════════════════ -->
+<div id="webhookChannelModal" class="ui-modal-backdrop" role="dialog" aria-modal="true" aria-label="Webhook Channel Configuration">
+    <div class="ui-modal" data-size="md" style="max-width: 640px; display: flex; flex-direction: column;">
+        <div class="ui-modal-header">
+            <div>
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    <h3 class="ui-modal-title" id="webhookChannelModalTitle">Add Webhook Channel</h3>
+                    <span class="ui-badge" data-variant="primary" id="webhookChannelModalBadge">Notification</span>
+                </div>
+                <p class="modal-subtitle" style="font-size: 0.8rem; color: var(--ui-muted, #9aa6b8); margin: 2px 0 0 0;">
+                    Configure outgoing notifications for team chats, messaging apps, or custom webhooks.
+                </p>
+            </div>
+            <button id="closeWebhookChannelModalBtn" class="ui-modal-close" type="button">&times;</button>
+        </div>
+        <div class="ui-modal-body" style="padding: 20px; overflow-y: auto; max-height: 72vh;">
+            <input type="hidden" id="channelModalId" value="">
+            <div class="ui-field">
+                <label class="ui-label" for="channelModalName">Channel Name / Label</label>
+                <input id="channelModalName" class="ui-input" type="text" placeholder="e.g. #mobile-releases (Slack) or DevOps Alerts" style="width: 100%;" required>
+            </div>
+            <div class="ui-field">
+                <label class="ui-label" for="channelModalUrl">Destination Webhook URL</label>
+                <input id="channelModalUrl" class="ui-input" type="url" placeholder="https://hooks.slack.com/services/... or WhatsApp endpoint" style="width: 100%;" required>
+                <span class="ui-help-text">HTTP or HTTPS target URL for outgoing notification payloads.</span>
+            </div>
+            <div class="ui-field">
+                <label class="ui-label" for="channelModalProvider">Provider Format</label>
+                <select id="channelModalProvider" class="ui-select" style="width: 100%;">
+                    <option value="auto">Auto-Detect (Slack / Discord / Teams / Google Chat)</option>
+                    <option value="slack">Slack (Block Kit Cards)</option>
+                    <option value="discord">Discord (Rich Embeds with Colors)</option>
+                    <option value="teams">Microsoft Teams (MessageCard &amp; OpenURIs)</option>
+                    <option value="google_chat">Google Chat (Cards v2)</option>
+                    <option value="whatsapp">WhatsApp (Meta Cloud API / Twilio / Gateway)</option>
+                    <option value="custom">Custom Payload Template (JSON / Text Engine)</option>
+                    <option value="generic">Generic JSON Payload</option>
+                </select>
+            </div>
+
+            <!-- WhatsApp Specific Fields -->
+            <div id="channelModalWhatsAppSection" style="display:none; padding:12px; border-radius:6px; background:rgba(37,211,102,0.06); border:1px solid rgba(37,211,102,0.25); margin-bottom:16px;">
+                <h6 style="margin:0 0 8px 0; color:#128c7e; font-weight:600; display:flex; align-items:center; gap:6px;">
+                    <i data-lucide="message-circle" style="width:16px; height:16px;"></i>
+                    <span>WhatsApp Notification Settings</span>
+                </h6>
+                <div class="ui-field" style="margin-bottom:8px;">
+                    <label class="ui-label" for="channelModalPhone">Recipient Phone Number</label>
+                    <input id="channelModalPhone" class="ui-input" type="tel" placeholder="+1234567890 (E.164 format)" style="width: 100%;">
+                    <span class="ui-help-text">Mobile number including country code (required for WhatsApp Cloud API &amp; Twilio).</span>
+                </div>
+            </div>
+
+            <!-- Custom Template & Headers Section -->
+            <div id="channelModalCustomSection" style="display:none; padding:12px; border-radius:6px; background:rgba(99,102,241,0.06); border:1px solid rgba(99,102,241,0.25); margin-bottom:16px;">
+                <h6 style="margin:0 0 6px 0; color:var(--ui-primary, #6366f1); font-weight:600; display:flex; align-items:center; gap:6px;">
+                    <i data-lucide="code" style="width:16px; height:16px;"></i>
+                    <span>Custom Payload Template</span>
+                </h6>
+                <span class="ui-help-text" style="display:block; margin-bottom:8px;">Format any custom JSON or text for Telegram, Mattermost, Zapier, Webex, or internal monitoring tools.</span>
+                <div class="ui-field" style="margin-bottom:8px;">
+                    <label class="ui-label" for="channelModalTemplate">Payload Template (JSON or Text)</label>
+                    <textarea id="channelModalTemplate" class="ui-input" rows="4" style="width: 100%; font-family: monospace; font-size: 0.8rem;" placeholder='{"text": "Deployment for {appName} v{version} ({flavor}) finished with status: {status}! Download: {downloadUrl}"}'></textarea>
+                    <div style="display:flex; flex-wrap:wrap; gap:4px; margin-top:6px;" id="customTemplateChips">
+                        <button type="button" class="ui-button template-chip-btn" data-tag="{appName}" data-size="xs" data-variant="secondary">{appName}</button>
+                        <button type="button" class="ui-button template-chip-btn" data-tag="{version}" data-size="xs" data-variant="secondary">{version}</button>
+                        <button type="button" class="ui-button template-chip-btn" data-tag="{status}" data-size="xs" data-variant="secondary">{status}</button>
+                        <button type="button" class="ui-button template-chip-btn" data-tag="{flavor}" data-size="xs" data-variant="secondary">{flavor}</button>
+                        <button type="button" class="ui-button template-chip-btn" data-tag="{duration}" data-size="xs" data-variant="secondary">{duration}</button>
+                        <button type="button" class="ui-button template-chip-btn" data-tag="{downloadUrl}" data-size="xs" data-variant="secondary">{downloadUrl}</button>
+                        <button type="button" class="ui-button template-chip-btn" data-tag="{track}" data-size="xs" data-variant="secondary">{track}</button>
+                        <button type="button" class="ui-button template-chip-btn" data-tag="{error}" data-size="xs" data-variant="secondary">{error}</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Custom Headers Section (Available for all providers e.g. Bearer auth tokens) -->
+            <div class="ui-field">
+                <label class="ui-label" for="channelModalHeaders">Custom HTTP Headers (Optional)</label>
+                <textarea id="channelModalHeaders" class="ui-input" rows="2" style="width: 100%; font-family: monospace; font-size: 0.8rem;" placeholder="Authorization: Bearer my-api-token&#10;X-Custom-Header: value"></textarea>
+                <span class="ui-help-text">One per line (<code>Header: Value</code>) or JSON object. Useful for Bearer authentication tokens.</span>
+            </div>
+
+            <!-- Event Filters -->
+            <div class="ui-field">
+                <label class="ui-label">Trigger Events</label>
+                <div style="display:flex; gap:16px; margin-top:4px;">
+                    <label class="ui-control">
+                        <input id="channelModalSuccess" type="checkbox" class="ui-checkbox" checked>
+                        <span style="font-weight: 500;">✅ Successful Deployments</span>
+                    </label>
+                    <label class="ui-control">
+                        <input id="channelModalFailure" type="checkbox" class="ui-checkbox" checked>
+                        <span style="font-weight: 500;">❌ Failed Deployments</span>
+                    </label>
+                </div>
+            </div>
+
+            <div class="ui-field" style="margin-bottom:0;">
+                <label class="ui-control">
+                    <input id="channelModalEnabled" type="checkbox" class="ui-checkbox" checked>
+                    <span style="font-weight: 500;">Enable this notification channel</span>
+                </label>
+            </div>
+
+            <div id="channelModalTestFeedback" class="cert-status-box" style="display:none; margin-top:14px; font-size:0.82rem;"></div>
+        </div>
+        <div class="ui-modal-footer" style="display: flex; justify-content: space-between; align-items: center; padding: 14px 20px;">
+            <button id="channelModalTestBtn" class="ui-button" data-variant="secondary" type="button">
+                <i data-lucide="send"></i>
+                <span>Test Channel</span>
+            </button>
+            <div style="display: flex; gap: 8px;">
+                <button id="cancelWebhookChannelBtn" class="ui-button" data-variant="ghost" type="button">Cancel</button>
+                <button id="saveWebhookChannelBtn" class="ui-button" data-variant="primary" type="button">
+                    <i data-lucide="check"></i>
+                    <span>Save Channel</span>
+                </button>
+            </div>
         </div>
     </div>
 </div>
