@@ -615,6 +615,16 @@ class DeploymentHandler(http.server.SimpleHTTPRequestHandler):
             if parsed.path == "/api/deployment/pipelines/stop":
                 self.write_json(router.stop_pipeline_run(str(data.get("runId") or "")))
                 return
+            if parsed.path == "/api/deployment/pipelines/save":
+                app_val = str(data.get("app") or "")
+                pipe_data = data.get("pipeline") if isinstance(data.get("pipeline"), dict) else data
+                self.write_json(router.save_pipeline(app_val, pipe_data))
+                return
+            if parsed.path == "/api/deployment/pipelines/delete":
+                app_val = str(data.get("app") or "")
+                pipe_id = str(data.get("pipelineId") or data.get("id") or "")
+                self.write_json(router.delete_pipeline(app_val, pipe_id))
+                return
             if parsed.path == "/api/deployment/notifications/test":
                 self.write_json(router.test_webhook(
                     url=str(data.get("url") or ""),

@@ -481,3 +481,101 @@ def get_pipeline_run(run_id: Optional[str]) -> dict[str, Any]:
         payload = dict(run)
 
     return {"success": True, "run": payload}
+
+
+def save_pipeline(app: str, pipeline_data: dict[str, Any]) -> dict[str, Any]:
+    """Save or update a pipeline definition for an app in deploy_config.json."""
+    if not app or not SAFE_ID_PATTERN.match(app):
+        return {"success": False, "error": f"Invalid app ID '{app}'"}
+    if not isinstance(pipeline_data, dict):
+        return {"success": False, "error": "Pipeline data must be a JSON object"}
+
+    name = str(pipeline_data.get("name") or "").strip()
+    if not name or len(name) > 60:
+        return {"success": False, "error": "Pipeline name is required (1–60 chars)"}
+
+    pipe_id = str(pipeline_data.get("id") or "").strip()
+    if not pipe_id:
+        pipe_id = re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")
+        if not pipe_id:
+            pipe_id = f"pipe-{int(time.time())}"
+
+    steps = pipeline_data.get("steps", [])
+    if not isinstance(steps, list) or not steps:
+        return {"success": False, "error": "Pipeline must have at least 1 step"}
+    if len(steps) > 20:
+        return {"success": False, "error": "Maximum 20 steps allowed per pipeline"}
+
+    cleaned_steps = []
+    for s in steps:
+        if not isinstance(s, dict):
+            continue
+        cleaned_steps.append({
+            "name": str(s.get("name") or "").strip(),
+            "templateId": s.get("templateId"),
+            "command": s.get("command"),
+            "flavor": s.get("flavor"),
+            "continueOnFailure": bool(s.get("continueOnFailure", False)),
+        })
+
+    deploy_cfg = load_deploy_config()
+    apps = deploy_cfg.setdefault("apps", {})
+    app_cfg = apps.setdefault(app, {})
+    pipelines_list = app_cfg.setdefault("pipelines", [])
+
+    entry = {
+        "id": pipe_id,
+        "name": name,
+        "flavor": pipeline_data.get("flavor") or "",
+        "steps": cleaned_steps,
+    }
+
+    found = False
+    for i, p in enumerate(pipelines_list):
+        if isinstance(p, dict) and p.get("id") == pipe_id:
+            pipelines_list[i] = entry
+            found = True
+            break
+    if not found:
+        pipelines_list.append(entry)
+
+    from config import save_deploy_config
+    res = save_deploy_config(deploy_cfg)
+    if not res.get("success"):
+        return res
+
+    return {
+        "success": True,
+        "pipeline": entry,
+        "pipelines": get_pipelines(app).get("pipelines", []),
+    }
+
+
+def delete_pipeline(app: str, pipeline_id: str) -> dict[str, Any]:
+    """Delete a pipeline definition for an app in deploy_config.json."""
+    if not app or not SAFE_ID_PATTERN.match(app):
+        return {"success": False, "error": f"Invalid app ID '{app}'"}
+    if not pipeline_id:
+        return {"success": False, "error": "Pipeline ID required"}
+
+    deploy_cfg = load_deploy_config()
+    apps = deploy_cfg.get("apps", {})
+    app_cfg = apps.get(app, {})
+    pipelines_list = app_cfg.get("pipelines", [])
+
+    new_list = [p for p in pipelines_list if isinstance(p, dict) and p.get("id") != pipeline_id]
+    if len(new_list) == len(pipelines_list):
+        return {"success": False, "error": f"Pipeline '{pipeline_id}' not found"}
+
+    app_cfg["pipelines"] = new_list
+
+    from config import save_deploy_config
+    res = save_deploy_config(deploy_cfg)
+    if not res.get("success"):
+        return res
+
+    return {
+        "success": True,
+        "deletedId": pipeline_id,
+        "pipelines": get_pipelines(app).get("pipelines", []),
+    }

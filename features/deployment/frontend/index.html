@@ -787,17 +787,18 @@
                                 </div>
                                 <div class="ui-field">
                                     <label class="ui-label">Webhook URL</label>
-                                    <input id="cfgWebhookUrl" class="ui-input" type="url" placeholder="https://hooks.slack.com/services/... or https://discord.com/api/webhooks/... or Teams URL">
+                                    <input id="cfgWebhookUrl" class="ui-input" type="url" placeholder="https://hooks.slack.com/services/... or https://discord.com/api/webhooks/... or Google Chat / Teams URL">
                                     <span class="ui-help-text">Dedicated URL for this app. If blank, the workspace default webhook below will be used.</span>
                                 </div>
                                 <div style="display:grid; grid-template-columns: 1fr 1fr; gap:12px; margin-bottom:12px;">
                                     <div class="ui-field" style="margin-bottom:0;">
                                         <label class="ui-label">Provider Format</label>
                                         <select id="cfgWebhookProvider" class="ui-select">
-                                            <option value="auto">Auto-Detect (Slack / Discord / Teams)</option>
+                                            <option value="auto">Auto-Detect (Slack / Discord / Teams / Google Chat)</option>
                                             <option value="slack">Slack (Block Kit)</option>
                                             <option value="discord">Discord (Rich Embed)</option>
                                             <option value="teams">Microsoft Teams (MessageCard)</option>
+                                            <option value="google_chat">Google Chat (Cards v2)</option>
                                             <option value="generic">Generic JSON</option>
                                         </select>
                                     </div>
@@ -835,7 +836,7 @@
                                 </div>
                                 <div class="ui-field">
                                     <label class="ui-label">Workspace Default Webhook URL</label>
-                                    <input id="cfgWorkspaceWebhookUrl" class="ui-input" type="url" placeholder="https://hooks.slack.com/services/... or https://discord.com/api/webhooks/...">
+                                    <input id="cfgWorkspaceWebhookUrl" class="ui-input" type="url" placeholder="https://hooks.slack.com/services/... or https://discord.com/api/webhooks/... or Google Chat / Teams URL">
                                     <span class="ui-help-text">Used by any app in this workspace that does not define its own webhook URL above.</span>
                                 </div>
                                 <div style="display:grid; grid-template-columns: 1fr 1fr; gap:12px; margin-bottom:12px;">
@@ -846,6 +847,7 @@
                                             <option value="slack">Slack (Block Kit)</option>
                                             <option value="discord">Discord (Rich Embed)</option>
                                             <option value="teams">Microsoft Teams (MessageCard)</option>
+                                            <option value="google_chat">Google Chat (Cards v2)</option>
                                             <option value="generic">Generic JSON</option>
                                         </select>
                                     </div>
@@ -1320,6 +1322,88 @@
                 <span>Check Connection</span>
             </button>
             <button id="closeServerConsoleBtn" class="ui-button" data-variant="primary" type="button">Close</button>
+        </div>
+    </div>
+</div>
+
+<!-- ═══════════════════════════ VISUAL STEP PICKER MODAL ═══════════════════════════ -->
+<div id="stepPickerModal" class="ui-modal-backdrop" role="dialog" aria-modal="true" aria-label="Select Pipeline Step">
+    <div class="ui-modal" data-size="lg" style="max-width: 840px; max-height: 86vh; display: flex; flex-direction: column;">
+        <div class="ui-modal-header">
+            <div>
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    <h3 class="ui-modal-title">Select Pipeline Step</h3>
+                    <span class="ui-badge" data-variant="primary">Visual Builder</span>
+                </div>
+                <p class="modal-subtitle" style="font-size: 0.8rem; color: var(--ui-muted, #9aa6b8); margin: 2px 0 0 0;">
+                    Choose an action template or pre-configured command to append to this pipeline.
+                </p>
+            </div>
+            <button id="closeStepPickerModalBtn" class="ui-modal-close" type="button">&times;</button>
+        </div>
+        <div class="ui-modal-body" style="padding: 20px; overflow-y: auto; flex: 1;">
+            <!-- Category Tabs & Search Bar -->
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; gap: 12px; flex-wrap: wrap;">
+                <div style="display: flex; gap: 6px;" id="stepPickerFilterTabs">
+                    <button type="button" class="ui-button" data-variant="primary" data-size="xs" data-step-cat="all">All Steps</button>
+                    <button type="button" class="ui-button" data-variant="secondary" data-size="xs" data-step-cat="build">Build</button>
+                    <button type="button" class="ui-button" data-variant="secondary" data-size="xs" data-step-cat="deploy">Deploy &amp; Upload</button>
+                    <button type="button" class="ui-button" data-variant="secondary" data-size="xs" data-step-cat="diagnostics">Diagnostics &amp; Health</button>
+                    <button type="button" class="ui-button" data-variant="secondary" data-size="xs" data-step-cat="release">Release</button>
+                </div>
+                <div style="min-width: 220px; flex: 1; max-width: 320px;">
+                    <input id="stepPickerSearch" class="ui-input" type="text" placeholder="Search steps..." style="padding: 6px 12px; font-size: 0.8rem; width: 100%;">
+                </div>
+            </div>
+
+            <!-- Step Tiles Container -->
+            <div id="stepPickerTilesContainer" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 12px;"></div>
+        </div>
+        <div class="ui-modal-footer" style="display: flex; justify-content: space-between; align-items: center; padding: 14px 20px;">
+            <span style="font-size: 0.78rem; color: var(--ui-text-muted);">Steps execute sequentially. You can reorder or toggle 'continue on fail' after adding.</span>
+            <button id="cancelStepPickerBtn" class="ui-button" data-variant="ghost" type="button">Cancel</button>
+        </div>
+    </div>
+</div>
+
+<!-- ═══════════════════════════ CUSTOM SHELL STEP MODAL ═══════════════════════════ -->
+<div id="customStepModal" class="ui-modal-backdrop" role="dialog" aria-modal="true" aria-label="Add Custom Shell Step">
+    <div class="ui-modal" data-size="sm" style="max-width: 520px; display: flex; flex-direction: column;">
+        <div class="ui-modal-header">
+            <div>
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    <h3 class="ui-modal-title">Add Custom Shell Step</h3>
+                    <span class="ui-badge" data-variant="warning">Custom Shell</span>
+                </div>
+                <p class="modal-subtitle" style="font-size: 0.8rem; color: var(--ui-muted, #9aa6b8); margin: 2px 0 0 0;">
+                    Execute any shell command directly within the selected app directory.
+                </p>
+            </div>
+            <button id="closeCustomStepModalBtn" class="ui-modal-close" type="button">&times;</button>
+        </div>
+        <div class="ui-modal-body" style="padding: 20px;">
+            <div class="ui-field">
+                <label class="ui-label" for="customStepLabelInput">Step Name / Label</label>
+                <input id="customStepLabelInput" class="ui-input" type="text" placeholder="e.g. Run Unit Tests &amp; Analysis" style="width: 100%;" required>
+            </div>
+            <div class="ui-field">
+                <label class="ui-label" for="customStepCmdInput">Shell Command</label>
+                <input id="customStepCmdInput" class="ui-input" type="text" placeholder="e.g. flutter test && dart run build_runner build" style="width: 100%; font-family: monospace;" required>
+                <span class="ui-help-text">Executed in the app folder. Use standard bash syntax.</span>
+            </div>
+            <div class="ui-field" style="margin-bottom: 0;">
+                <label class="ui-control">
+                    <input id="customStepContinueChk" type="checkbox" class="ui-checkbox">
+                    <span style="font-weight: 500;">Continue on failure (do not abort subsequent steps)</span>
+                </label>
+            </div>
+        </div>
+        <div class="ui-modal-footer" style="display: flex; gap: 8px; justify-content: flex-end; padding: 14px 20px;">
+            <button id="cancelCustomStepBtn" class="ui-button" data-variant="ghost" type="button">Cancel</button>
+            <button id="confirmAddCustomStepBtn" class="ui-button" data-variant="primary" type="button">
+                <i data-lucide="plus"></i>
+                <span>Add Step</span>
+            </button>
         </div>
     </div>
 </div>
