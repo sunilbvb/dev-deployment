@@ -354,6 +354,13 @@ Unless a step explicitly has "Continue on failure" enabled:
 
 ## 13. Releases, Changelog Generation & Git
 
+### How do I connect Git with this tool?
+Git requires **zero setup or credentials configuration** within the console itself:
+1. **Automatic Local Integration:** Because the deployment server runs locally under your user account, it automatically uses your workstation's `git` binary, existing SSH keys (`~/.ssh`), and Git credential helpers. Any imported project with a `.git` folder is connected immediately.
+2. **Pre-flight Git Diagnostics:** App Doctor runs `git status --porcelain` and `git rev-parse --abbrev-ref HEAD`, warning if uncommitted files exist or if you are in a detached `HEAD` state before triggering builds.
+3. **Automated Tagging & Remote Pushes:** The release tool (`release_changelog_tagger.dart`) parses Conventional Commits, bumps version tags in `pubspec.yaml`, writes `CHANGELOG.md`, creates annotated Git tags, and pushes commits and tags to your remote `origin` repository using your local Git credentials.
+4. **Remote Git Triggering (GitHub / GitLab CI):** To trigger builds automatically when developers push code or merge PRs on GitHub, configure a repository webhook pointing to `http://<HOST>:18112/api/deployment/webhook/incoming/github` with a matching `WEBHOOK_SECRET`.
+
 ### How does the automated release tool generate changelogs?
 The release tool (`release_changelog_tagger.dart`) parses the git log since the previous release tag:
 - It categorizes commits according to the **Conventional Commits** specification:
