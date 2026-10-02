@@ -1,4 +1,5 @@
 import json
+import os
 import sys
 import tempfile
 import unittest
@@ -10,6 +11,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "features" / "deplo
 import commands
 import config
 import jobs
+import notifications
 import p8
 import pipelines
 
@@ -2552,5 +2554,176 @@ class TestDocumentationAndServerStatus(unittest.TestCase):
 
         # Clean up backend saved pipeline
         pipelines.delete_pipeline("test_app", saved_id)
+
+    def test_whatsapp_webhook_payload(self):
+        """Test WhatsApp provider payload generation."""
+        event = {
+            "app_name": "whatsapp_test_app",
+            "version": "3.2.1",
+            "build_number": "100",
+            "flavor": "prod",
+            "status": "success",
+            "duration": "1m 15s",
+            "download_url": "https://download.example.com/app.apk",
+            "platform": "Android",
+        }
+        # Direct WhatsApp payload
+        payload = notifications.build_webhook_payload("whatsapp", event, phone="+1234567890")
+        self.assertEqual(payload.get("messaging_product"), "whatsapp")
+        self.assertEqual(payload.get("to"), "+1234567890")
+        self.assertIn("whatsapp_test_app", payload.get("text", {}).get("body", ""))
+        self.assertIn("SUCCEEDED", payload.get("text", {}).get("body", ""))
+
+        # Provider detection
+        self.assertEqual(notifications.detect_webhook_provider("https://graph.facebook.com/v18.0/123/messages"), "whatsapp")
+        self.assertEqual(notifications.detect_webhook_provider("https://api.twilio.com/2010-04-01/Accounts/AC/Messages.json"), "whatsapp")
+
+    def test_custom_template_payload(self):
+        """Test custom template JSON and text engine."""
+        event = {
+            "app_name": "custom_app",
+            "version": "1.0.0",
+            "build_number": "5",
+            "flavor": "beta",
+            "status": "success",
+            "duration": "45s",
+            "download_url": "https://example.com/build.ipa",
+        }
+        # JSON template
+        json_template = '{"channel": "#ops", "msg": "Deploy for {appName} v{version} was a {status} in {duration}"}'
+        payload = notifications.build_webhook_payload("custom", event, custom_template=json_template)
+        self.assertEqual(payload.get("channel"), "#ops")
+        self.assertEqual(payload.get("msg"), "Deploy for custom_app v1.0.0 was a success in 45s")
+
+        # Plain text template
+        text_template = "Notification: {appName} ({flavor}) status={status} download={downloadUrl}"
+        text_payload = notifications.build_webhook_payload("custom", event, custom_template=text_template)
+        self.assertIn("custom_app", text_payload.get("text", ""))
+        self.assertIn("https://example.com/build.ipa", text_payload.get("text", ""))
+
+    def test_multi_channel_resolution_and_dispatch(self):
+        """Test resolving multiple webhook channels and dispatching notifications."""
+        app_config = {
+            "webhooks": [
+                {
+                    "name": "Slack Alert",
+                    "url": "https://hooks.slack.com/services/T1/B1/X1",
+                    "provider": "slack",
+                    "enabled": True,
+                    "notify_on_success": True,
+                },
+                {
+                    "name": "WhatsApp Dev",
+                    "url": "https://graph.facebook.com/v18.0/123/messages",
+                    "provider": "whatsapp",
+                    "phone": "+1234567890",
+                    "enabled": True,
+                    "notify_on_success": False,
+                    "notify_on_failure": True,
+                },
+            ]
+        }
+        with tempfile.TemporaryDirectory() as td:
+            ws_root = Path(td)
+            cfg_dir = ws_root / ".dev-dashboard"
+            cfg_dir.mkdir(parents=True, exist_ok=True)
+            (cfg_dir / "deploy_config.json").write_text(json.dumps({
+                "apps": {
+                    "multi_app": app_config
+                },
+                "workspace_webhooks": [
+                    {
+                        "name": "Fallback Discord",
+                        "url": "https://discord.com/api/webhooks/999/xyz",
+                        "provider": "discord",
+                        "enabled": True,
+                    }
+                ]
+            }), encoding="utf-8")
+
+            channels = notifications.get_webhook_channels_for_app("multi_app", ws_root=ws_root)
+            self.assertEqual(len(channels), 3)
+            self.assertEqual(channels[0]["name"], "Slack Alert")
+            self.assertEqual(channels[1]["name"], "WhatsApp Dev")
+            self.assertEqual(channels[2]["name"], "Fallback Discord")
+
+    def test_incoming_webhook_endpoints(self):
+        """Test universal incoming webhook ingestion for GitHub ping, commands, and pipelines."""
+        import http.client
+        import http.server
+        import server
+        import threading
+
+        port = 8783
+        server._SERVER_AUTH_TOKEN = "test_auth_secret_incoming"
+        old_secret = os.environ.get("WEBHOOK_SECRET")
+        os.environ["WEBHOOK_SECRET"] = "webhook_unit_secret_999"
+
+        httpd = http.server.ThreadingHTTPServer(("127.0.0.1", port), server.DeploymentHandler)
+        thread = threading.Thread(target=httpd.serve_forever, daemon=True)
+        thread.start()
+
+        try:
+            conn = http.client.HTTPConnection("127.0.0.1", port)
+
+            # 1. GitHub ping event
+            conn.request(
+                "POST",
+                "/api/deployment/webhook/incoming/github",
+                body=b"{}",
+                headers={
+                    "Host": f"localhost:{port}",
+                    "Content-Type": "application/json",
+                    "X-Webhook-Secret": "webhook_unit_secret_999",
+                    "X-GitHub-Event": "ping",
+                },
+            )
+            res_ping = conn.getresponse()
+            self.assertEqual(res_ping.status, 200)
+            data_ping = json.loads(res_ping.read().decode("utf-8"))
+            self.assertTrue(data_ping["success"])
+            self.assertIn("Pong", data_ping["message"])
+
+            # 2. GitLab / Generic trigger with Bearer token
+            conn.request(
+                "POST",
+                "/api/deployment/webhook/incoming",
+                body=json.dumps({"app": "test_app", "flavor": "prod", "templateId": "build_aab"}),
+                headers={
+                    "Host": f"localhost:{port}",
+                    "Content-Type": "application/json",
+                    "Authorization": "Bearer webhook_unit_secret_999",
+                },
+            )
+            res_cmd = conn.getresponse()
+            self.assertEqual(res_cmd.status, 200)
+            data_cmd = json.loads(res_cmd.read().decode("utf-8"))
+            self.assertTrue(data_cmd.get("success") or "started" in data_cmd.get("message", "").lower())
+
+            # 3. Slack slash command urlencoded form
+            slack_body = "command=%2Fdeploy&text=test_slack_app+prod+build_aab&user_name=alice"
+            conn.request(
+                "POST",
+                "/api/deployment/webhook/incoming/slack",
+                body=slack_body.encode("utf-8"),
+                headers={
+                    "Host": f"localhost:{port}",
+                    "Content-Type": "application/x-www-form-urlencoded",
+                    "X-Webhook-Secret": "webhook_unit_secret_999",
+                },
+            )
+            res_slack = conn.getresponse()
+            self.assertEqual(res_slack.status, 200)
+            data_slack = json.loads(res_slack.read().decode("utf-8"))
+            self.assertEqual(data_slack.get("response_type"), "in_channel")
+            self.assertIn("🚀", data_slack.get("text", ""))
+        finally:
+            httpd.shutdown()
+            httpd.server_close()
+            if old_secret is not None:
+                os.environ["WEBHOOK_SECRET"] = old_secret
+            else:
+                os.environ.pop("WEBHOOK_SECRET", None)
+
 
 

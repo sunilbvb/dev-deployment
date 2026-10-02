@@ -93,6 +93,7 @@ send_outgoing_webhook = notifications.send_outgoing_webhook
 notify_job_finished = notifications.notify_job_finished
 notify_pipeline_finished = notifications.notify_pipeline_finished
 get_webhook_config_for_app = notifications.get_webhook_config_for_app
+get_webhook_channels_for_app = notifications.get_webhook_channels_for_app
 check_app_sentinel = sentinel.check_app_sentinel
 check_workspace_sentinel = sentinel.check_workspace_sentinel
 check_apple_expiry = sentinel.check_apple_expiry

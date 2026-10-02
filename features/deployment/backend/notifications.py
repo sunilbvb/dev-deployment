@@ -34,7 +34,7 @@ from config import (
 def detect_webhook_provider(url: str, override: str = "auto") -> str:
     """Detect destination service from URL hostname or return user override."""
     override_clean = (override or "auto").strip().lower()
-    if override_clean in ("slack", "discord", "teams", "google_chat", "generic"):
+    if override_clean in ("slack", "discord", "teams", "google_chat", "whatsapp", "custom", "generic"):
         return override_clean
 
     url_lower = (url or "").lower()
@@ -50,6 +50,12 @@ def detect_webhook_provider(url: str, override: str = "auto") -> str:
         return "teams"
     if "chat.googleapis.com" in url_lower:
         return "google_chat"
+    if (
+        "graph.facebook.com" in url_lower
+        or "api.twilio.com" in url_lower
+        or "whatsapp" in url_lower
+    ):
+        return "whatsapp"
     return "generic"
 
 
@@ -461,6 +467,103 @@ def build_google_chat_payload(event: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def build_whatsapp_payload(event: dict[str, Any], custom_phone: str = "") -> dict[str, Any]:
+    """Format WhatsApp payload supporting WhatsApp Cloud API, Twilio, and webhook gateways."""
+    status = event.get("status", "success").lower()
+    is_success = status == "success"
+    status_icon = "✅" if is_success else "❌"
+    status_label = "SUCCEEDED" if is_success else ("STOPPED" if status == "stopped" else "FAILED")
+
+    app_name = event.get("appName") or event.get("app_name") or event.get("app") or "App"
+    flavor = (event.get("flavor") or "default").upper()
+    platform = event.get("platform") or "Mobile"
+    version = event.get("version") or "1.0.0"
+    duration = event.get("durationFormatted") or event.get("duration") or "0s"
+    commit = event.get("commit") or {}
+    download_url = event.get("downloadUrl") or event.get("download_url") or ""
+    track = event.get("track") or ""
+
+    lines = [
+        f"{status_icon} *[{app_name}] Deployment {status_label}*",
+        f"• *Platform:* {platform}",
+        f"• *Flavor:* {flavor}",
+        f"• *Version:* v{version}",
+        f"• *Duration:* {duration}",
+    ]
+    if track:
+        lines.append(f"• *Track:* {track}")
+    if event.get("buildSizeSummary"):
+        lines.append(f"• *Build Size:* {event['buildSizeSummary']}")
+    if commit.get("hash") or commit.get("subject"):
+        c_str = f"`{commit.get('hash', '')}` {commit.get('subject', '')}"
+        if commit.get("author"):
+            c_str += f" ({commit.get('author')})"
+        lines.append(f"• *Commit:* {c_str}")
+    if download_url:
+        lines.append(f"\n📲 *Download Artifact:*\n{download_url}")
+
+    msg_body = "\n".join(lines)
+
+    payload = {
+        "messaging_product": "whatsapp",
+        "recipient_type": "individual",
+        "type": "text",
+        "text": {"preview_url": True, "body": msg_body},
+        "message": msg_body,
+        "body": msg_body,
+        "Body": msg_body,
+    }
+    if custom_phone:
+        payload["to"] = custom_phone
+        payload["To"] = f"whatsapp:{custom_phone}" if not custom_phone.startswith("whatsapp:") else custom_phone
+    return payload
+
+
+def build_custom_template_payload(template_str: str, event_data: dict[str, Any]) -> Any:
+    """Evaluate custom template string with event variables. If valid JSON, return parsed object, else text dict."""
+    if not template_str or not template_str.strip():
+        return build_generic_payload(event_data)
+
+    app_name = str(event_data.get("appName") or event_data.get("app_name") or event_data.get("app") or "")
+    app_id = str(event_data.get("app") or event_data.get("app_id") or "")
+    flavor = str(event_data.get("flavor") or "")
+    platform = str(event_data.get("platform") or "")
+    version = str(event_data.get("version") or "")
+    status = str(event_data.get("status") or "")
+    duration = str(event_data.get("durationFormatted") or event_data.get("duration") or "")
+    duration_sec = str(event_data.get("durationSeconds") or "")
+    download_url = str(event_data.get("downloadUrl") or event_data.get("download_url") or "")
+    track = str(event_data.get("track") or "")
+    commit = event_data.get("commit") or {}
+    commit_hash = str(commit.get("hash") or "")
+    commit_subject = str(commit.get("subject") or "")
+    commit_author = str(commit.get("author") or "")
+    build_size = str(event_data.get("buildSizeSummary") or "")
+
+    rendered = (
+        template_str
+        .replace("{appName}", json.dumps(app_name)[1:-1])
+        .replace("{appId}", json.dumps(app_id)[1:-1])
+        .replace("{flavor}", json.dumps(flavor)[1:-1])
+        .replace("{platform}", json.dumps(platform)[1:-1])
+        .replace("{version}", json.dumps(version)[1:-1])
+        .replace("{status}", json.dumps(status)[1:-1])
+        .replace("{duration}", json.dumps(duration)[1:-1])
+        .replace("{durationSeconds}", duration_sec)
+        .replace("{downloadUrl}", json.dumps(download_url)[1:-1])
+        .replace("{track}", json.dumps(track)[1:-1])
+        .replace("{commitHash}", json.dumps(commit_hash)[1:-1])
+        .replace("{commitSubject}", json.dumps(commit_subject)[1:-1])
+        .replace("{commitAuthor}", json.dumps(commit_author)[1:-1])
+        .replace("{buildSize}", json.dumps(build_size)[1:-1])
+    )
+
+    try:
+        return json.loads(rendered)
+    except Exception:
+        return {"text": rendered, "content": rendered, "raw": rendered}
+
+
 def build_generic_payload(event: dict[str, Any]) -> dict[str, Any]:
     """Format clean generic JSON payload for custom webhooks."""
     return {
@@ -470,7 +573,7 @@ def build_generic_payload(event: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def build_webhook_payload(provider: str, event_data: dict[str, Any]) -> dict[str, Any]:
+def build_webhook_payload(provider: str, event_data: dict[str, Any], custom_template: str = "", phone: str = "") -> Any:
     """Select and construct appropriate payload for the target webhook provider."""
     provider_clean = (provider or "generic").strip().lower()
     if provider_clean == "slack":
@@ -481,6 +584,10 @@ def build_webhook_payload(provider: str, event_data: dict[str, Any]) -> dict[str
         return build_teams_payload(event_data)
     if provider_clean == "google_chat":
         return build_google_chat_payload(event_data)
+    if provider_clean == "whatsapp":
+        return build_whatsapp_payload(event_data, custom_phone=phone)
+    if provider_clean == "custom" or custom_template:
+        return build_custom_template_payload(custom_template, event_data)
     return build_generic_payload(event_data)
 
 
@@ -490,21 +597,34 @@ def build_webhook_payload(provider: str, event_data: dict[str, Any]) -> dict[str
 
 def send_outgoing_webhook(
     url: str,
-    payload: dict[str, Any],
+    payload: Any,
     timeout: float = 8.0,
+    headers: Optional[dict[str, str]] = None,
 ) -> dict[str, Any]:
-    """Send formatted JSON payload to outgoing webhook URL via HTTP POST."""
+    """Send formatted JSON or form payload to outgoing webhook URL via HTTP POST."""
     if not url or not (url.startswith("http://") or url.startswith("https://")):
         return {"success": False, "error": "Invalid webhook URL: must start with http:// or https://"}
 
-    data_bytes = json.dumps(payload).encode("utf-8")
+    if isinstance(payload, bytes):
+        data_bytes = payload
+    elif isinstance(payload, str):
+        data_bytes = payload.encode("utf-8")
+    else:
+        data_bytes = json.dumps(payload).encode("utf-8")
+
+    req_headers = {
+        "Content-Type": "application/json; charset=utf-8",
+        "User-Agent": "DevDeployment-Webhook/1.0",
+    }
+    if headers and isinstance(headers, dict):
+        for k, v in headers.items():
+            if k and v:
+                req_headers[str(k)] = str(v)
+
     req = urllib.request.Request(
         url,
         data=data_bytes,
-        headers={
-            "Content-Type": "application/json; charset=utf-8",
-            "User-Agent": "DevDeployment-Webhook/1.0",
-        },
+        headers=req_headers,
         method="POST",
     )
 
@@ -538,39 +658,98 @@ def send_outgoing_webhook(
 # Webhook Resolution and Background Notification Dispatchers
 # ─────────────────────────────────────────────────────────────────────────────
 
-def get_webhook_config_for_app(app_id: str) -> dict[str, Any]:
-    """Look up notification settings for an app with fallback to workspace-level webhook."""
-    deploy_cfg = load_deploy_config()
+def get_webhook_config_for_app(app_id: str, ws_root: Optional[Path] = None) -> dict[str, Any]:
+    """Look up primary notification settings for an app with fallback to workspace-level webhook."""
+    channels = get_webhook_channels_for_app(app_id, ws_root=ws_root)
+    if channels:
+        return channels[0]
+    return {"enabled": False, "url": "", "scope": "none"}
+
+
+def get_webhook_channels_for_app(app_id: str, ws_root: Optional[Path] = None) -> list[dict[str, Any]]:
+    """Return list of all configured webhook destinations for app, merging app channels and workspace channels."""
+    deploy_cfg = load_deploy_config(ws_root)
     apps = deploy_cfg.get("apps", {})
     app_cfg = apps.get(app_id, {}) if isinstance(apps, dict) else {}
+    channels: list[dict[str, Any]] = []
 
-    # 1. Check app-specific webhook settings
-    app_url = (app_cfg.get("webhook_url") or "").strip()
-    if app_url:
-        return {
-            "url": app_url,
+    # 1. Multi-webhook array in app_cfg
+    if isinstance(app_cfg.get("webhooks"), list):
+        for w in app_cfg["webhooks"]:
+            if isinstance(w, dict) and w.get("url"):
+                channels.append({
+                    "id": str(w.get("id") or f"app-{len(channels)}"),
+                    "name": str(w.get("name") or "App Webhook"),
+                    "url": str(w["url"]).strip(),
+                    "enabled": bool(w.get("enabled", True)),
+                    "provider": str(w.get("provider", "auto")),
+                    "notify_on_success": bool(w.get("notify_on_success", True)),
+                    "notify_on_failure": bool(w.get("notify_on_failure", True)),
+                    "custom_template": str(w.get("custom_template") or ""),
+                    "custom_headers": w.get("custom_headers") if isinstance(w.get("custom_headers"), dict) else {},
+                    "phone": str(w.get("phone") or ""),
+                    "scope": "app",
+                })
+
+    # Legacy single app webhook_url
+    legacy_app_url = (app_cfg.get("webhook_url") or "").strip()
+    if legacy_app_url and not any(c["url"] == legacy_app_url for c in channels):
+        channels.append({
+            "id": "legacy-app",
+            "name": f"{app_id} Primary",
+            "url": legacy_app_url,
             "enabled": bool(app_cfg.get("webhook_enabled", True)),
-            "provider": app_cfg.get("webhook_provider", "auto"),
+            "provider": str(app_cfg.get("webhook_provider", "auto")),
             "notify_on_success": bool(app_cfg.get("notify_on_success", True)),
             "notify_on_failure": bool(app_cfg.get("notify_on_failure", True)),
-            "play_console_track": app_cfg.get("play_console_track", ""),
+            "custom_template": "",
+            "custom_headers": {},
+            "phone": "",
             "scope": "app",
-        }
+        })
 
-    # 2. Check workspace-level fallback webhook
-    ws_url = (deploy_cfg.get("workspace_webhook_url") or "").strip()
-    if ws_url:
-        return {
-            "url": ws_url,
+    # 2. Workspace channels
+    ws_channels: list[dict[str, Any]] = []
+    if isinstance(deploy_cfg.get("workspace_webhooks"), list):
+        for w in deploy_cfg["workspace_webhooks"]:
+            if isinstance(w, dict) and w.get("url"):
+                ws_channels.append({
+                    "id": str(w.get("id") or f"ws-{len(ws_channels)}"),
+                    "name": str(w.get("name") or "Workspace Channel"),
+                    "url": str(w["url"]).strip(),
+                    "enabled": bool(w.get("enabled", True)),
+                    "provider": str(w.get("provider", "auto")),
+                    "notify_on_success": bool(w.get("notify_on_success", True)),
+                    "notify_on_failure": bool(w.get("notify_on_failure", True)),
+                    "custom_template": str(w.get("custom_template") or ""),
+                    "custom_headers": w.get("custom_headers") if isinstance(w.get("custom_headers"), dict) else {},
+                    "phone": str(w.get("phone") or ""),
+                    "scope": "workspace",
+                })
+
+    legacy_ws_url = (deploy_cfg.get("workspace_webhook_url") or "").strip()
+    if legacy_ws_url and not any(c["url"] == legacy_ws_url for c in ws_channels):
+        ws_channels.append({
+            "id": "legacy-ws",
+            "name": "Workspace Default",
+            "url": legacy_ws_url,
             "enabled": bool(deploy_cfg.get("workspace_webhook_enabled", True)),
-            "provider": deploy_cfg.get("workspace_webhook_provider", "auto"),
+            "provider": str(deploy_cfg.get("workspace_webhook_provider", "auto")),
             "notify_on_success": bool(deploy_cfg.get("workspace_notify_on_success", True)),
             "notify_on_failure": bool(deploy_cfg.get("workspace_notify_on_failure", True)),
-            "play_console_track": deploy_cfg.get("workspace_play_console_track", ""),
+            "custom_template": "",
+            "custom_headers": {},
+            "phone": "",
             "scope": "workspace",
-        }
+        })
 
-    return {"enabled": False, "url": "", "scope": "none"}
+    seen_urls = set()
+    result: list[dict[str, Any]] = []
+    for ch in channels + ws_channels:
+        if ch["url"] not in seen_urls:
+            seen_urls.add(ch["url"])
+            result.append(ch)
+    return result
 
 
 def _compile_event_data(
@@ -634,9 +813,8 @@ def _compile_event_data(
 
 
 def notify_job_finished(job: dict[str, Any], ws_root: Optional[Path] = None) -> None:
-    """Evaluate and dispatch webhook notification when a standalone deployment job finishes."""
+    """Evaluate and dispatch webhook notification across all configured channels when a deployment finishes."""
     if not job or job.get("is_pipeline_step"):
-        # Suppress standalone notifications for individual pipeline steps
         return
 
     status = (job.get("status") or "error").lower()
@@ -644,15 +822,11 @@ def notify_job_finished(job: dict[str, Any], ws_root: Optional[Path] = None) -> 
         return
 
     app = job.get("app") or ""
-    cfg = get_webhook_config_for_app(app)
-    if not cfg.get("enabled") or not cfg.get("url"):
+    channels = get_webhook_channels_for_app(app, ws_root=ws_root)
+    if not channels:
         return
 
     is_success = status == "success"
-    if is_success and not cfg.get("notify_on_success", True):
-        return
-    if not is_success and not cfg.get("notify_on_failure", True):
-        return
 
     started = job.get("started_at")
     finished = job.get("finished_at") or time.time()
@@ -674,22 +848,37 @@ def notify_job_finished(job: dict[str, Any], ws_root: Optional[Path] = None) -> 
         build_size=job.get("buildSize"),
     )
 
-    provider = detect_webhook_provider(cfg["url"], cfg.get("provider", "auto"))
-    payload = build_webhook_payload(provider, event_data)
+    for ch in channels:
+        if not ch.get("enabled") or not ch.get("url"):
+            continue
+        if is_success and not ch.get("notify_on_success", True):
+            continue
+        if not is_success and not ch.get("notify_on_failure", True):
+            continue
 
-    def _async_send():
-        try:
-            res = send_outgoing_webhook(cfg["url"], payload)
-            if not res.get("success"):
-                logging.warning("Outgoing webhook to %s failed: %s", cfg["url"], res.get("error"))
-        except Exception:
-            logging.exception("Exception during outgoing webhook dispatch")
+        ch_url = ch["url"]
+        provider = detect_webhook_provider(ch_url, ch.get("provider", "auto"))
+        payload = build_webhook_payload(
+            provider,
+            event_data,
+            custom_template=ch.get("custom_template", ""),
+            phone=ch.get("phone", ""),
+        )
+        ch_headers = ch.get("custom_headers")
 
-    threading.Thread(target=_async_send, name="WebhookNotifyThread", daemon=True).start()
+        def _async_send(target_url=ch_url, target_payload=payload, target_headers=ch_headers):
+            try:
+                res = send_outgoing_webhook(target_url, target_payload, headers=target_headers)
+                if not res.get("success"):
+                    logging.warning("Outgoing webhook to %s failed: %s", target_url, res.get("error"))
+            except Exception:
+                logging.exception("Exception during outgoing webhook dispatch")
+
+        threading.Thread(target=_async_send, name="WebhookNotifyThread", daemon=True).start()
 
 
 def notify_pipeline_finished(run: dict[str, Any], ws_root: Optional[Path] = None) -> None:
-    """Evaluate and dispatch webhook notification when an automated pipeline finishes."""
+    """Evaluate and dispatch webhook notifications across all configured channels when a pipeline finishes."""
     if not run:
         return
 
@@ -698,15 +887,11 @@ def notify_pipeline_finished(run: dict[str, Any], ws_root: Optional[Path] = None
         return
 
     app = run.get("app") or ""
-    cfg = get_webhook_config_for_app(app)
-    if not cfg.get("enabled") or not cfg.get("url"):
+    channels = get_webhook_channels_for_app(app, ws_root=ws_root)
+    if not channels:
         return
 
     is_success = status == "success"
-    if is_success and not cfg.get("notify_on_success", True):
-        return
-    if not is_success and not cfg.get("notify_on_failure", True):
-        return
 
     duration_sec = run.get("durationSeconds")
     if duration_sec is None and run.get("startedAt") and run.get("finishedAt"):
@@ -724,18 +909,33 @@ def notify_pipeline_finished(run: dict[str, Any], ws_root: Optional[Path] = None
     )
     event_data["platform"] = f"Pipeline ({len(run.get('steps', []))} steps)"
 
-    provider = detect_webhook_provider(cfg["url"], cfg.get("provider", "auto"))
-    payload = build_webhook_payload(provider, event_data)
+    for ch in channels:
+        if not ch.get("enabled") or not ch.get("url"):
+            continue
+        if is_success and not ch.get("notify_on_success", True):
+            continue
+        if not is_success and not ch.get("notify_on_failure", True):
+            continue
 
-    def _async_send():
-        try:
-            res = send_outgoing_webhook(cfg["url"], payload)
-            if not res.get("success"):
-                logging.warning("Pipeline webhook to %s failed: %s", cfg["url"], res.get("error"))
-        except Exception:
-            logging.exception("Exception during pipeline webhook dispatch")
+        ch_url = ch["url"]
+        provider = detect_webhook_provider(ch_url, ch.get("provider", "auto"))
+        payload = build_webhook_payload(
+            provider,
+            event_data,
+            custom_template=ch.get("custom_template", ""),
+            phone=ch.get("phone", ""),
+        )
+        ch_headers = ch.get("custom_headers")
 
-    threading.Thread(target=_async_send, name="PipelineWebhookNotifyThread", daemon=True).start()
+        def _async_send(target_url=ch_url, target_payload=payload, target_headers=ch_headers):
+            try:
+                res = send_outgoing_webhook(target_url, target_payload, headers=target_headers)
+                if not res.get("success"):
+                    logging.warning("Pipeline webhook to %s failed: %s", target_url, res.get("error"))
+            except Exception:
+                logging.exception("Exception during pipeline webhook dispatch")
+
+        threading.Thread(target=_async_send, name="PipelineWebhookNotifyThread", daemon=True).start()
 
 
 def test_webhook(
@@ -743,6 +943,9 @@ def test_webhook(
     provider: str = "auto",
     app_id: Optional[str] = None,
     ws_root: Optional[Path] = None,
+    custom_template: str = "",
+    custom_headers: Optional[dict[str, str]] = None,
+    phone: str = "",
 ) -> dict[str, Any]:
     """Test webhook endpoint by sending an immediate test card to the given URL."""
     clean_url = (url or "").strip()
@@ -776,7 +979,12 @@ def test_webhook(
         "track": "Internal Testing",
     }
 
-    payload = build_webhook_payload(detected_provider, sample_event)
-    result = send_outgoing_webhook(clean_url, payload, timeout=6.0)
+    payload = build_webhook_payload(
+        detected_provider,
+        sample_event,
+        custom_template=custom_template,
+        phone=phone,
+    )
+    result = send_outgoing_webhook(clean_url, payload, timeout=6.0, headers=custom_headers)
     result["provider"] = detected_provider
     return result
