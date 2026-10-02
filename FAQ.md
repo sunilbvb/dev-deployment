@@ -68,6 +68,41 @@ export PATH="/opt/homebrew/opt/python@3.12/libexec/bin:$PATH"
 ### How are new developer questions added to this FAQ?
 Whenever a developer or team member asks a meaningful question or clarifies system behavior, it should be directly documented in this [`FAQ.md`](file:///home/sunil-bakale/IdeaProjects/dev-deployment/FAQ.md). This establishes a continuous **living documentation** practice so knowledge is never lost in chat threads and the whole team learns together.
 
+### What is the step-by-step end-to-end workflow for a new user in the UI?
+All major capabilities are 100% operational directly within the web UI without terminal intervention:
+
+1. **Import Workspace (Single App, Multi-App, or Melos Monorepo):**
+   - Click the active workspace pill in the top header.
+   - Enter your project path or use the folder inspector.
+   - Click **Inspect Folder**: The backend inspects `pubspec.yaml` and `melos.yaml`, detects apps, and previews detected app chips. Click **Import Workspace** to switch.
+
+2. **1-Click Auto-Scan (Flavors, Bundle IDs, Keystores, Config):**
+   - Click the **Configure** button (top right header).
+   - Click **⚡ Auto-Scan Project**: The backend automatically parses `build.gradle` (flavors, package names), `project.pbxproj` / `.xcconfig` (bundle IDs), Google Services JSON / plist files, and keystores.
+   - Fields auto-fill immediately. Click **Save Config**.
+
+3. **Generated Build Commands & Environment Tabs:**
+   - Command generation triggers automatically on save.
+   - Dashboard organizes commands into clean tabs (`Dev`, `QA`, `Prod`) for both Android (`build_apk`, `build_aab`, `deploy_aab`) and iOS (`build_ipa`, `deploy_ipa`).
+   - Cards display status pills: **Ready** or **Locked (needs setup)**.
+
+4. **Connect Outgoing Webhooks (Slack, Discord, Teams, WhatsApp):**
+   - In **Configure** → **Notifications**, click **+ Add Channel**.
+   - Select your provider (Slack, Discord, Microsoft Teams, Google Chat, or WhatsApp).
+   - Enter your webhook URL and trigger filters (Success, Failure, or Both).
+   - Click **Test Channel** to dispatch a live verification ping with rich card formatting.
+
+5. **Build & Execute Saved Pipelines:**
+   - In **Configure** → **Pipelines**, click **+ Create Pipeline**.
+   - Pick sequenced actions from the step catalog (e.g. `App Doctor` → `Build AAB` → `Upload Play Store`) or write custom shell steps.
+   - On the dashboard, click the Pipeline card and click **Run Pipeline**.
+   - Production builds trigger a mandatory confirmation dialog to prevent accidental store releases.
+   - Terminal streams live execution logs with step-by-step progress spinners.
+
+6. **Git Connections & Release Automation:**
+   - Pre-flight App Doctor evaluates Git working tree cleanliness before long builds.
+   - Under the **Utilities** tab, run **Preview Changelog** to parse Conventional Commits since the last Git tag, bump version numbers, generate `CHANGELOG.md`, and push annotated tags to `origin`.
+
 ---
 
 ## 2. Server Management & 1-Click Launchers (Zero-Terminal Startup)
