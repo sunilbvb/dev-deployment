@@ -684,3 +684,28 @@ The stylesheet loader in `index.html` implements progressive fallbacks:
 - **iOS Builds Require macOS:** Native iOS IPA compilation and codesigning require Xcode and macOS hardware.
 - **Single Workstation Scope:** Designed for local developer machines and dedicated build mac-minis; multi-tenant remote hosting is intentionally disallowed for security.
 - **Conventional Commit Requirement:** Automated changelog generation relies on Conventional Commit prefixes (`feat:`, `fix:`, `chore:`); non-conforming commits are grouped under maintenance.
+
+### How do cloud CI services like Codemagic and Bitrise do it?
+Cloud CI platforms (Codemagic, Bitrise, CircleCI) operate under a **multi-tenant disposable runner model**:
+
+1. **OAuth GitHub App Integration:**
+   - You grant their cloud service an OAuth app or GitHub App installation with full `repo` read/write access.
+   - Their cloud servers listen for GitHub push and pull-request webhooks.
+
+2. **Ephemeral (Disposable) Virtual Machines:**
+   - On every build, their scheduler provisions a brand-new virtual machine or container (AWS EC2 Mac, Google Cloud, or Hetzner Mac bare metal).
+   - The VM generates a temporary access token and executes a **cold `git clone` from scratch** onto its fresh disk.
+   - It downloads the Flutter SDK, Android command-line tools, CocoaPods, and dependencies.
+   - Once the `.ipa` or `.aab` is built and uploaded, **the entire VM is destroyed and wiped** to ensure security between different customers.
+
+3. **Detailed Architectural Comparison:**
+
+| Feature | Cloud CI (Codemagic / Bitrise) | Dev Deployment Console |
+| :--- | :--- | :--- |
+| **Hosting Model** | Multi-tenant public cloud | Single-tenant local machine or private team server |
+| **Git Ingestion** | Cold `git clone` from scratch on each build | Persistent local disk tree (instant incremental `git pull`) |
+| **Build Duration** | **15 – 25 minutes** (VM spin-up, cold clone, dependency downloads) | **30 – 60 seconds** (hot Gradle, CocoaPods, and `.dart_tool/` caches) |
+| **Cost** | $50 – $300+/month per concurrent build slot | **$0** (zero subscriptions; uses your existing hardware) |
+| **Offline Capability** | ❌ None (fails without active internet) | **✓ 100% offline** (works without internet, on planes or air-gapped LANs) |
+| **Secret & Code Privacy** | Source code, keystores, and `.p8` keys uploaded to third-party cloud | Source code and private keys never leave your workstation/server |
+
