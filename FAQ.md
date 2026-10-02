@@ -498,6 +498,44 @@ The stylesheet loader in `index.html` implements progressive fallbacks:
 - The random bearer token is generated on initial run with secure permissions `chmod 600` at `~/.config/dev-deployment/auth_token.txt`.
 - Executed commands are strictly whitelisted from verified templates; raw shell command injection via the API is impossible.
 
+### Can I deploy this console as a centralized team build server (e.g. `https://devdeployment/index.html`)?
+**Yes, absolutely.** Deploying the console as a centralized build server for your engineering and QA teams is a common, highly effective pattern:
+
+#### 1. Why Teams Deploy It on a Central Server
+- **Powerful Shared Hardware:** Fast parallel compilations on a high-core build machine (e.g., Apple Silicon Mac Studio or multi-core Linux VM).
+- **Centralized Signing Credentials:** Keystores, Apple `.p8` keys, and Play Store service accounts stay protected on the secure server; developers don't need sensitive production keys on personal laptops.
+- **Always-Online Incoming Webhooks:** Accessible via a static internal URL (`https://devdeployment/api/deployment/webhook/incoming`) to receive GitHub Actions, GitLab CI, or Slack slash commands 24/7.
+- **Zero-Friction QA Distribution:** QA testers anywhere on the corporate VPN can open `https://devdeployment/` and scan the QR code or click the direct APK download link.
+
+#### 2. How to Set It Up with HTTPS & Reverse Proxy
+1. **Choose Server Hardware:**
+   - **For iOS & Android:** Use an Apple Silicon macOS machine (Mac Mini / Mac Studio) because Xcode requires macOS.
+   - **For Android only:** Any Ubuntu/Debian Linux VM or server works perfectly.
+2. **Run Backend Service:**
+   - Install the systemd user service (Linux) or launchd daemon (macOS) via `./start.sh` or the UI Server Console modal.
+   - Bind to local port `18112`: `python3 features/deployment/backend/server.py --port 18112 --host 127.0.0.1`.
+3. **Configure Nginx or Caddy Reverse Proxy:**
+   Set up Nginx to terminate SSL/TLS (`https://devdeployment`) and reverse proxy to the backend:
+   ```nginx
+   server {
+       listen 443 ssl http2;
+       server_name devdeployment devdeployment.internal;
+
+       ssl_certificate /etc/ssl/certs/devdeployment.crt;
+       ssl_certificate_key /etc/ssl/private/devdeployment.key;
+
+       location / {
+           proxy_pass http://127.0.0.1:18112;
+           proxy_set_header Host localhost;
+           proxy_set_header X-Real-IP $remote_addr;
+           proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+           proxy_set_header X-Forwarded-Proto $scheme;
+       }
+   }
+   ```
+4. **Access Control:**
+   Keep the server behind corporate VPN (WireGuard, Tailscale) or internal company LAN with firewall protection.
+
 ---
 
 ## 17. Troubleshooting & Common Error Solutions
