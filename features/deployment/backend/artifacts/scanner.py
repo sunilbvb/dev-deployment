@@ -1,14 +1,9 @@
-"""Artifact discovery, hosting, and QR code generation for Android APKs.
-
-Provides local LAN Wi-Fi download endpoints, QR codes for instant mobile camera
-scanning, and safe APK streaming. Python standard library only.
-"""
+"""Artifact scanner and safe path resolution for Android APKs."""
 
 from __future__ import annotations
 
 from pathlib import Path
 import re
-import socket
 import time
 from typing import Any, Optional
 
@@ -17,33 +12,7 @@ from config import (
     _resolve_app_dir,
     get_workspace_root,
 )
-import qr
-
-
-def get_lan_ip() -> str:
-    """Discover the host machine's primary local LAN IP address."""
-    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    try:
-        # Connecting to a public IP routes via the active network interface
-        # without sending any packets.
-        s.connect(("8.8.8.8", 80))
-        ip = s.getsockname()[0]
-        return ip
-    except Exception:
-        return "127.0.0.1"
-    finally:
-        s.close()
-
-
-def format_bytes(size_bytes: int) -> str:
-    """Format bytes into human-readable string (KB, MB, GB)."""
-    if size_bytes < 1024:
-        return f"{size_bytes} B"
-    if size_bytes < 1024 * 1024:
-        return f"{size_bytes / 1024:.1f} KB"
-    if size_bytes < 1024 * 1024 * 1024:
-        return f"{size_bytes / (1024 * 1024):.1f} MB"
-    return f"{size_bytes / (1024 * 1024 * 1024):.2f} GB"
+from .network import format_bytes
 
 
 def find_apk_artifact(
@@ -139,72 +108,6 @@ def find_apk_artifact(
         }
     except Exception:
         return None
-
-
-def get_apk_download_info(
-    job_id: Optional[str] = None,
-    app_id: Optional[str] = None,
-    flavor: str = "",
-    port: int = 18112,
-    token: str = "",
-    host_override: str = "",
-) -> dict[str, Any]:
-    """Compile download links, LAN IP, and QR code SVG/ASCII for mobile installation."""
-    import jobs
-
-    job_info = jobs.get_job(job_id).get("job") if job_id else None
-    effective_app = app_id or (job_info.get("app") if job_info else "")
-    effective_flavor = flavor or (job_info.get("flavor") if job_info else "")
-    started_after = job_info.get("started_at") if job_info else None
-
-    # Check if job already recorded an artifact
-    artifact = job_info.get("artifact") if job_info else None
-    if not artifact:
-        artifact = find_apk_artifact(
-            app_id=effective_app,
-            flavor=effective_flavor,
-            started_after=started_after,
-        )
-
-    if not artifact:
-        return {
-            "success": True,
-            "hasApk": False,
-            "jobId": job_id,
-            "app": effective_app,
-            "flavor": effective_flavor,
-            "message": "No APK artifact found for this build or app.",
-        }
-
-    lan_ip = host_override or get_lan_ip()
-    target_param = job_id if job_id else (effective_app or "latest")
-    token_query = f"?token={token}" if token else ""
-
-    download_url = f"http://{lan_ip}:{port}/api/deployment/download/{target_param}{token_query}"
-    local_url = f"http://localhost:{port}/api/deployment/download/{target_param}{token_query}"
-
-    qr_svg_markup = qr.qr_svg(download_url, box_size=6)
-    qr_ascii_art = qr.qr_ascii(download_url)
-
-    return {
-        "success": True,
-        "hasApk": True,
-        "jobId": job_id,
-        "app": effective_app,
-        "flavor": effective_flavor,
-        "filename": artifact["filename"],
-        "path": artifact["path"],
-        "sizeBytes": artifact["sizeBytes"],
-        "sizeFormatted": artifact["sizeFormatted"],
-        "mtime": artifact["mtime"],
-        "builtAtFormatted": artifact["builtAtFormatted"],
-        "downloadUrl": download_url,
-        "localUrl": local_url,
-        "lanIp": lan_ip,
-        "port": port,
-        "qrSvg": qr_svg_markup,
-        "qrAscii": qr_ascii_art,
-    }
 
 
 def resolve_safe_apk_path(target: str) -> Optional[Path]:

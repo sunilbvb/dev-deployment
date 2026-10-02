@@ -28,6 +28,15 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ### Changed
 
+- **Modular Backend Feature Architecture**: Refactored monolithic backend files into dedicated, single-responsibility feature packages:
+  - `notifications/`: `templates.py`, `channels.py`, `incoming.py`
+  - `pipelines/`: `storage.py`, `engine.py`
+  - `doctor/`: `tool_checks.py`, `project_checks.py`, `runner.py`
+  - `sentinel/`: `parsers.py`, `apple_sentinel.py`, `android_sentinel.py`, `firebase_sentinel.py`, `runner.py`
+  - `build_size/`: `formatter.py`, `archive_inspector.py`, `history_tracker.py`, `analyzer.py`
+  - `qr/`: `matrix.py`, `renderer.py`
+  - `artifacts/`: `network.py`, `scanner.py`, `distributor.py`
+  - `server_manager/`: `paths.py`, `desktop.py`, `service.py`
 - App IDs are folder names; display names still come from `pubspec.yaml`.
 - `.p8` keys are no longer embedded in `deploy_config.json`; existing inline keys are migrated out on startup.
 - Android package names, app folders and the Play key are resolved for any layout instead of `apps/<app>` and fixed file names.
