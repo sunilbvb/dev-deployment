@@ -1,102 +1,256 @@
-# REST API
+# REST API Documentation 🔌
 
-The dashboard UI uses this API, and you can script it too. The server listens on `localhost` only (default port `18112`).
+The Dev Deployment Console provides a robust REST API powering both the web UI and external command-line automation scripts. The server listens on `localhost` (default port `18112`).
 
-## Conventions
+---
 
-| Header | Required | Meaning |
-|---|---|---|
-| `X-API-Token` | always for `/api/*` | Token from `~/.config/dev-deployment/auth_token.txt` (or `DEPLOYMENT_AUTH_TOKEN`) |
-| `X-Workspace` | optional | Absolute path of an added project; without it, the server's default project is used |
-| `Content-Type: application/json` | POST | All POST bodies are JSON, except multipart `.p8` upload |
+## 📑 Table of Contents
 
-- Requests with a non-localhost `Host` or a foreign `Origin` are rejected (`403`).
-- Bodies over 1 MB are rejected (`413`).
-- Responses are JSON with `"success": true|false` and `"error"` on failure.
+1. [Conventions & Security](#conventions--security)
+2. [Workspaces & Projects](#workspaces--projects)
+3. [Apps & Configuration](#apps--configuration)
+4. [Job Execution & History](#job-execution--history)
+5. [Credentials & Keys](#credentials--keys)
+6. [Pre-flight Diagnostics (App Doctor)](#pre-flight-diagnostics-app-doctor)
+7. [Certificate & Keystore Expiry Sentinel](#certificate--keystore-expiry-sentinel)
+8. [Build Size Inspector & Diff](#build-size-inspector--diff)
+9. [Local APK Hosting & QR Code](#local-apk-hosting--qr-code)
+10. [Saved Pipelines](#saved-pipelines)
+11. [Server Management & 1-Click Launchers](#server-management--1-click-launchers)
+12. [Team Webhook Notifications](#team-webhook-notifications)
+13. [Documentation Provider](#documentation-provider)
+
+---
+
+## Conventions & Security
+
+| Header / Query | Required | Meaning |
+|:---|:---|:---|
+| `X-API-Token` | Required for all `/api/*` | Bearer auth token from `~/.config/dev-deployment/auth_token.txt` |
+| `?token=` or `?auth=` | Media / APK streaming | Query parameter fallback for downloading APKs or rendering QR SVGs |
+| `X-Workspace` | Optional | Absolute directory of target project workspace (defaults to active root) |
+| `Content-Type: application/json` | POST endpoints | Required for all JSON payloads (except multipart `.p8` upload) |
+
+### Security Rules
+- **Host Header Validation:** Non-localhost `Host` headers (`127.0.0.1`, `localhost`) are rejected with `403 DNS Rebinding Rejected`.
+- **CORS Isolation:** Unapproved external browser origins are rejected with `403 Cross-Origin Request Rejected`.
+- **Body Size Limit:** JSON POST bodies exceeding 1 MB are rejected with `413 Payload Too Large`.
+- **Response Format:** All endpoints return JSON with `"success": true|false`. On failure, an descriptive `"error"` message is included.
 
 ```bash
+# Example API call with curl:
 TOKEN=$(cat ~/.config/dev-deployment/auth_token.txt)
 curl -s -H "X-API-Token: $TOKEN" \
-     -H "X-Workspace: /Users/me/projects/my-workspace" \
+     -H "X-Workspace: /home/sunil-bakale/IdeaProjects/dev-deployment" \
      http://localhost:18112/api/deployment/apps
 ```
 
 ---
 
-## Projects
+## Workspaces & Projects
 
-| Method | Endpoint | Body / query | Returns |
-|---|---|---|---|
-| GET | `/api/deployment/workspaces` | – | `workspaces` (added projects, each with `isDefault`), `active` (server default), `workspaceMissing` |
-| POST | `/api/deployment/workspace/allow` | `{path}` | Adds a project to the list (`config/workspaces_list.json`) |
-| POST | `/api/deployment/workspace/remove` | `{path}` | Removes a project from the list (folder untouched); `409` while a build runs there; the startup project cannot be removed |
-| GET | `/api/deployment/inspect-path` | `?path=` | `name`, `layout`, `appCount`, `packageCount`, `apps[]` (with `is_package`), `hasMelos`, `isMonorepo` |
-| POST | `/api/deployment/pick` | `{kind: "folder"\|"file", prompt?, extensions?}` | Opens the native dialog on the server's desktop → `{path}`, or `{cancelled: true}`, or `{supported: false}` |
-| POST | `/api/deployment/workspace/select` | `{path}` | Changes the server's *default* project (the UI does not use this; tabs use `X-Workspace`) |
+| Method | Endpoint | Query / Body | Returns / Purpose |
+|:---|:---|:---|:---|
+| `GET` | `/api/deployment/workspaces` | – | Returns list of added projects, default workspace, and directory existence check. |
+| `POST` | `/api/deployment/workspace/allow` | `{"path": "/path/to/project"}` | Adds a new project workspace to `config/workspaces_list.json`. |
+| `POST` | `/api/deployment/workspace/remove` | `{"path": "/path/to/project"}` | Removes a project tab from the console list (source files remain untouched). Returns `409` if a job is running. |
+| `GET` | `/api/deployment/inspect-path` | `?path=/path/to/inspect` | Inspects arbitrary directory: detects layout, app count, package count, Melos monorepo status, and framework stack. |
+| `POST` | `/api/deployment/pick` | `{"kind": "folder"\|"file"}` | Opens OS native folder picker dialog on server host and returns selected path. |
+| `POST` | `/api/deployment/workspace/select` | `{"path": "/path/to/project"}` | Sets server-wide default workspace. |
 
-`inspect-path` only reads added projects and folders chosen through `/pick` in this server session.
+---
 
-## Apps & configuration
+## Apps & Configuration
 
-| Method | Endpoint | Body / query | Purpose |
-|---|---|---|---|
-| GET | `/api/deployment/apps` | – | Apps and packages: `id`, `name`, `path`, `stack`, `is_package`, `version`, `color`, `icon` |
-| POST | `/api/deployment/apps` (also `/apps/save`) | `{id, name, version?, path}` | Register an app manually |
-| POST | `/api/deployment/rescan-workspace` | – | Re-detect apps |
-| GET | `/api/deployment/deploy-config` | – | `config.apps.<id>` settings |
-| POST | `/api/deployment/deploy-config/save` | full config object | Validate and save settings |
-| GET | `/api/deployment/scan-config` | `?app=` | Auto-scan one app (IDs, flavors, Firebase paths) |
-| POST | `/api/deployment/scan-all` | `{force?}` | Auto-scan all apps |
-| GET | `/api/deployment/templates` | – | Command templates by group |
-| GET | `/api/deployment/commands` | `?app=` | Command cards: `id`, `templateId`, `name`, `platform`, `flavor`, `key` (the command line), `configured` |
-| POST | `/api/deployment/regenerate` (also `/regenerate-commands`) | – | Re-run discovery for command generation |
+| Method | Endpoint | Query / Body | Returns / Purpose |
+|:---|:---|:---|:---|
+| `GET` | `/api/deployment/apps` | – | List of detected apps and non-deployable packages: `id`, `name`, `path`, `stack`, `is_package`, `version`, `icon`. |
+| `POST` | `/api/deployment/apps` | `{"id", "name", "path", ...}` | Register or update an application metadata record manually. |
+| `POST` | `/api/deployment/rescan-workspace` | – | Forces full re-detection of applications and packages across the project tree. |
+| `GET` | `/api/deployment/deploy-config` | – | Full deployment configuration object from `<project>/.dev-dashboard/deploy_config.json`. |
+| `POST` | `/api/deployment/deploy-config/save` | Full config payload | Validates schema and saves deployment configuration. |
+| `GET` | `/api/deployment/scan-config` | `?app=<app_id>` | Runs static code scanner to detect bundle IDs, package names, flavors, and Firebase files for one app. |
+| `POST` | `/api/deployment/scan-all` | `{"force": true}` | Runs static auto-scanner across all apps in the active project. |
+| `GET` | `/api/deployment/templates` | – | Retrieves template command definitions grouped by category. |
+| `GET` | `/api/deployment/commands` | `?app=<app_id>` | Returns executable command tiles for the specified app and its flavors. |
+| `POST` | `/api/deployment/regenerate` | – | Re-runs command discovery and builds executable parameter maps. |
 
-## Jobs
+---
 
-| Method | Endpoint | Body / query | Purpose |
-|---|---|---|---|
-| POST | `/api/deployment/execute` | `{app, templateId, flavor, confirmed?}` | Start a job. The command comes from the app's templates; arbitrary commands are not accepted |
-| GET | `/api/deployment/job` | `?id=` | `job.status` (`running`, `success`, `error`, `stopped`), `job.output`, `job.error`, `return_code`, times |
-| POST | `/api/deployment/stop` (also `/job/stop`) | `{jobId}` | Stop a job (process group `SIGTERM`, then `SIGKILL`) |
-| GET | `/api/deployment/running-jobs` | – | Running jobs across projects |
-| GET | `/api/deployment/history` | `?app=&flavor=&status=&limit=` | Finished jobs from `deployment_history.jsonl` |
+## Job Execution & History
 
-`execute` responses:
+| Method | Endpoint | Query / Body | Returns / Purpose |
+|:---|:---|:---|:---|
+| `POST` | `/api/deployment/execute` | `{"app", "templateId", "flavor", "confirmed"}` | Starts asynchronous build job. Rejects arbitrary commands; only pre-verified template actions run. |
+| `GET` | `/api/deployment/job` | `?id=<job_id>` | Polls job execution state: `running`, `success`, `error`, `stopped`, stdout/stderr chunks, duration. |
+| `POST` | `/api/deployment/stop` | `{"jobId": "<job_id>"}` | Sends `SIGTERM` (followed by `SIGKILL`) to terminate active process group. Releases app busy lock. |
+| `GET` | `/api/deployment/running-jobs` | – | Returns list of all currently active jobs across all projects. |
+| `GET` | `/api/deployment/history` | `?app=&flavor=&status=&limit=50` | Queries past execution records from `<project>/.dev-dashboard/deployment_history.jsonl`. |
 
+---
+
+## Credentials & Keys
+
+| Method | Endpoint | Query / Body | Returns / Purpose |
+|:---|:---|:---|:---|
+| `GET` | `/api/deployment/credentials` | `?app=<app_id>` | Returns credential resolution status (Play service account, Apple `.p8` key, Issuer UUID). Never returns private secrets. |
+| `POST` | `/api/deployment/credentials/scan` | `{"folder": "/scan/path"}` | Deep scans folder for Google Play JSONs, Apple `.p8` keys, and Firebase configs by file content analysis. |
+| `POST` | `/api/deployment/credentials/import` | `{"path", "app"?, "flavor"?, "issuerId"?}` | Securely copies credential file to `~/.config/dev-deployment/` with `chmod 600`. |
+| `POST` | `/api/deployment/credentials/upload` | `{"filename", "contentBase64", ...}` | Imports uploaded base64 key directly into user keychain directory. |
+| `POST` | `/api/deployment/credentials/remove` | `{"kind", "app"?}` | Disassociates key mapping from specified application. |
+| `POST` | `/api/deployment/p8/upload` | Multipart or JSON payload | Uploads App Store Connect PKCS#8 private key file. |
+
+---
+
+## Pre-flight Diagnostics (App Doctor)
+
+| Method | Endpoint | Query Parameters | Returns / Purpose |
+|:---|:---|:---|:---|
+| `GET` | `/api/deployment/doctor` | `?app=<app_id>&flavor=<flavor>` | Runs 12+ pre-flight diagnostics (Flutter SDK, Android SDK, CocoaPods, keystores, provisioning profiles, Git clean status, Firebase configs). |
+
+### Response Schema:
 ```json
-{ "success": true, "jobId": "job_1790857725238", "command": "bash …/run_build.sh uploadAAB gyo_business qa" }
-{ "success": false, "needsConfirmation": true, "error": "…" }          // production upload without confirmed:true
-{ "success": false, "code": "APP_BUSY", "error": "…" }                  // a job is already running for this app
+{
+  "success": true,
+  "appId": "customer_app",
+  "flavor": "prod",
+  "overallStatus": "pass", // "pass" | "warn" | "fail"
+  "summary": { "passed": 11, "warnings": 1, "failures": 0, "total": 12 },
+  "checks": [
+    {
+      "id": "flutter_sdk",
+      "category": "SDK & Tools",
+      "name": "Flutter SDK Installation",
+      "status": "pass",
+      "message": "Flutter 3.24.3 (Dart 3.5.3) found at /opt/flutter/bin/flutter",
+      "hint": null
+    },
+    {
+      "id": "android_keystore",
+      "category": "Signing & Credentials",
+      "name": "Android Release Keystore",
+      "status": "warn",
+      "message": "Keystore certificate expires in 28 days",
+      "hint": "Renew keystore using keytool before publishing to Google Play"
+    }
+  ]
+}
 ```
 
-## Credentials
+---
 
-Responses never contain key contents. `app` omitted means *all apps in this project*.
+## Certificate & Keystore Expiry Sentinel
 
-| Method | Endpoint | Body / query | Purpose |
-|---|---|---|---|
-| GET | `/api/deployment/credentials` | `?app=` | `play` `{path, exists, valid, client_email, source}` and `apple` `{key_id, issuer_id, path, exists, source}`; `source` is `app`, `workspace`, `deploy_config`, `auto` or `env file (…)` |
-| POST | `/api/deployment/credentials/scan` | `{folder}` (empty = project root; relative = inside project) | `found[]` with `kind` (`play_service_account`, `apple_p8`, `apple_other_p8`, `firebase_android`, `firebase_ios`), identity fields, `path`, `matches[]` (`{app, flavor}`), `play_hint` |
-| POST | `/api/deployment/credentials/import` | `{path, app?, flavor?, issuerId?}` | Import a file from disk |
-| POST | `/api/deployment/credentials/upload` | `{filename, contentBase64, app?, flavor?, issuerId?}` | Import uploaded content |
-| POST | `/api/deployment/credentials/remove` | `{kind: "play_service_account"\|"apple_p8", app?}` | Forget a key (the file is not deleted) |
-| POST | `/api/deployment/p8/upload` | multipart `app_id`, `issuer_id`, `file` — or JSON `{app_id, filename, issuer_id, content_base64}` | Upload an App Store Connect key |
+| Method | Endpoint | Query Parameters | Returns / Purpose |
+|:---|:---|:---|:---|
+| `GET` | `/api/deployment/sentinel` | `?app=<app_id>&flavor=<flavor>` | Proactively checks Apple `.p8` keys, iOS distribution certs, Android upload keys, and cross-platform Firebase project IDs. |
 
-Import rules: files are classified by content; `.p8` keys must be named `AuthKey_<KEYID>.p8`; Issuer IDs must be UUIDs; Firebase files need an `app`.
+### Response Schema:
+```json
+{
+  "success": true,
+  "appId": "customer_app",
+  "flavor": "prod",
+  "status": "warning", // "ok" | "warning" | "critical"
+  "message": "1 certificate requires attention",
+  "alerts": [
+    {
+      "type": "apple_cert",
+      "severity": "warning",
+      "name": "Apple Distribution Certificate",
+      "expiresOn": "2026-10-25",
+      "daysRemaining": 23,
+      "message": "Expires in 23 days (renew in Apple Developer portal)"
+    }
+  ],
+  "firebase": {
+    "mismatch": false,
+    "androidProjectId": "acme-prod",
+    "iosProjectId": "acme-prod"
+  }
+}
+```
 
-## Platform
+---
 
-| Method | Endpoint | Query | Purpose |
-|---|---|---|---|
-| GET | `/api/deployment/ios-cert-check` | `?app=&flavor=` | Certificate and provisioning-profile expiry |
-| GET | `/api/deployment/health` | – | Availability of flutter, xcodebuild, fastlane, … |
-| GET | `/api/app-icon` | `?url=` | Proxy for app icons shown in the grid |
+## Build Size Inspector & Diff
 
-## Webhook
+| Method | Endpoint | Query Parameters | Returns / Purpose |
+|:---|:---|:---|:---|
+| `GET` | `/api/deployment/build-size` | `?jobId=<id>&app=<app>&flavor=<flavor>` | Inspects ZIP central directory of generated AAB/APK without disk extraction. Compares byte size against previous run and flags uncompressed raw assets (`ZIP_STORED` ≥ 500 KB). |
 
-`POST /api/deployment/webhook` — for CI on the same machine. Authenticated with `WEBHOOK_SECRET` instead of the API token:
+### Response Schema:
+```json
+{
+  "success": true,
+  "artifact": "app-prod-release.aab",
+  "sizeBytes": 25375539,
+  "formattedSize": "24.2 MB",
+  "previousSize": 21390950,
+  "deltaBytes": 3984589,
+  "deltaFormatted": "+3.8 MB",
+  "deltaPercent": "+18.6%",
+  "severity": "warning", // "ok" | "warning" | "critical"
+  "uncompressedOversizedAssets": [
+    {
+      "path": "base/assets/sample_video.mp4",
+      "sizeBytes": 2048576,
+      "formattedSize": "1.95 MB",
+      "method": "ZIP_STORED"
+    }
+  ]
+}
+```
 
-- header `X-Webhook-Secret: <secret>`, or
-- header `X-Hub-Signature-256: sha256=<HMAC-SHA256 of the body>` (GitHub style).
+---
 
-Body: `{app, templateId, flavor, confirmed?}`. Disabled (`503`) when `WEBHOOK_SECRET` is not set.
+## Local APK Hosting & QR Code
+
+| Method | Endpoint | Query Parameters | Returns / Purpose |
+|:---|:---|:---|:---|
+| `GET` | `/api/deployment/download/<target>` | `?token=<auth_token>` | Streams generated `.apk` file for direct wireless installation. Verified via query token or `X-API-Token`. |
+| `GET` | `/api/deployment/qr` | `?text=<url>&token=<auth_token>` | Generates SVG QR code representation of the download URL for mobile camera scanning. |
+
+---
+
+## Saved Pipelines
+
+| Method | Endpoint | Query / Body | Returns / Purpose |
+|:---|:---|:---|:---|
+| `GET` | `/api/deployment/pipelines` | `?app=<app_id>` | Returns saved multi-step deployment pipelines for the app. |
+| `POST` | `/api/deployment/pipelines` | `{"app", "name", "steps": [...]}` | Creates or updates a saved pipeline definition in `<project>/.dev-dashboard/pipelines.json`. |
+| `POST` | `/api/deployment/pipelines/run` | `{"app", "pipelineId", "flavor"}` | Triggers sequential step-by-step pipeline execution with stop-on-failure safety. |
+| `GET` | `/api/deployment/pipelines/run` | `?id=<run_id>` | Returns live execution progress, active step index, and per-step logs. |
+
+---
+
+## Server Management & 1-Click Launchers
+
+| Method | Endpoint | Query / Body | Returns / Purpose |
+|:---|:---|:---|:---|
+| `GET` | `/api/deployment/server-status` | – | Lightweight heartbeat ping returning online status and port. |
+| `GET` | `/api/deployment/server/status` | – | Detailed server telemetry: uptime seconds, PID, memory, active workspace root. |
+| `GET` | `/api/deployment/server/service-status` | – | Detects if desktop shortcut or systemd user service is installed on host. |
+| `POST` | `/api/deployment/server/start` | `{"port": 18112}` | Spawns background server process. |
+| `POST` | `/api/deployment/server/stop` | – | Gracefully shuts down active server process. |
+| `POST` | `/api/deployment/server/restart` | – | Triggers automated process re-exec. |
+| `POST` | `/api/deployment/server/install-desktop` | – | Creates native `.desktop` application shortcut in `~/.local/share/applications/`. |
+| `POST` | `/api/deployment/server/install-service` | – | Installs and activates systemd user login service `dev-deployment.service`. |
+
+---
+
+## Team Webhook Notifications
+
+| Method | Endpoint | Query / Body | Returns / Purpose |
+|:---|:---|:---|:---|
+| `POST` | `/api/deployment/notifications/test` | `{"webhookUrl", "provider": "slack"\|"discord"\|"teams"\|"google_chat"}` | Sends sample test card to verify team channel integration. |
+| `POST` | `/api/deployment/webhook` | `{"app", "templateId", "flavor"}` | External trigger endpoint for CI runners (requires `X-Webhook-Secret` or GitHub `X-Hub-Signature-256`). |
+
+---
+
+## Documentation Provider
+
+| Method | Endpoint | Query Parameters | Returns / Purpose |
+|:---|:---|:---|:---|
+| `GET` | `/api/deployment/docs/list` | – | Returns list of all available documentation guides and categories. |
+| `GET` | `/api/deployment/docs` | `?doc=<id>` | Returns markdown document content for display in the interactive docs viewer. |

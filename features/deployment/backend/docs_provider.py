@@ -131,29 +131,36 @@ Welcome to the **Dev Deployment Console** — a lightweight, zero-dependency dev
    - Generates and executes parameterized Fastlane & Flutter deployment commands.
    - Clean separation of Dev, QA, and Production environments with production deploy confirmation guards.
 
-2. **Saved Pipelines (Chained Workflows)**
+2. **Zero-Terminal Startup (1-Click Launchers)**
+   - Create desktop application shortcuts (`.desktop`) with 1-click in the Server Console modal.
+   - Install auto-start systemd user service to launch seamlessly on system login.
+
+3. **Interactive Demo Mode & Offline Console**
+   - Explore and test-drive simulated builds, pre-flight diagnostics, and size diffs even when the backend is offline.
+
+4. **Saved Pipelines (Chained Workflows)**
    - Create and save multi-step deployment sequences (e.g. `Pre-flight Diagnostics` → `Build AAB` → `Upload to Play Store`).
    - Stop-on-failure safety and live step-by-step progress tracking.
 
-3. **Pre-flight "App Doctor" (1-Click Diagnostics)**
+5. **Pre-flight "App Doctor" (1-Click Diagnostics)**
    - 1-click comprehensive system and project health evaluation before running long builds.
    - Inspects Flutter SDK, Android SDK, CocoaPods, keystores, `.p8` Apple keys, provisioning profiles, Git clean status, and Firebase configurations.
 
-4. **Local APK Hosting & QR Code Scan-to-Install**
+6. **Local APK Hosting & QR Code Scan-to-Install**
    - Instantly hosts completed Android `.apk` builds over local HTTP (`/api/deployment/download/<job_id>`).
    - Generates a terminal & UI QR code for instant phone camera scan-and-install over Wi-Fi without cables or Firebase App Distribution setup.
 
-5. **Outgoing Webhooks (Slack / Discord / Microsoft Teams)**
+7. **Outgoing Webhooks (Slack / Discord / Microsoft Teams)**
    - Automated deployment notifications to team channels on build completion or failure.
    - Rich card layouts with status badges, elapsed duration, commit logs, and direct APK download links.
 
-6. **Certificate & Keystore Expiry Sentinel**
+8. **Certificate & Keystore Expiry Sentinel**
    - Proactive warnings on dashboard:
      - Apple `.p8` API keys and distribution certificates expiring within 30 days.
      - Android upload keys nearing validity limits.
      - Cross-platform Firebase project ID mismatches (e.g. dev config in a production build).
 
-7. **Build Size Inspector & Diff**
+9. **Build Size Inspector & Diff**
    - Fast archive size comparison against previous successful runs (`AAB: 24.2 MB (+3.8 MB, +18%) ⚠️`).
    - Deep zip central directory inspection without extracting files to disk.
    - Alerts developers if huge uncompressed raw assets (`ZIP_STORED` ≥ 500 KB) are accidentally packaged into production bundles.
@@ -162,7 +169,7 @@ Welcome to the **Dev Deployment Console** — a lightweight, zero-dependency dev
 
 ## 🏁 Starting the Deployment Server
 
-To connect this web console to your real local projects, start the backend server from your terminal:
+To connect this web console to your real local projects, start the backend server from your terminal or 1-click launcher:
 
 ```bash
 # 1. From repository root:
