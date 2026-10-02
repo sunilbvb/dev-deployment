@@ -218,13 +218,15 @@ curl -s -H "X-API-Token: $TOKEN" \
 | Method | Endpoint | Query / Body | Returns / Purpose |
 |:---|:---|:---|:---|
 | `GET` | `/api/deployment/pipelines` | `?app=<app_id>` | Returns saved multi-step deployment pipelines for the app. |
-| `POST` | `/api/deployment/pipelines` | `{"app", "name", "steps": [...]}` | Creates or updates a saved pipeline definition in `<project>/.dev-dashboard/pipelines.json`. |
-| `POST` | `/api/deployment/pipelines/run` | `{"app", "pipelineId", "flavor"}` | Triggers sequential step-by-step pipeline execution with stop-on-failure safety. |
+| `POST` | `/api/deployment/pipelines/save` | `{"app", "pipeline": {"id", "name", "steps": [...]}}` | Saves or updates a visual pipeline definition. |
+| `POST` | `/api/deployment/pipelines/delete` | `{"app", "pipelineId": "<id>"}` | Deletes a saved pipeline definition. |
+| `POST` | `/api/deployment/pipelines/run` | `{"app", "pipelineId", "flavor", "confirmed"}` | Triggers sequential step-by-step pipeline execution with stop-on-failure safety. |
 | `GET` | `/api/deployment/pipelines/run` | `?id=<run_id>` | Returns live execution progress, active step index, and per-step logs. |
+| `POST` | `/api/deployment/pipelines/stop` | `{"runId": "<run_id>"}` | Aborts active pipeline execution and releases the app lock. |
 
 ---
 
-## Server Management & 1-Click Launchers
+## Server Management & Lifecycle Controls
 
 | Method | Endpoint | Query / Body | Returns / Purpose |
 |:---|:---|:---|:---|
@@ -233,18 +235,36 @@ curl -s -H "X-API-Token: $TOKEN" \
 | `GET` | `/api/deployment/server/service-status` | – | Detects if desktop shortcut or systemd user service is installed on host. |
 | `POST` | `/api/deployment/server/start` | `{"port": 18112}` | Spawns background server process. |
 | `POST` | `/api/deployment/server/stop` | – | Gracefully shuts down active server process. |
-| `POST` | `/api/deployment/server/restart` | – | Triggers automated process re-exec. |
+| `POST` | `/api/deployment/server/end` | – | Graceful termination alias for Stop Server. |
+| `POST` | `/api/deployment/server/restart` | – | Triggers automated in-place process restart via `os.execv`. |
 | `POST` | `/api/deployment/server/install-desktop` | – | Creates native `.desktop` application shortcut in `~/.local/share/applications/`. |
 | `POST` | `/api/deployment/server/install-service` | – | Installs and activates systemd user login service `dev-deployment.service`. |
 
 ---
 
-## Team Webhook Notifications
+## Universal Webhooks & CI/CD Ingestion
 
 | Method | Endpoint | Query / Body | Returns / Purpose |
 |:---|:---|:---|:---|
-| `POST` | `/api/deployment/notifications/test` | `{"webhookUrl", "provider": "slack"\|"discord"\|"teams"\|"google_chat"}` | Sends sample test card to verify team channel integration. |
-| `POST` | `/api/deployment/webhook` | `{"app", "templateId", "flavor"}` | External trigger endpoint for CI runners (requires `X-Webhook-Secret` or GitHub `X-Hub-Signature-256`). |
+| `POST` | `/api/deployment/notifications/test` | `{"url", "provider", "app"?, "custom_template"?, "custom_headers"?, "phone"?}` | Sends immediate test card to any webhook (Slack, Discord, Teams, Google Chat, WhatsApp, Custom template, or Generic JSON). |
+| `POST` | `/api/deployment/webhook/incoming` | JSON or form-urlencoded | Universal incoming webhook ingestion. Triggers commands or automated pipelines from GitHub, GitLab, Slack, or cURL. |
+| `POST` | `/api/deployment/webhook/incoming/<provider>` | `github` \| `gitlab` \| `slack` \| `generic` | Provider-specific routing alias with tailored header and payload parsers. |
+| `POST` | `/api/deployment/webhook` | `{"app", "templateId", "flavor"}` | Legacy endpoint maintained for backward compatibility. |
+
+### Incoming Webhook Authentication
+Incoming requests are accepted if ANY of the following match:
+1. `X-Webhook-Secret: <secret>` or `X-Gitlab-Token: <secret>` equals `WEBHOOK_SECRET`.
+2. `Authorization: Bearer <secret>` equals `WEBHOOK_SECRET`.
+3. `?secret=<secret>` or `?token=<secret>` query parameter equals `WEBHOOK_SECRET`.
+4. `X-Hub-Signature-256: sha256=<hmac>` validates against `WEBHOOK_SECRET` (GitHub standard).
+5. `X-Slack-Signature: v0=<hmac>` with `X-Slack-Request-Timestamp` validates against `WEBHOOK_SECRET` (Slack standard).
+6. Authorized session header `X-API-Token: <token>`.
+
+### Ingestion Triggers:
+- **Trigger Pipeline:** `{"app": "my_app", "pipeline": "full_release", "flavor": "prod"}`
+- **Trigger Command:** `{"app": "my_app", "templateId": "build_aab", "flavor": "prod"}`
+- **Slack Slash Command:** `/deploy my_app prod build_aab` or `/deploy pipeline full_release my_app`
+- **GitHub Ping:** `{"zen": "..."}` with `X-GitHub-Event: ping` returns `200 Pong`.
 
 ---
 

@@ -12,8 +12,12 @@ How the Dev Deployment Console is built, the rules every change must keep, and a
 4. [Project Discovery](#-project-discovery)
 5. [Credentials](#-credentials)
 6. [Releases](#️-releases)
-7. [Design Rules](#-design-rules)
-8. [File Map](#️-file-map)
+7. [Universal Webhooks & Notifications](#-universal-webhooks--notifications)
+8. [Visual Pipeline Engine](#-visual-pipeline-engine)
+9. [Diagnostics, Sentinels & Artifact Hosting](#-diagnostics-sentinels--artifact-hosting)
+10. [Server Lifecycle Management](#-server-lifecycle-management)
+11. [Design Rules](#-design-rules)
+12. [File Map](#️-file-map)
 
 ---
 
@@ -129,6 +133,75 @@ The scripts honour those variables first and keep their own fallbacks (`resolveP
 
 ---
 
+## 🔔 Universal Webhooks & Notifications
+
+`notifications.py` provides a decoupled, multi-channel notification engine and an incoming CI/CD ingestion gateway:
+
+1. **Multi-Destination Outgoing Webhooks**:
+   - Out-of-the-box support for **Slack**, **Discord**, **Microsoft Teams**, **Google Chat**, and **WhatsApp** (Meta Cloud API & Twilio REST API).
+   - Deliveries run asynchronously in daemon threads upon job completion or failure, capturing HTTP status codes and response bodies without blocking builds.
+2. **Dynamic Template & Custom Header Engine**:
+   - Custom payload templates with automatic variable interpolation: `{app}`, `{status}`, `{flavor}`, `{version}`, `{commit}`, `{author}`, `{summary}`, `{run_id}`, `{download_url}`, `{timestamp}`.
+   - User-defined HTTP headers for custom enterprise webhook gateways (e.g. `Authorization: Bearer <token>`, `X-Custom-Header: value`).
+3. **Incoming CI/CD Ingestion Gateway**:
+   - Generic endpoint `/api/deployment/webhook/incoming` and provider-specific `/api/deployment/webhook/incoming/<provider>`.
+   - Ingests triggers from **GitHub Actions**, **GitLab CI/CD**, **Slack Slash Commands**, and **cURL**.
+   - Cryptographic signature and token verification: HMAC SHA-256 (`X-Hub-Signature-256`), GitLab secret token (`X-Gitlab-Token`), Slack request signature (`X-Slack-Signature`), and Bearer secret (`X-Webhook-Secret`).
+   - Automatically maps incoming events (`push`, `tag`, `slash_command`) to trigger configured deployment pipelines or commands.
+
+---
+
+## 🔀 Visual Pipeline Engine
+
+`pipelines.py` implements chained, multi-step deployment sequences with fine-grained control:
+
+1. **Pipeline Model & Storage**:
+   - Persisted in `<project>/.dev-dashboard/pipelines.json` per workspace.
+   - Defines ordered step sequences: Pre-flight Diagnostics → Clean → Build → Quality Checks → Deploy/Upload → Custom Shell Steps.
+2. **Visual Builder & Categorized Picker**:
+   - Web UI enables non-terminal pipeline construction with categorized step picker (`Diagnostics`, `Builds`, `Uploads`, `Quality/Test`, `Custom Shell`).
+   - Interactive step reordering (move up/down) with per-step deletion and continue-on-failure settings.
+3. **Custom Shell Execution**:
+   - Custom shell steps execute within the project workspace context, receiving job environment variables and timeout enforcement.
+4. **Execution Engine & Fail-Safe Controls**:
+   - Steps execute sequentially; step failure halts execution immediately unless `continue_on_failure: true` is configured for non-critical steps (e.g., test reports).
+   - Live execution tracking in the dashboard terminal with per-step status badges (`pending`, `running`, `passed`, `failed`).
+
+---
+
+## 🩺 Diagnostics, Sentinels & Artifact Hosting
+
+Pre-flight verification, health monitoring, and zero-cable installation:
+
+1. **App Doctor (`doctor.py`)**:
+   - One-click pre-flight diagnostic suite inspecting Flutter SDK, Android SDK/NDK, Java/JDK, CocoaPods, Xcode, Fastlane, Melos, Git clean working tree, and Firebase configs.
+   - Categorizes findings into `PASS`, `WARN`, and `FAIL` with actionable remediation commands.
+2. **Expiry Sentinels (`sentinel.py`)**:
+   - Background and on-demand inspection of Apple distribution certificates, `.p8` API keys, and Android Keystores (`keytool`).
+   - Flags credentials expiring within 30 days and alerts when cross-platform Firebase project IDs differ between Android (`google-services.json`) and iOS (`GoogleService-Info.plist`).
+3. **Local Artifact Hosting & Wireless QR Scanning (`artifacts.py`, `qr.py`)**:
+   - Discovers built `.apk`, `.aab`, and `.ipa` artifacts and serves them over local HTTP (`/api/deployment/download/<job_id>`).
+   - Generates pure Python QR codes (SVG/PNG matrix builder, zero external pip libraries) displayed in terminal and web UI for direct Wi-Fi scan-to-install on Android physical devices.
+4. **Build Size Inspector (`build_size.py`)**:
+   - In-memory zip central directory parser comparing new builds against previous runs.
+   - Warns on unexpected size regressions and flags uncompressed raw assets (`ZIP_STORED` ≥ 500 KB) packaged into production archives.
+
+---
+
+## ⚡ Server Lifecycle Management
+
+`server_manager.py` manages local server execution without requiring an open terminal window:
+
+1. **In-Place Hot Restart**:
+   - Re-executes the server process using `os.execv(sys.executable, [sys.executable] + sys.argv)` to reload backend code in-place while keeping open browser sessions and working directory intact.
+2. **Process Controls**:
+   - `/api/deployment/server/status`, `/start`, `/stop`, `/restart`, `/end` endpoints manage the daemon process cleanly via PID file tracking.
+3. **Desktop & Systemd Integration**:
+   - **Linux Desktop Launcher**: Generates `~/.local/share/applications/dev-deployment.desktop` with one click for system app menu launching.
+   - **Systemd User Service**: Generates and enables `~/.config/systemd/user/dev-deployment.service` for seamless auto-start on user login.
+
+---
+
 ## 📐 Design Rules
 
 1. **Generic, never project-specific.** No hardcoded `apps/<name>`, package names or file names. Use the resolvers (`_resolve_app_dir` / `resolveAppDir`, `resolveAndroidPackageName`, `resolvePlayServiceAccount`).
@@ -177,11 +250,20 @@ Every tracked file and what it owns. Paths are relative to the repository root.
 | File | What it owns | Main functions |
 |---|---|---|
 | `server.py` | HTTP server: routing, `X-API-Token` auth, host/origin checks, `X-Workspace` per-request project, static files (injects the token into `index.html`), multipart uploads, startup migration of inline `.p8` keys | `DeploymentHandler`, `main` |
-| `router.py` | Facade re-exporting the modules below to `server.py` | — |
+| `router.py` | Facade re-exporting backend modules to `server.py` | — |
 | `config.py` | Project discovery and layout classification, app vs package detection, flavors, apps/deploy config files, auto-scan of bundle IDs / package names / Firebase files, added-projects list | `get_apps`, `inspect_workspace_path`, `scan_app_config`, `scan_all_apps_config`, `rescan_workspace`, `allow_workspace`, `get_workspaces_list`, `load_deploy_config`, `save_deploy_config`, `get_workspace_root` (`_discover_apps_in_workspace`, `_detect_app_in_dir`, `_describe_layout`, `_resolve_app_dir`) |
 | `commands.py` | Builds command cards from templates; decides script vs direct execution (`ACTION_MAP`); locks uploads without credentials | `get_commands`, `regenerate_commands` |
 | `jobs.py` | Runs jobs as subprocesses with the app's credential env, streams output, per-app locks, history, chained auto-release, iOS cert expiry; job threads keep the request's project | `execute_command`, `get_job`, `stop_job`, `get_running_jobs`, `get_deployment_history`, `check_ios_expiry` |
 | `credentials.py` | Key scanning by content, import/upload, private per-user store, status, environment for jobs, migration of old inline `.p8` | `scan_credentials`, `import_credential_path`, `import_credential_bytes`, `remove_credential`, `get_credentials_status`, `job_env`, `migrate_inline_p8` |
+| `pipelines.py` | Visual pipeline model, step execution engine, custom shell steps, continue-on-failure handling, step reordering, persistent pipeline storage | `load_pipelines`, `save_pipeline`, `delete_pipeline`, `execute_pipeline`, `get_pipeline_run`, `stop_pipeline_run` |
+| `notifications.py` | Universal webhook dispatch (Slack, Discord, Teams, Google Chat, WhatsApp Meta Cloud/Twilio, Custom Templates), payload templating, incoming CI/CD ingestion gateway with HMAC SHA-256 / token validation | `send_deployment_notification`, `test_notification_channel`, `handle_incoming_webhook`, `render_template` |
+| `server_manager.py` | Server process lifecycle management (status, start, stop, restart via `os.execv`, end), desktop launcher generation (`.desktop`), and systemd user service registration | `get_server_status`, `start_server_daemon`, `stop_server_daemon`, `restart_server`, `end_server`, `create_desktop_launcher`, `install_systemd_service` |
+| `docs_provider.py` | In-app documentation repository provider, dynamic Markdown overview generator, and document security validator | `list_available_docs`, `get_doc_content` |
+| `artifacts.py` | Local APK/AAB/IPA build artifact scanning, file metadata extraction, and local download endpoint serving | `find_job_artifacts`, `get_artifact_stream`, `list_app_artifacts` |
+| `qr.py` | Pure Python QR code generation (zero external pip dependencies), SVG/PNG matrix builder, LAN IP address detection, wireless APK install URLs | `generate_qr_svg`, `generate_qr_ascii`, `get_lan_ip`, `get_artifact_download_url` |
+| `sentinel.py` | Expiry sentinel monitors for Apple certificates (.cer/.p12/.mobileprovision), Android Keystores, and Firebase project configuration mismatch checks | `check_credentials_expiry`, `check_firebase_sync` |
+| `build_size.py` | Build size archive diffing, historical artifact tracking, uncompressed raw asset detection (`ZIP_STORED` ≥ 500 KB), breakdown by file type | `analyze_build_size`, `get_size_history`, `compare_build_sizes` |
+| `doctor.py` | Pre-flight App Doctor diagnostic suite checking Flutter, Java, Xcode, CocoaPods, Fastlane, Melos, Git, environment sanity | `run_doctor_checks`, `get_doctor_summary` |
 | `picker.py` | Native folder/file dialogs (`osascript` on macOS, `zenity` on Linux); remembers chosen folders for inspection | `pick_path`, `was_picked` |
 | `p8.py` | `.p8` upload endpoint, delegating to `credentials.py` | `upload_p8_key` |
 
@@ -317,8 +399,12 @@ Run: `python3 -m unittest discover -s tests` (Python ≥ 3.10).
 | `config/workspaces_list.json` | Added projects |
 | `<project>/.dev-dashboard/apps_config.json` | Detected apps |
 | `<project>/.dev-dashboard/deploy_config.json` | Per-app identifiers, paths, auto-release (no secrets) |
+| `<project>/.dev-dashboard/pipelines.json` | Saved visual deployment pipelines |
 | `<project>/.dev-dashboard/deployment_history.jsonl` | Job history |
+| `<project>/.dev-dashboard/build_sizes.json` | Historical build archive sizes for diffing |
 | `~/.config/dev-deployment/auth_token.txt` | API token |
 | `~/.config/dev-deployment/credentials.json` | Key ↔ app mapping per project |
 | `~/.config/dev-deployment/keys/` | Imported Play service-account keys |
 | `~/.appstoreconnect/private_keys/` | Imported App Store Connect `.p8` keys |
+| `~/.local/share/applications/dev-deployment.desktop` | 1-Click desktop application launcher |
+| `~/.config/systemd/user/dev-deployment.service` | Auto-start systemd background user service |
