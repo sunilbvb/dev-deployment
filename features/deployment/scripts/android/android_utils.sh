@@ -624,7 +624,19 @@ buildAABRaw() {
     if [ "${USE_KEYCHAIN_SECRETS:-false}" = "true" ] || [ "${USE_KEYCHAIN_SECRETS:-0}" = "1" ]; then
         local secrets_script="$(dirname "$JSON_UTILS_PATH")/build_secrets.sh"
         if [ ! -f "$secrets_script" ]; then
+            secrets_script="$(dirname "$JSON_UTILS_PATH")/security/build_secrets.sh"
+        fi
+        if [ ! -f "$secrets_script" ]; then
+            secrets_script="$(dirname "$JSON_UTILS_PATH")/../security/build_secrets.sh"
+        fi
+        if [ ! -f "$secrets_script" ]; then
+            secrets_script="$ROOT/developer-dashboard/features/deployment/scripts/security/build_secrets.sh"
+        fi
+        if [ ! -f "$secrets_script" ]; then
             secrets_script="$ROOT/developer-dashboard/features/deployment/scripts/build_secrets.sh"
+        fi
+        if [ ! -f "$secrets_script" ]; then
+            secrets_script="$ROOT/features/deployment/scripts/security/build_secrets.sh"
         fi
         if [ ! -f "$secrets_script" ]; then
             secrets_script="$ROOT/features/deployment/scripts/build_secrets.sh"
