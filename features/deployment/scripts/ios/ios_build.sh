@@ -132,6 +132,12 @@ run_xcode_build_and_export() {
     # Fetch secrets from Keychain in-memory if script exists and enabled
     local keychain_defines=""
     local secrets_script="$(dirname "$JSON_UTILS_PATH")/build_secrets.sh"
+    if [ ! -f "$secrets_script" ]; then
+        secrets_script="$(dirname "$JSON_UTILS_PATH")/security/build_secrets.sh"
+    fi
+    if [ ! -f "$secrets_script" ]; then
+        secrets_script="$(dirname "$JSON_UTILS_PATH")/../security/build_secrets.sh"
+    fi
     if [ -f "$secrets_script" ] && [ "${USE_KEYCHAIN_SECRETS:-false}" = "true" ]; then
         keychain_defines="$(bash "$secrets_script" "$env_name")"
     fi

@@ -32,7 +32,11 @@ fi
 export MELOS_ROOT_PATH="$ROOT"
 
 # 2. Source main json utility script relative to this script
-source "$SCRIPT_DIR/json_utils.sh"
+if [ -f "$SCRIPT_DIR/core/json_utils.sh" ]; then
+    source "$SCRIPT_DIR/core/json_utils.sh"
+else
+    source "$SCRIPT_DIR/json_utils.sh"
+fi
 
 # 3. Extract requested action and execute with shifted arguments
 ACTION="$1"

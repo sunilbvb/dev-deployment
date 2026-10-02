@@ -92,13 +92,22 @@ get_profile_val() {
   script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." >/dev/null 2>&1 && pwd)"
   local config_file="$script_dir/build_profiles.json"
   if [ ! -f "$config_file" ]; then
+    config_file="$script_dir/core/build_profiles.json"
+  fi
+  if [ ! -f "$config_file" ]; then
     local root="${MELOS_ROOT_PATH:-}"
     if [ -z "$root" ]; then
       root="$(pwd | sed -E 's|/apps/[^/]+||' | sed -E 's|/packages/[^/]+||')"
     fi
     config_file="$root/developer-dashboard/features/deployment/scripts/build_profiles.json"
     if [ ! -f "$config_file" ]; then
+      config_file="$root/developer-dashboard/features/deployment/scripts/core/build_profiles.json"
+    fi
+    if [ ! -f "$config_file" ]; then
       config_file="$root/features/deployment/scripts/build_profiles.json"
+    fi
+    if [ ! -f "$config_file" ]; then
+      config_file="$root/features/deployment/scripts/core/build_profiles.json"
     fi
   fi
   if [ ! -f "$config_file" ]; then

@@ -297,16 +297,16 @@ Every tracked file and what it owns. Paths are relative to the repository root.
 
 ---
 
-### Scripts — Entry & Helpers
+### Scripts — Core & Entry
 
 `features/deployment/scripts/`
 
 | File | What it owns |
 |---|---|
-| `run_build.sh` | Dispatcher `run_build.sh <function> <app> <env>`: resolves the project root (`WORKSPACE_ROOT` from the console first), sources `json_utils.sh`, calls the function |
-| `json_utils.sh` | Shared helpers: `resolveAppDir`, `resolveAndroidPackageName`, `resolvePlayServiceAccount`, `getValueByKey`, `exportAppContents`; Melos helpers `melosScriptExists`, `runMelosOrDirect` (Melos script if defined, else direct step); release wrappers `releasePreview` … `releaseUndo`; `deployBothPlatforms` |
-| `build_profiles.json` | Optional named build profiles (sample entries only); real values are resolved from the project |
-| `build_secrets.sh`, `setup_keychain.sh` | Load / store secrets in the macOS Keychain |
+| `run_build.sh` | Main CLI entrypoint `run_build.sh <action> <app> <env>`: resolves project root, sources `core/json_utils.sh`, executes action |
+| `core/json_utils.sh` | Core shared helpers: `resolveAppDir`, `resolveAndroidPackageName`, `resolvePlayServiceAccount`, `getValueByKey`, `exportAppContents`; Melos helpers `melosScriptExists`, `runMelosOrDirect`; release wrappers `releasePreview` … `releaseUndo`; `deployBothPlatforms` |
+| `core/build_profiles.json` | Named build profiles & environment configurations |
+| `json_utils.sh` | Backward-compatibility delegator sourcing `core/json_utils.sh` |
 
 ---
 
@@ -334,7 +334,18 @@ Every tracked file and what it owns. Paths are relative to the repository root.
 
 | File | What it owns |
 |---|---|
-| `release_changelog_tagger.dart` | Release tool: discovers apps/packages in any layout, collects commits since the last tag (with exact per-package path matching), compiles the changelog, bumps versions, commits, creates annotated tags, pushes; prints the commit table, every mutating git command with its result and a release summary; pushes an existing local release; branch and ancestry guards |
+| `release/release_changelog_tagger.dart` | Release tool: discovers apps/packages in any layout, collects commits since the last tag (with exact per-package path matching), compiles the changelog, bumps versions, commits, creates annotated tags, pushes; prints the commit table, every mutating git command with its result and a release summary; pushes an existing local release; branch and ancestry guards |
+| `release_changelog_tagger.dart` | Backward-compatibility entrypoint delegating to `release/release_changelog_tagger.dart` |
+
+---
+
+### Scripts — Security & Keychain
+
+| File | What it owns |
+|---|---|
+| `security/build_secrets.sh` | Loads secrets from macOS Keychain at compile time |
+| `security/setup_keychain.sh` | Configures temporary keychain in CI / build environments |
+| `build_secrets.sh` | Backward-compatibility delegator sourcing `security/build_secrets.sh` |
 
 ---
 
@@ -346,18 +357,17 @@ Every tracked file and what it owns. Paths are relative to the repository root.
 | `chat/chat_helpers.sh` | Env-file lookup, version detection (`APP_DIR` aware), git info |
 | `chat/chat_card_header.sh`, `chat/chat_card_sections.sh`, `chat/chat_card_failures.sh` | Card parts |
 | `chat/chat_android_utils.sh`, `chat/chat_ios_utils.sh` | Platform-specific card details |
-| `chat_notify.sh` | Older top-level entry kept for existing callers |
-| `../notifications/google_chat_notify.dart` | Dart alternative for posting Google Chat cards |
+| `chat_notify.sh` | Top-level entry kept for backward compatibility |
 
 ---
 
-### Scripts — Git & Misc
+### Scripts — Git & Tools
 
 | File | What it owns |
 |---|---|
-| `smart_git.sh`, `git_merge_branch.sh`, `git_rename_branch.sh`, `git_workspace_status.sh` | Stand-alone git helpers (not wired to dashboard buttons) |
-| `i18n_scan_strings.py` | Scans source for untranslated strings |
-| `fix_with_opacity_with_values.sh` | One-off Flutter `withOpacity()` → `withValues()` migration |
+| `git/smart_git.sh`, `git/git_merge_branch.sh`, `git/git_rename_branch.sh`, `git/git_workspace_status.sh` | Stand-alone git helpers (not wired to dashboard buttons) |
+| `tools/i18n_scan_strings.py` | Scans source for untranslated strings |
+| `tools/fix_with_opacity_with_values.sh` | One-off Flutter `withOpacity()` → `withValues()` migration |
 
 ---
 

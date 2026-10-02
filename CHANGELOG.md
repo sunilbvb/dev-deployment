@@ -37,6 +37,7 @@ All notable changes to this project are documented here. The format follows [Kee
   - `qr/`: `matrix.py`, `renderer.py`
   - `artifacts/`: `network.py`, `scanner.py`, `distributor.py`
   - `server_manager/`: `paths.py`, `desktop.py`, `service.py`
+- **Modular Scripts Directory Architecture**: Reorganized deployment shell scripts and release tools into specialized domain folders: `core/` (common resolution & build profiles), `release/` (Dart tagger & changelog generator), `security/` (Keychain & secrets injection), `git/` (branch & merge utilities), and `tools/` (maintenance & string scanning), while preserving root backward-compatibility delegator entrypoints.
 - App IDs are folder names; display names still come from `pubspec.yaml`.
 - `.p8` keys are no longer embedded in `deploy_config.json`; existing inline keys are migrated out on startup.
 - Android package names, app folders and the Play key are resolved for any layout instead of `apps/<app>` and fixed file names.
