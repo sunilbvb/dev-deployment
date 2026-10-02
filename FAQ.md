@@ -153,6 +153,81 @@ Or find and stop the existing process occupying the port:
 lsof -ti :18112 | xargs kill -9
 ```
 
+### How do I actually deploy the Dev Deployment Console onto a live production server (e.g. `https://devdeployment/index.html`)?
+To deploy the console onto an internal production server or cloud build runner:
+
+1. **Provision Server Host:**
+   - Linux (Ubuntu 22.04/24.04 LTS) or macOS (if iOS Xcode builds are required).
+   - Ensure Python ≥ 3.10, Git, and Nginx are installed.
+
+2. **Clone the Repository:**
+   ```bash
+   sudo git clone https://github.com/sunilbvb/dev-deployment.git /opt/dev-deployment
+   sudo chown -R $USER:$USER /opt/dev-deployment
+   cd /opt/dev-deployment && git checkout main
+   ```
+
+3. **Install Systemd Production Service:**
+   Create `/etc/systemd/system/devdeployment.service`:
+   ```ini
+   [Unit]
+   Description=Dev Deployment Console Daemon
+   After=network.target
+
+   [Service]
+   Type=simple
+   User=deployer
+   WorkingDirectory=/opt/dev-deployment
+   ExecStart=/usr/bin/python3 features/deployment/backend/server.py --port 18112 --host 127.0.0.1
+   Restart=always
+   RestartSec=5
+
+   [Install]
+   WantedBy=multi-user.target
+   ```
+   Enable and start the service:
+   ```bash
+   sudo systemctl daemon-reload
+   sudo systemctl enable --now devdeployment
+   ```
+
+4. **Configure Nginx Reverse Proxy with HTTPS:**
+   Create `/etc/nginx/sites-available/devdeployment`:
+   ```nginx
+   server {
+       listen 443 ssl http2;
+       server_name devdeployment devdeployment.internal;
+
+       ssl_certificate /etc/ssl/certs/devdeployment.crt;
+       ssl_certificate_key /etc/ssl/private/devdeployment.key;
+
+       location / {
+           proxy_pass http://127.0.0.1:18112;
+           proxy_set_header Host localhost;
+           proxy_set_header X-Real-IP $remote_addr;
+           proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+           proxy_set_header X-Forwarded-Proto $scheme;
+       }
+   }
+   ```
+   Link and reload Nginx:
+   ```bash
+   sudo ln -s /etc/nginx/sites-available/devdeployment /etc/nginx/sites-enabled/
+   sudo nginx -t && sudo systemctl reload nginx
+   ```
+
+5. **Updating the Deployment (Zero-Downtime Rollout):**
+   Because the backend is 100% Python standard library and vanilla frontend (zero `npm build`, zero `pip install`), updating is instantaneous:
+   ```bash
+   cd /opt/dev-deployment && git pull origin main && sudo systemctl restart devdeployment
+   ```
+
+6. **Deploying Web Applications via the Tool:**
+   If your goal is to build and deploy Flutter Web, React, or static web applications to `https://devdeployment/`, create a pipeline step:
+   ```bash
+   flutter build web --release && rsync -av --delete build/web/ /var/www/devdeployment/
+   ```
+
 ---
 
 ## 3. Offline Console & Interactive Demo Mode
