@@ -38,6 +38,7 @@ All notable changes to this project are documented here. The format follows [Kee
   - `artifacts/`: `network.py`, `scanner.py`, `distributor.py`
   - `server_manager/`: `paths.py`, `desktop.py`, `service.py`
 - **Modular Scripts Directory Architecture**: Reorganized deployment shell scripts and release tools into specialized domain folders: `core/` (common resolution & build profiles), `release/` (Dart tagger & changelog generator), `security/` (Keychain & secrets injection), `git/` (branch & merge utilities), and `tools/` (maintenance & string scanning), while preserving root backward-compatibility delegator entrypoints.
+- **Modularized Core Scripts**: Refactored the monolithic 997-line `core/json_utils.sh` into single-responsibility shell modules: `melos_runner.sh`, `fastlane_utils.sh`, `project_resolver.sh`, `retry_utils.sh`, `release_commands.sh`, and `multiplatform.sh`, keeping `json_utils.sh` as a lightweight coordinator hub.
 - App IDs are folder names; display names still come from `pubspec.yaml`.
 - `.p8` keys are no longer embedded in `deploy_config.json`; existing inline keys are migrated out on startup.
 - Android package names, app folders and the Play key are resolved for any layout instead of `apps/<app>` and fixed file names.
