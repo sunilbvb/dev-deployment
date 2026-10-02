@@ -6,6 +6,14 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ### Added
 
+- **Universal Webhooks & Multi-Destination Alerts**: Multi-channel deployment notifications for Google Chat, Slack, Discord, Microsoft Teams, and WhatsApp (Meta Cloud API + Twilio REST API) with instant test dispatch.
+- **Custom Payload & Header Engine**: Configurable JSON payload templates with dynamic variable interpolation (`{app}`, `{status}`, `{flavor}`, `{version}`, `{commit}`, `{author}`, `{summary}`, `{run_id}`, `{download_url}`) and custom HTTP headers.
+- **Universal Incoming CI/CD Ingestion Gateway**: Ingest external triggers from GitHub Actions, GitLab CI/CD, Slack slash commands, and generic cURL triggers with HMAC SHA-256 (`X-Hub-Signature-256`), GitLab token (`X-Gitlab-Token`), Slack signature, and Bearer token verification.
+- **Visual Pipeline Builder UI**: Interactive pipeline creator with categorized step picker (Diagnostics, Builds, Uploads, Quality/Test, Custom Shell), custom shell command steps, step reordering, continue-on-failure toggles, and live terminal progress tracking.
+- **Server Lifecycle Management**: In-place server hot restart (`os.execv`), background daemon process controls (`/api/deployment/server/status`, `/start`, `/stop`, `/restart`, `/end`), 1-click Linux `.desktop` launcher creation, and auto-start systemd user service registration.
+- **Local Artifact Hosting & Wireless QR Scanning**: Automatic local HTTP hosting of built APKs and pure Python QR code generation (SVG/PNG matrix, zero pip dependencies) for cable-free LAN installation on mobile devices.
+- **Pre-flight App Doctor & Expiry Sentinels**: 1-click system diagnostics (Flutter, Java, CocoaPods, Xcode, Fastlane, Melos, Git), proactive expiration monitors for Apple certificates, `.p8` keys, and Android keystores (< 30 days), and cross-platform Firebase project ID mismatch detection.
+- **Build Size Inspector & Archive Diffing**: Archive size regression comparison against historical builds and deep zip inspection alerting on uncompressed raw assets (`ZIP_STORED` ≥ 500 KB).
 - **Generic project detection** for every layout: single app (with or without local packages), several apps, apps with shared packages, Melos monorepos and Dart pub workspaces — any folder names, nested packages, Flutter plugins recognised as packages, `main_*.dart` flavor entry points recognised as apps.
 - **Import Project** with the native folder dialog (macOS `osascript`, Linux `zenity`), showing the detected layout, apps and packages before adding.
 - **Remove a project** (× on its tab): drops it from the list without touching the folder or its settings.

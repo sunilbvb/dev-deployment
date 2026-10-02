@@ -45,7 +45,8 @@ Open `http://localhost:18112`, pick a project tab, select an app, choose an envi
 - **Certificate & Keystore Expiry Sentinel:** Proactive alerts when Apple `.p8` keys, distribution certificates, or Android keystores expire within 30 days, or when Firebase project IDs mismatch.
 - **Build Size Inspector & Diff:** Analyzes AAB/APK ZIP central directories without disk extraction. Displays deltas (`AAB: 24.2 MB (+3.8 MB, +18%) ⚠️`) and warns if raw uncompressed assets (`ZIP_STORED` ≥ 500 KB) are packaged.
 - **Local APK Wireless QR Code:** Instantly host completed APKs over local HTTP and scan a QR code from any physical device on the local Wi-Fi to install without USB cables.
-- **Saved Pipelines:** Chain multi-step sequences (`Doctor` → `Tests` → `Build AAB` → `Upload`) with stop-on-failure safety and live progress bars.
+- **Visual Pipeline Builder UI:** Drag-and-drop workflow builder with category filtering, custom shell steps, and live step execution tracking.
+- **Universal Multi-Destination Webhooks & CI/CD Ingestion:** Broadcast build notifications across Slack, Discord, Microsoft Teams, Google Chat, WhatsApp (Cloud API/Twilio), and custom templated JSON. Ingest incoming webhooks from GitHub Actions, GitLab CI, Slack slash commands, and cURL.
 - **Automated Conventional Changelogs:** Generates `CHANGELOG.md`, annotated git tags, and release commits grouped by `feat:`, `fix:`, and `perf:`.
 - **Zero-Dependency Backend:** Built 100% on Python's standard library. No `pip install` required.
 
@@ -213,12 +214,14 @@ When an Android APK build finishes:
 
 ---
 
-## ⛓️ Saved Pipelines (Chained Workflows)
+## ⛓️ Visual Pipeline Builder & Saved Workflows
 
-Automate complex multi-stage release workflows:
-- Combine steps like `App Doctor` → `Run Unit Tests` → `Build Release AAB` → `Upload to Google Play`.
+Automate complex multi-stage release workflows directly from the visual dashboard:
+- **Visual Sequence Builder:** Chain actions such as `App Doctor Diagnostics` → `Run Unit Tests` → `Build Release AAB` → `Upload to Google Play` → `Post Webhook Notification`.
+- **Interactive Step Picker:** Filter candidate steps by category (`Build`, `Test`, `Release`, `Custom`), view descriptions, and append steps with a single click.
+- **Custom Shell Steps:** Add arbitrary shell commands (e.g. `flutter test && dart run build_runner build`) executing directly within the selected app directory.
 - **Stop-on-Failure:** If any stage fails, all subsequent stages are automatically skipped and the app lock is safely released.
-- View live step progress with animated pipeline badges.
+- **Live Progress & Streaming:** Real-time animated pipeline badges, elapsed step timers, and live console logs.
 
 ---
 
@@ -231,12 +234,29 @@ Powered by `release_changelog_tagger.dart`:
 
 ---
 
-## 🔔 Outgoing Webhooks & Team Notifications
+## 🔔 Universal Webhooks: Multi-Destination Channels & CI/CD Ingestion
 
-Keep your engineering team updated on team channels:
-- Supports **Slack**, **Discord**, **Microsoft Teams**, and **Google Chat**.
-- Delivers status cards with duration, git commit info, build logs, and direct APK download links.
-- Test webhooks directly from the configuration drawer.
+Broadcast deployment outcomes and trigger automated builds from any third-party system:
+
+### 1. Multi-Destination Outgoing Webhooks
+- **Simultaneous Broadcasts:** Configure multiple notification channels per application plus a workspace-level default fallback.
+- **Supported Providers:**
+  - **Slack:** Interactive Block Kit message cards with status color bars and button actions.
+  - **Discord:** Rich Embeds featuring color codes, durations, and download links.
+  - **Microsoft Teams:** Adaptive MessageCard format with actionable buttons.
+  - **Google Chat:** Cards v2 widgets with formatted details and commit author tags.
+  - **WhatsApp:** Direct push to Meta Cloud API, Twilio, and webhook gateways with recipient phone numbers in E.164 format.
+  - **Custom Payload Template:** JSON/text engine supporting variable substitution (`{appName}`, `{version}`, `{buildNumber}`, `{status}`, `{flavor}`, `{platform}`, `{duration}`, `{downloadUrl}`, `{track}`, `{commitHash}`, `{error}`).
+  - **Generic JSON:** Standard payload structure accepted by microservices and internal webhooks.
+- **Custom HTTP Headers:** Inject custom headers (such as `Authorization: Bearer <token>`) for Telegram, PagerDuty, Mattermost, Zapier, or Webex.
+
+### 2. Universal Incoming Webhook Ingestion
+Trigger builds or multi-step pipelines via HTTP POST to `/api/deployment/webhook/incoming`:
+- **GitHub Actions:** Ingests `ping`, `push`, `workflow_dispatch`, and `repository_dispatch` events (`X-GitHub-Event`, `X-Hub-Signature-256`).
+- **GitLab CI:** Ingests Push and Pipeline webhooks authenticated via `X-Gitlab-Token`.
+- **Slack Slash Command:** Ingests `/deploy <app> <flavor> <template>` or `/deploy pipeline <pipeline_id>` directly from Slack channels (`application/x-www-form-urlencoded`).
+- **cURL / Generic JSON:** Trigger any deployment command or pipeline with a simple cURL snippet.
+- **Authentication:** Protected by `WEBHOOK_SECRET` (HMAC SHA-256 / Bearer token) or session `X-API-Token`.
 
 ---
 

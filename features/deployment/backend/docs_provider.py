@@ -138,9 +138,9 @@ Welcome to the **Dev Deployment Console** — a lightweight, zero-dependency dev
 3. **Interactive Demo Mode & Offline Console**
    - Explore and test-drive simulated builds, pre-flight diagnostics, and size diffs even when the backend is offline.
 
-4. **Saved Pipelines (Chained Workflows)**
-   - Create and save multi-step deployment sequences (e.g. `Pre-flight Diagnostics` → `Build AAB` → `Upload to Play Store`).
-   - Stop-on-failure safety and live step-by-step progress tracking.
+4. **Visual Pipeline Builder & Saved Pipelines (Chained Workflows)**
+   - Create and save multi-step deployment sequences with an interactive categorized step picker (Diagnostics, Builds, Uploads, Quality/Test, Custom Shell Commands).
+   - Support for custom shell execution steps, drag/interactive step reordering, continue-on-failure safety, and live step-by-step progress tracking.
 
 5. **Pre-flight "App Doctor" (1-Click Diagnostics)**
    - 1-click comprehensive system and project health evaluation before running long builds.
@@ -150,9 +150,10 @@ Welcome to the **Dev Deployment Console** — a lightweight, zero-dependency dev
    - Instantly hosts completed Android `.apk` builds over local HTTP (`/api/deployment/download/<job_id>`).
    - Generates a terminal & UI QR code for instant phone camera scan-and-install over Wi-Fi without cables or Firebase App Distribution setup.
 
-7. **Outgoing Webhooks (Slack / Discord / Microsoft Teams)**
-   - Automated deployment notifications to team channels on build completion or failure.
-   - Rich card layouts with status badges, elapsed duration, commit logs, and direct APK download links.
+7. **Universal Webhooks & CI/CD Ingestion**
+   - Automated deployment notifications to Slack, Discord, Microsoft Teams, Google Chat, and WhatsApp (Meta Cloud API + Twilio REST API).
+   - Dynamic custom payload templating with variable interpolation (`{{app}}`, `{{status}}`, `{{flavor}}`, `{{version}}`, `{{commit}}`, `{{author}}`, etc.) and user-defined HTTP headers.
+   - Universal incoming CI/CD ingestion gateway (`/api/deployment/webhook/incoming`) supporting GitHub Actions, GitLab CI/CD, Slack slash commands, and generic cURL triggers with HMAC SHA-256 and token authentication.
 
 8. **Certificate & Keystore Expiry Sentinel**
    - Proactive warnings on dashboard:

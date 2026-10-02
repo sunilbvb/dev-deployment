@@ -300,10 +300,17 @@ Ensure:
 ### What are Saved Pipelines?
 Saved Pipelines allow developers to chain multiple independent deployment steps into an automated, sequential pipeline (e.g., `1. App Doctor Diagnostics` → `2. Run Tests` → `3. Build Release AAB` → `4. Upload to Google Play` → `5. Post Webhook Notification`).
 
+### What is the Visual Pipeline Builder UI?
+The Visual Pipeline Builder allows you to construct and customize workflows visually without editing raw JSON files:
+- **Interactive Step Picker:** Click **+ Add Step** to open a categorized modal (`Build`, `Test`, `Release`, `Custom`) and select pre-configured command actions.
+- **Custom Shell Steps:** Add arbitrary bash commands (e.g., `flutter test && dart run build_runner build`) that run directly inside the application's root directory.
+- **Step Reordering:** Drag or reorder steps sequentially.
+- **Continue on Failure:** Individual steps can be toggled to continue even if the step encounters a non-zero exit code (useful for test reporting or linting).
+
 ### What happens if a pipeline step fails?
-Pipelines feature strict **Stop-on-Failure** safety semantics:
-- If step 1 fails, step 2 and subsequent steps are immediately marked as **Skipped**.
-- The pipeline execution halts, releasing the app busy lock and logging the step that caused the failure.
+Unless a step explicitly has "Continue on failure" enabled:
+- If a step fails, all subsequent steps are immediately marked as **Skipped**.
+- The pipeline execution halts, releasing the exclusive app busy lock and logging the exact step and output that caused the failure.
 
 ---
 
@@ -329,22 +336,57 @@ This occurs if the version declared in `pubspec.yaml` was already tagged in git.
 
 ---
 
-## 14. Outgoing Webhooks & Team Notifications
+## 14. Outgoing Webhooks & Universal CI/CD Ingestion
 
 ### Which platforms are supported for team build notifications?
-The webhook engine supports rich formatted notifications to:
-- **Slack:** Block Kit formatted message cards.
-- **Discord:** Embed cards with status colors.
-- **Microsoft Teams:** Adaptive card layouts.
-- **Google Chat:** Card v2 format.
+The webhook engine supports:
+- **Slack:** Interactive Block Kit cards with color bars and direct action buttons.
+- **Discord:** Rich Embeds with color status indicators.
+- **Microsoft Teams:** Adaptive MessageCard format.
+- **Google Chat:** Cards v2 format with formatted sections and commit metadata.
+- **WhatsApp:** Direct push to Meta Cloud API, Twilio, or gateway webhooks with recipient numbers in E.164 format.
+- **Custom Payload Template:** Generic JSON or text engine for Telegram, Mattermost, Zapier, Webex, PagerDuty, or internal services.
+- **Generic JSON:** Direct webhook payload for custom backend microservices.
 
-### What details are included in the notification card?
-Notifications include:
-- App Name and Flavor (`QA` / `Production`).
-- Build Status: Success (green), Failure (red), or Stopped (amber).
-- Job duration (e.g. `2m 45s`).
-- Git commit hash, branch, and author.
-- Direct download link and QR scan button for mobile test devices (when APK is produced).
+### Can I broadcast build notifications to multiple channels simultaneously?
+**Yes!** The **Multi-Destination Webhook Channels** system allows configuring as many outgoing channels as needed per application (e.g., `#dev-releases` on Slack, `#ops-alerts` on Discord, and an on-call WhatsApp number), alongside a workspace-level default fallback. Each channel can be enabled/disabled independently and filtered for Success, Failure, or both.
+
+### How do I configure WhatsApp notifications?
+1. Open **Configure** → **Notifications** → **+ Add Channel**.
+2. Select **WhatsApp (Meta Cloud API / Twilio / Gateway)** as the provider.
+3. Enter your webhook endpoint URL (e.g., Meta Graph API `https://graph.facebook.com/v18.0/<PHONE_NUMBER_ID>/messages` or Twilio).
+4. Enter the recipient mobile number in E.164 international format (e.g. `+1234567890`).
+5. Add your Bearer authorization token under **Custom HTTP Headers** (`Authorization: Bearer <META_ACCESS_TOKEN>`).
+6. Click **Test Channel** to verify delivery.
+
+### How does the Custom Payload Template engine work?
+When using **Custom Payload Template**, you write any custom JSON or plain text and interpolate dynamic runtime variables:
+- `{appName}`: Application display name
+- `{version}`: Version tag from `pubspec.yaml`
+- `{buildNumber}`: Build increment
+- `{flavor}`: Environment flavor (`dev`, `staging`, `prod`)
+- `{platform}`: Operating system target (Android, iOS)
+- `{status}`: Outcome (`SUCCESS`, `FAILED`, `STOPPED`)
+- `{duration}`: Human-readable elapsed time (`1m 45s`)
+- `{downloadUrl}`: Local APK over-the-air installation link
+- `{track}`: Play Console or TestFlight track name
+- `{commitHash}`: Git commit hash of the build
+- `{error}`: Truncated error excerpt if the build failed
+
+You can also pass custom HTTP headers (such as `Authorization: Bearer <TOKEN>` or `X-Custom-Auth: key`) directly in the channel configuration.
+
+### How do I trigger builds or pipelines from GitHub Actions, GitLab CI, or Slack?
+Send an HTTP POST request to `/api/deployment/webhook/incoming`:
+1. **GitHub Actions:** Set `WEBHOOK_SECRET` in repo secrets. Add a step using cURL or repository webhook dispatch with header `X-Hub-Signature-256` or `X-Webhook-Secret`.
+2. **GitLab CI:** Add a webhook or curl job sending header `X-Gitlab-Token: $WEBHOOK_SECRET`.
+3. **Slack Slash Command:** Configure a `/deploy` command in Slack pointing to `http://<HOST>:18112/api/deployment/webhook/incoming/slack`. Users can run `/deploy my_app prod build_aab` or `/deploy pipeline full_release my_app` directly in Slack channels!
+4. **cURL:**
+   ```bash
+   curl -X POST "http://localhost:18112/api/deployment/webhook/incoming" \
+     -H "X-Webhook-Secret: $WEBHOOK_SECRET" \
+     -H "Content-Type: application/json" \
+     -d '{"app": "my_app", "pipeline": "full_release", "flavor": "prod"}'
+   ```
 
 ---
 
