@@ -295,6 +295,23 @@ The tool is designed as a **local-first build engine**, meaning it operates dire
 3. **Automating Git Sync on Build Servers:**
    On a shared server, you can keep the local directory in sync with remote Git automatically by adding a pre-build step in **Saved Pipelines** (e.g., `git fetch && git checkout main && git pull origin main`) or triggering it via the incoming webhook API.
 
+### Does the project have to be cloned on the server or machine to trigger a build?
+**Yes, the code must exist on the local disk of whichever machine executes the build.**
+
+Here is how this works in practice:
+
+1. **When running locally on your workstation (Standard Developer Mode):**
+   - **No cloning needed!** You already have your project open in your IDE.
+   - The console runs directly against your active workspace directory. You make code edits, switch to the browser, and click **Run** immediately.
+
+2. **When running on a dedicated team build server (Server / CI Mode):**
+   - **Cloned to server disk once:** You run `git clone git@github.com:org/app.git /var/repos/app` on the server machine once during initial setup.
+   - From then on, you never clone again. The server updates the folder automatically via `git pull` whenever a webhook or pipeline triggers.
+
+3. **Why this is 10x faster than ephemeral cloud CI (GitHub Actions / Bitrise):**
+   - **Cloud CI (Disposable VMs):** Every single run allocates a fresh VM, downloads gigabytes of SDKs, clones from scratch, and resolves all dependencies (taking 15–25 minutes).
+   - **Dev Deployment Console (Persistent Local Tree):** Reuses warm Gradle caches, CocoaPods caches, and pre-resolved packages, finishing builds in **30–60 seconds**.
+
 ---
 
 ## 5. Configuration & Auto-Scanning
