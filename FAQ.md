@@ -656,8 +656,39 @@ The stylesheet loader in `index.html` implements progressive fallbacks:
        }
    }
    ```
-4. **Access Control:**
-   Keep the server behind corporate VPN (WireGuard, Tailscale) or internal company LAN with firewall protection.
+### Where should we host our build server? (Hardware & Hosting Decision Matrix)
+
+The choice of where to host your build server depends on two factors: **whether you need iOS builds** and **whether your team has a physical office or is 100% remote**.
+
+```
+                Do you need to build iOS apps?
+                         /           \
+                       YES            NO (Android only)
+                      /                 \
+        Does team have office?         Standard Linux Cloud VPS
+              /          \             (Hetzner / DigitalOcean / AWS)
+            YES           NO           Cost: $15–$30/mo
+            /              \
+  Office Mac Mini      Cloud Dedicated Mac
+  (Apple Silicon M2/M4) (Scaleway / MacStadium)
+  Cost: $599 one-time   Cost: ~$60–$100/mo
+  (RECOMMENDED)
+```
+
+#### Detailed Hosting Options Comparison:
+
+| Hosting Option | Target Platform | Upfront / Monthly Cost | Build Speed | Best Suited For |
+| :--- | :--- | :--- | :--- | :--- |
+| **1. On-Premise Mac Mini (Office / Lab)** *(RECOMMENDED)* | iOS + Android | ~$599 one-time purchase<br>(**$0/month**) | ⚡⚡ **Blazing Fast** (Hot M2/M4 silicon caches, 30–60s builds) | **Hybrid or in-office teams.** Zero recurring cloud bills. Instant 1 Gbps Wi-Fi QR APK installs for QA phones. Remote staff connect via Tailscale VPN. |
+| **2. Cloud Dedicated Mac (Scaleway / MacStadium)** | iOS + Android | $0 upfront<br>(**~$60 – $100/month**) | ⚡ **Fast** (Bare metal Apple Silicon in cloud datacenter) | **100% remote teams with no physical office.** 24/7 uptime, static cloud IP, managed power and cooling. |
+| **3. Cloud Linux VPS (Hetzner / DigitalOcean / AWS)** | **Android only**<br>*(Cannot build iOS)* | $0 upfront<br>(**~$15 – $30/month**) | ⚡ **Fast** (4–8 vCPUs, 16 GB RAM) | **Android-only projects.** Cheap, fast provisioning. Cannot compile Xcode or sign iOS IPAs. |
+| **4. Existing Developer Workstation** | iOS + Android | **$0** (zero cost) | ⚡⚡ **Fast** | **Solo devs or small 2–3 person teams.** Run locally during work hours. |
+
+#### How Remote Teams Connect Securely Without Exposing Public IPs:
+Never expose port 18112 directly to the open internet. Instead:
+1. **Install Tailscale or WireGuard (Free):** Install Tailscale on the build server and on developer/QA laptops/phones.
+2. **Access via Private Mesh IP:** The server receives a private 100.x.y.z IP accessible only to authenticated team members.
+3. **No Port Forwarding Required:** Works seamlessly behind office NAT, corporate firewalls, and home routers.
 
 ### If we build our own build server for client projects, how is it secured compared to Codemagic and Bitrise?
 Building your own internal build server is **often significantly more secure than public cloud CI** for client and enterprise projects. Here is how security is enforced across all layers:
