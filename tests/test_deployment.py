@@ -2879,6 +2879,238 @@ class TestDocumentationAndServerStatus(unittest.TestCase):
             httpd.shutdown()
             httpd.server_close()
 
+    def test_ios_ota_manifest_and_download_endpoints(self):
+        """Test Task 1: iOS OTA manifest plist generation and streaming endpoints."""
+        import artifacts
+        import http.client
+        import http.server
+        import server
+        import threading
+        from server import _get_auth_token
+
+        # 1. Manifest generation test
+        manifest_xml = artifacts.generate_ota_manifest_plist(
+            ipa_download_url="https://192.168.1.100:18112/api/deployment/download-ipa/test_app",
+            bundle_id="com.company.testapp",
+            version="2.0.1",
+            title="Test App",
+        )
+        self.assertIn("software-package", manifest_xml)
+        self.assertIn("com.company.testapp", manifest_xml)
+        self.assertIn("https://192.168.1.100:18112/api/deployment/download-ipa/test_app", manifest_xml)
+
+        # 2. Server API routes test
+        handler = server.DeploymentHandler
+        httpd = http.server.ThreadingHTTPServer(("127.0.0.1", 0), handler)
+        port = httpd.server_address[1]
+        t = threading.Thread(target=httpd.serve_forever, daemon=True)
+        t.start()
+
+        token = _get_auth_token()
+        headers = {"Host": f"localhost:{port}", "X-API-Token": token}
+
+        try:
+            conn = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
+
+            # GET /api/deployment/ipa-info
+            conn.request("GET", "/api/deployment/ipa-info?app=test_app", headers=headers)
+            res_info = conn.getresponse()
+            self.assertEqual(res_info.status, 200)
+            data_info = json.loads(res_info.read().decode("utf-8"))
+            self.assertTrue(data_info.get("success"))
+
+            # Unauthorized IPA download without token should return 401
+            conn.request("GET", "/api/deployment/download-ipa/test_app", headers={"Host": f"localhost:{port}"})
+            res_unauth = conn.getresponse()
+            self.assertEqual(res_unauth.status, 401)
+            res_unauth.read()
+        finally:
+            httpd.shutdown()
+            httpd.server_close()
+
+    def test_wireless_adb_manager_and_endpoints(self):
+        """Test Task 2: Wireless ADB discovery, connect, and parallel push."""
+        import adb_manager
+        import http.client
+        import http.server
+        import server
+        import threading
+        from server import _get_auth_token
+
+        # 1. Device discovery (handles both when adb is available or not without crashing)
+        devices_res = adb_manager.get_adb_devices()
+        self.assertTrue(devices_res.get("success"))
+        self.assertIn("devices", devices_res)
+
+        # 2. Server endpoints
+        handler = server.DeploymentHandler
+        httpd = http.server.ThreadingHTTPServer(("127.0.0.1", 0), handler)
+        port = httpd.server_address[1]
+        t = threading.Thread(target=httpd.serve_forever, daemon=True)
+        t.start()
+
+        token = _get_auth_token()
+        headers = {"Host": f"localhost:{port}", "X-API-Token": token, "Content-Type": "application/json"}
+
+        try:
+            conn = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
+
+            # GET /api/deployment/adb/devices
+            conn.request("GET", "/api/deployment/adb/devices", headers=headers)
+            res_dev = conn.getresponse()
+            self.assertEqual(res_dev.status, 200)
+            data_dev = json.loads(res_dev.read().decode("utf-8"))
+            self.assertTrue(data_dev.get("success"))
+
+            # POST /api/deployment/adb/connect
+            conn.request("POST", "/api/deployment/adb/connect", body=json.dumps({"address": "127.0.0.1:5555"}), headers=headers)
+            res_conn = conn.getresponse()
+            self.assertEqual(res_conn.status, 200)
+            data_conn = json.loads(res_conn.read().decode("utf-8"))
+            self.assertIn("success", data_conn)
+        finally:
+            httpd.shutdown()
+            httpd.server_close()
+
+    def test_chatops_two_way_bot_response_url(self):
+        """Test Task 3: Two-way ChatOps callback using response_url."""
+        import jobs
+        import notifications
+
+        # 1. Verify execute_command stores response_url
+        res = jobs.execute_command(
+            app="test_chatops_app",
+            command="echo 'chatops test'",
+            runner="custom",
+            response_url="https://hooks.slack.com/commands/123/456/mock-response-url",
+        )
+        self.assertTrue(res.get("success"))
+        job_id = res.get("jobId")
+        stored_job = jobs.get_job(job_id).get("job")
+        self.assertEqual(stored_job.get("response_url"), "https://hooks.slack.com/commands/123/456/mock-response-url")
+
+        # 2. Verify Slack payload includes action buttons and OTA/QR
+        event_data = {
+            "app": "test_app",
+            "flavor": "prod",
+            "status": "success",
+            "downloadUrl": "https://example.com/dl/app.ipa",
+            "itmsUrl": "itms-services://?action=download-manifest&url=https://example.com/manifest.plist",
+            "qrUrl": "https://example.com/qr",
+            "durationFormatted": "45s",
+        }
+        slack_payload = notifications.build_slack_payload(event_data)
+        self.assertIn("blocks", slack_payload)
+        has_ota_btn = False
+        for b in slack_payload["blocks"]:
+            if b.get("type") == "actions":
+                for elem in b.get("elements", []):
+                    if "OTA" in elem.get("text", {}).get("text", ""):
+                        has_ota_btn = True
+        self.assertTrue(has_ota_btn)
+
+    def test_build_time_profiler_and_bottleneck_heatmap(self):
+        """Test Task 4: Compilation timing breakdown and bottleneck detection."""
+        import build_profiler
+        import http.client
+        import http.server
+        import server
+        import threading
+        from server import _get_auth_token
+
+        mock_log = """
+> Task :app:preBuild (0.4s)
+> Task :app:compileFlutterBuildDebug (14.5s)
+> Task :app:processDebugResources (6.2s)
+> Task :app:mergeDebugNativeLibs (1.8s)
+> Task :app:packageDebug (3.1s)
+> Task :app:validateSigningDebug (0.5s)
+        """
+        profile = build_profiler.profile_build_log(mock_log, total_duration_sec=26.5)
+        self.assertTrue(profile["success"])
+        self.assertGreaterEqual(len(profile["phases"]), 6)
+
+        # Verify compilation phase was detected as top contributor
+        comp_phase = next(p for p in profile["phases"] if p["id"] == "compilation")
+        self.assertGreater(comp_phase["percentage"], 40.0)
+        self.assertTrue(profile["hasBottlenecks"])
+        self.assertEqual(profile["bottlenecks"][0]["phaseId"], "compilation")
+
+        # Test server endpoint
+        handler = server.DeploymentHandler
+        httpd = http.server.ThreadingHTTPServer(("127.0.0.1", 0), handler)
+        port = httpd.server_address[1]
+        t = threading.Thread(target=httpd.serve_forever, daemon=True)
+        t.start()
+
+        token = _get_auth_token()
+        headers = {"Host": f"localhost:{port}", "X-API-Token": token}
+
+        try:
+            conn = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
+            conn.request("GET", "/api/deployment/build-profile", headers=headers)
+            res_bp = conn.getresponse()
+            self.assertEqual(res_bp.status, 200)
+            data_bp = json.loads(res_bp.read().decode("utf-8"))
+            self.assertIn("success", data_bp)
+        finally:
+            httpd.shutdown()
+            httpd.server_close()
+
+    def test_smart_silent_cache_warmer(self):
+        """Test Task 5: Smart silent cache warmer status, trigger, and daemon."""
+        import cache_warmer
+        import http.client
+        import http.server
+        import server
+        import threading
+        from server import _get_auth_token
+
+        # Status check
+        status = cache_warmer.get_cache_warmer_status()
+        self.assertTrue(status.get("success"))
+        self.assertIn("status", status)
+
+        # Trigger warm check
+        warm_res = cache_warmer.trigger_cache_warm(force=False)
+        self.assertTrue(warm_res.get("success"))
+
+        # Test daemon start and stop
+        cache_warmer.start_cache_warmer_daemon()
+        st_after = cache_warmer.get_cache_warmer_status()
+        self.assertTrue(st_after.get("isWatching"))
+        cache_warmer.stop_cache_warmer_daemon()
+
+        # Test server endpoints
+        handler = server.DeploymentHandler
+        httpd = http.server.ThreadingHTTPServer(("127.0.0.1", 0), handler)
+        port = httpd.server_address[1]
+        t = threading.Thread(target=httpd.serve_forever, daemon=True)
+        t.start()
+
+        token = _get_auth_token()
+        headers = {"Host": f"localhost:{port}", "X-API-Token": token, "Content-Type": "application/json"}
+
+        try:
+            conn = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
+
+            # GET /api/deployment/cache-warmer/status
+            conn.request("GET", "/api/deployment/cache-warmer/status", headers=headers)
+            res_st = conn.getresponse()
+            self.assertEqual(res_st.status, 200)
+            data_st = json.loads(res_st.read().decode("utf-8"))
+            self.assertTrue(data_st.get("success"))
+
+            # POST /api/deployment/cache-warmer/warm
+            conn.request("POST", "/api/deployment/cache-warmer/warm", body=json.dumps({"force": False}), headers=headers)
+            res_warm = conn.getresponse()
+            self.assertEqual(res_warm.status, 200)
+            data_warm = json.loads(res_warm.read().decode("utf-8"))
+            self.assertTrue(data_warm.get("success"))
+        finally:
+            httpd.shutdown()
+            httpd.server_close()
+
 
 
 

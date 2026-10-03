@@ -203,6 +203,68 @@ class DeploymentHandler(http.server.SimpleHTTPRequestHandler):
         except Exception:
             logging.exception("Failed to stream APK download: %s", cand_path)
 
+    def serve_ipa_download(self, target: str, query: dict[str, list[str]], is_head: bool = False) -> None:
+        if not self._verify_auth_with_query(query):
+            self.write_json({"success": False, "error": "Unauthorized: valid token required"}, status=401)
+            return
+
+        cand_path = router.resolve_safe_ipa_path(target)
+        if not cand_path or not cand_path.exists() or not cand_path.is_file():
+            self.write_json({"success": False, "error": f"IPA not found for target '{target}'"}, status=404)
+            return
+
+        try:
+            size = cand_path.stat().st_size
+            self.send_response(200)
+            self.send_header("Content-Type", "application/octet-stream")
+            self.send_header("Content-Disposition", f'attachment; filename="{cand_path.name}"')
+            self.send_header("Content-Length", str(size))
+            self.send_header("Cache-Control", "no-cache, must-revalidate")
+            self.end_headers()
+            if not is_head:
+                with cand_path.open("rb") as f:
+                    while chunk := f.read(65536):
+                        self.wfile.write(chunk)
+        except Exception:
+            logging.exception("Failed to stream IPA download: %s", cand_path)
+
+    def serve_ota_manifest(self, query: dict[str, list[str]], is_head: bool = False) -> None:
+        if not self._verify_auth_with_query(query):
+            self.write_json({"success": False, "error": "Unauthorized: valid token required"}, status=401)
+            return
+
+        target = query.get("target", ["latest"])[0]
+        token = query.get("token", [""])[0] or _get_auth_token()
+        port = getattr(self.server, "server_port", 18112) or 18112
+        host_override = query.get("host", [""])[0]
+
+        info = router.get_ipa_download_info(
+            job_id=target if target.startswith("job_") or len(target) > 20 else None,
+            app_id=None if (target.startswith("job_") or len(target) > 20) else target,
+            port=port,
+            token=token,
+            host_override=host_override,
+            scheme="https",
+        )
+        if not info.get("hasIpa"):
+            self.write_json({"success": False, "error": "No IPA artifact found for manifest."}, status=404)
+            return
+
+        body = router.generate_ota_manifest_plist(
+            ipa_download_url=info["ipaDownloadUrl"],
+            bundle_id=info.get("bundleId", "com.example.app"),
+            version="1.0.0",
+            title=info.get("app", "App"),
+        ).encode("utf-8")
+
+        self.send_response(200)
+        self.send_header("Content-Type", "text/xml; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "no-cache, must-revalidate")
+        self.end_headers()
+        if not is_head:
+            self.wfile.write(body)
+
     def do_HEAD(self) -> None:
         if not self._is_allowed_host():
             self.send_error(403, "Invalid Host header: DNS rebinding rejected")
@@ -212,6 +274,15 @@ class DeploymentHandler(http.server.SimpleHTTPRequestHandler):
             target = parsed.path.split("/api/deployment/download/", 1)[1].strip()
             query = parse_qs(parsed.query)
             self.serve_apk_download(target, query, is_head=True)
+            return
+        if parsed.path.startswith("/api/deployment/download-ipa/"):
+            target = parsed.path.split("/api/deployment/download-ipa/", 1)[1].strip()
+            query = parse_qs(parsed.query)
+            self.serve_ipa_download(target, query, is_head=True)
+            return
+        if parsed.path == "/api/deployment/ota/manifest.plist":
+            query = parse_qs(parsed.query)
+            self.serve_ota_manifest(query, is_head=True)
             return
         super().do_HEAD()
 
@@ -244,7 +315,11 @@ class DeploymentHandler(http.server.SimpleHTTPRequestHandler):
         try:
             # Enforce API authentication on all GET endpoints
             if parsed.path.startswith("/api/"):
-                if parsed.path.startswith("/api/deployment/download/"):
+                if parsed.path.startswith(("/api/deployment/download/", "/api/deployment/download-ipa/")):
+                    if not self._verify_auth_with_query(query):
+                        self.write_json({"success": False, "error": "Unauthorized: valid token required"}, status=401)
+                        return
+                elif parsed.path == "/api/deployment/ota/manifest.plist":
                     if not self._verify_auth_with_query(query):
                         self.write_json({"success": False, "error": "Unauthorized: valid token required"}, status=401)
                         return
@@ -290,6 +365,16 @@ class DeploymentHandler(http.server.SimpleHTTPRequestHandler):
                 app_id = query.get("app", [""])[0] or None
                 flavor = query.get("flavor", ["prod"])[0]
                 self.write_json(router.get_build_size_info(job_id=job_id, app_id=app_id, flavor=flavor))
+                return
+            if parsed.path in ("/api/deployment/build-profile", "/api/deployment/job/profile"):
+                job_id = query.get("jobId", query.get("id", [""]))[0] or None
+                self.write_json(router.get_job_build_profile(job_id=job_id))
+                return
+            if parsed.path in ("/api/deployment/adb/devices", "/api/deployment/adb/list"):
+                self.write_json(router.get_adb_devices())
+                return
+            if parsed.path in ("/api/deployment/cache-warmer/status", "/api/deployment/cache-warmer"):
+                self.write_json(router.get_cache_warmer_status())
                 return
             if parsed.path in ("/api/deployment/server-status", "/api/deployment/server/status"):
                 port = self.server.server_address[1] if self.server else 18112
@@ -370,6 +455,28 @@ class DeploymentHandler(http.server.SimpleHTTPRequestHandler):
                 port = getattr(self.server, "server_port", 18112) or 18112
                 host_override = query.get("host", [""])[0]
                 self.write_json(router.get_apk_download_info(
+                    job_id=job_id,
+                    app_id=app_id,
+                    flavor=flavor,
+                    port=port,
+                    token=_get_auth_token(),
+                    host_override=host_override,
+                ))
+                return
+            if parsed.path.startswith("/api/deployment/download-ipa/"):
+                target = parsed.path.split("/api/deployment/download-ipa/", 1)[1].strip()
+                self.serve_ipa_download(target, query)
+                return
+            if parsed.path == "/api/deployment/ota/manifest.plist":
+                self.serve_ota_manifest(query)
+                return
+            if parsed.path == "/api/deployment/ipa-info":
+                job_id = query.get("jobId", query.get("id", [""]))[0] or None
+                app_id = query.get("app", [""])[0] or None
+                flavor = query.get("flavor", [""])[0]
+                port = getattr(self.server, "server_port", 18112) or 18112
+                host_override = query.get("host", [""])[0]
+                self.write_json(router.get_ipa_download_info(
                     job_id=job_id,
                     app_id=app_id,
                     flavor=flavor,
@@ -537,6 +644,7 @@ class DeploymentHandler(http.server.SimpleHTTPRequestHandler):
                                     data["templateId"] = tokens[2]
                         data["user_name"] = (form.get("user_name") or [""])[0]
                         data["channel_name"] = (form.get("channel_name") or [""])[0]
+                        data["response_url"] = (form.get("response_url") or [""])[0]
                 else:
                     try:
                         data = json.loads(raw_body.decode("utf-8")) if raw_body else {}
@@ -618,6 +726,7 @@ class DeploymentHandler(http.server.SimpleHTTPRequestHandler):
                     target_cmd.get("templateId", template_id),
                     flavor,
                     bool(data.get("confirmed") or False),
+                    response_url=str(data.get("response_url") or "") or None,
                 )
                 if is_slack_slash:
                     msg = f"🚀 Command '{target_cmd.get('key')}' started for {app_id}" if exec_res.get("success") else f"❌ Failed: {exec_res.get('error')}"
@@ -763,6 +872,23 @@ class DeploymentHandler(http.server.SimpleHTTPRequestHandler):
                     custom_headers=data.get("custom_headers") or data.get("customHeaders"),
                     phone=str(data.get("phone") or ""),
                 ))
+                return
+            if parsed.path == "/api/deployment/adb/push":
+                target = str(data.get("target") or data.get("app") or data.get("jobId") or "latest")
+                devices = data.get("devices") if isinstance(data.get("devices"), list) else None
+                self.write_json(router.push_apk_to_devices(target, device_serials=devices))
+                return
+            if parsed.path == "/api/deployment/adb/connect":
+                address = str(data.get("address") or data.get("ip") or "").strip()
+                self.write_json(router.connect_wireless_adb(address))
+                return
+            if parsed.path == "/api/deployment/adb/disconnect":
+                address = str(data.get("address") or data.get("ip") or "").strip()
+                self.write_json(router.disconnect_wireless_adb(address))
+                return
+            if parsed.path in ("/api/deployment/cache-warmer/warm", "/api/deployment/cache-warmer/trigger"):
+                force = bool(data.get("force") or False)
+                self.write_json(router.trigger_cache_warm(force=force))
                 return
 
             if parsed.path in ("/api/deployment/server/stop", "/api/deployment/server/end"):
@@ -973,10 +1099,19 @@ def main() -> int:
     if lan_ip and lan_ip != "127.0.0.1":
         print(f"Wi-Fi / LAN:    http://{lan_ip}:{args.port}")
     try:
+        router.start_cache_warmer_daemon()
+    except Exception:
+        logging.exception("Failed to start cache warmer daemon")
+
+    try:
         server.serve_forever()
     except KeyboardInterrupt:
         return 0
     finally:
+        try:
+            router.stop_cache_warmer_daemon()
+        except Exception:
+            pass
         server.server_close()
     return 0
 
