@@ -24,15 +24,18 @@ Open `http://localhost:18112`, pick a project tab, select an app, choose an envi
 9. [Certificate & Keystore Expiry Sentinel](#-certificate--keystore-expiry-sentinel)
 10. [Build Size Inspector & Uncompressed Asset Diff](#-build-size-inspector--uncompressed-asset-diff)
 11. [Building & Store Deployments](#-building--store-deployments)
-12. [Local APK Hosting & Wireless QR Code Installation](#-local-apk-hosting--wireless-qr-code-installation)
-13. [Saved Pipelines (Chained Workflows)](#-saved-pipelines-chained-workflows)
-14. [Releases: Conventional Commits, Changelog & Git Tags](#️-releases-conventional-commits-changelog--git-tags)
-15. [Outgoing Webhooks & Team Notifications](#-outgoing-webhooks--team-notifications)
-16. [Design System: developer-dashboard-ui](#-design-system-developer-dashboard-ui)
-17. [Safety & Security Hardening](#️-safety--security-hardening)
-18. [Configuration & Data Files](#-configuration--data-files)
-19. [Environment Variables](#-environment-variables)
-20. [Contributing & Documentation Index](#-contributing--documentation-index)
+12. [Artifact Distribution: Local APK Hosting & Instant iOS OTA QR](#-artifact-distribution-local-apk-hosting--instant-ios-ota-qr)
+13. [Wireless ADB Multi-Device Push (Instant Test Desk Sync)](#-wireless-adb-multi-device-push-instant-test-desk-sync)
+14. [Build Time Profiler & Compilation Bottleneck Heatmap](#-build-time-profiler--compilation-bottleneck-heatmap)
+15. [Smart Silent Cache Warmer (Zero Cold-Start Lag)](#-smart-silent-cache-warmer-zero-cold-start-lag)
+16. [Saved Pipelines (Chained Workflows)](#-saved-pipelines-chained-workflows)
+17. [Releases: Conventional Commits, Changelog & Git Tags](#️-releases-conventional-commits-changelog--git-tags)
+18. [Outgoing Webhooks, CI/CD Ingestion & ChatOps](#-outgoing-webhooks-cicd-ingestion--chatops)
+19. [Design System: developer-dashboard-ui](#-design-system-developer-dashboard-ui)
+20. [Safety & Security Hardening](#️-safety--security-hardening)
+21. [Configuration & Data Files](#-configuration--data-files)
+22. [Environment Variables](#-environment-variables)
+23. [Contributing & Documentation Index](#-contributing--documentation-index)
 
 ---
 
@@ -44,6 +47,11 @@ Open `http://localhost:18112`, pick a project tab, select an app, choose an envi
 - **Pre-flight "App Doctor":** 12+ diagnostic checks (Flutter SDK, Android SDK, CocoaPods, keystores, provisioning profiles, Git cleanliness, Firebase configs) catching issues before long builds.
 - **Certificate & Keystore Expiry Sentinel:** Proactive alerts when Apple `.p8` keys, distribution certificates, or Android keystores expire within 30 days, or when Firebase project IDs mismatch.
 - **Build Size Inspector & Diff:** Analyzes AAB/APK ZIP central directories without disk extraction. Displays deltas (`AAB: 24.2 MB (+3.8 MB, +18%) ⚠️`) and warns if raw uncompressed assets (`ZIP_STORED` ≥ 500 KB) are packaged.
+- **Instant iOS OTA QR Install:** Serve native Apple `itms-services://?action=download-manifest` and `manifest.plist` over HTTPS to install development/ad-hoc IPAs on iPhones via QR code in 10s (bypassing the 25-minute TestFlight processing delay).
+- **Wireless ADB 1-Click Multi-Device Push:** Detects local USB, Wi-Fi, and emulator Android devices via `adb devices -l` and pushes built APKs to all QA desk phones in parallel.
+- **Two-Way ChatOps Bot:** Handles incoming Slack/Discord/WhatsApp triggers and replies directly in the thread with generated QR code images, OTA install links, and download buttons.
+- **Build Time Profiler & Compilation Bottleneck Heatmap:** Parses Gradle and Xcode compile timings to display a visual breakdown bar (Dependencies, Compilation, Assets, Linking, Packaging, Signing) and flags compile bottlenecks (`>= 30%`).
+- **Smart Silent Cache Warmer:** Low-priority background daemon watching Git branch switches and dependency lockfile changes, running silent `flutter pub get` to eliminate cold-start build lag.
 - **Local APK Wireless QR Code:** Instantly host completed APKs over local HTTP and scan a QR code from any physical device on the local Wi-Fi to install without USB cables.
 - **Visual Pipeline Builder UI:** Drag-and-drop workflow builder with category filtering, custom shell steps, and live step execution tracking.
 - **Universal Multi-Destination Webhooks & CI/CD Ingestion:** Broadcast build notifications across Slack, Discord, Microsoft Teams, Google Chat, WhatsApp (Cloud API/Twilio), and custom templated JSON. Ingest incoming webhooks from GitHub Actions, GitLab CI, Slack slash commands, and cURL.
@@ -204,13 +212,46 @@ Upon completion of any AAB or APK build:
 
 ---
 
-## 📱 Local APK Hosting & Wireless QR Code Installation
+## 📱 Artifact Distribution: Local APK Hosting & Instant iOS OTA QR
 
-When an Android APK build finishes:
-1. The backend immediately exposes the APK over local HTTP.
+### Android APK Wireless Scan-to-Install
+1. When an Android APK build finishes, the backend immediately exposes the APK over local HTTP.
 2. An **Android APK Ready** banner appears above the terminal.
 3. Click **Scan to Install** to view an SVG QR code.
-4. Scan the QR code with any physical test device on the same local Wi-Fi network to install the APK directly—no USB cables, ADB, or external distribution services required.
+4. Scan the QR code with any physical test device on the same local Wi-Fi network to install the APK directly—no USB cables or third-party distribution services needed.
+
+### Instant Apple iOS OTA QR Install (Bypass 25-Min TestFlight Wait)
+1. When an iOS `.ipa` is compiled for development/ad-hoc testing, the backend dynamically generates Apple's XML `manifest.plist` over HTTPS.
+2. An **iOS IPA Ready** banner appears above the terminal.
+3. Click **Scan to Install (iPhone)** to view the camera QR code.
+4. Open the native iPhone Camera app, point at the screen, and tap the prompt. The app installs directly onto the home screen in **10 seconds**, completely eliminating TestFlight processing lag.
+
+---
+
+## 🔌 Wireless ADB Multi-Device Push (Instant Test Desk Sync)
+
+Eliminate the tedious task of plugging in USB cables or manually downloading APKs on every QA device:
+1. The backend automatically queries all connected Android devices (`adb devices -l`), categorizing them into **USB**, **Wi-Fi**, or **Emulator**.
+2. **Wi-Fi Pairing:** Click **ADB Push** on the APK banner, enter your test phone's local IP and port (e.g. `192.168.1.50:5555`), and click **Connect**.
+3. **Parallel Push:** Check the target devices and click **Push APK to Selected**. The server leverages a multi-threaded pool to install the new build across 3–5 desk phones simultaneously in seconds.
+
+---
+
+## 📊 Build Time Profiler & Compilation Bottleneck Heatmap
+
+Debug build regressions instantly without digging through thousands of raw terminal lines:
+1. The real-time profiling engine categorizes compile events into 6 key phases: **Dependencies**, **Compilation**, **Assets**, **Linking**, **Packaging**, and **Signing**.
+2. **Segmented Visual Heatmap:** Displays an interactive horizontal color bar with percentage breakdown and phase timings.
+3. **Bottleneck Alerts:** Any phase consuming **≥ 30%** of total build time is flagged as a bottleneck with concrete, actionable speed-up tips (e.g., Gradle daemon tuning, asset compression, or Swift compilation settings).
+
+---
+
+## 🔥 Smart Silent Cache Warmer (Zero Cold-Start Lag)
+
+Never suffer from cold-start dependency lag when switching Git branches:
+1. A low-priority background daemon monitors Git `HEAD` commits and dependency lockfile digests (`pubspec.yaml`, `pubspec.lock`, `Podfile.lock`).
+2. When a branch switch or dependency change is detected, the warmer waits until no builds are actively executing, then silently runs `flutter pub get` in the background.
+3. A live **Cache Warmer badge** in the top navigation bar displays daemon status (`Idle`, `Warming`, `Warm`). Click the badge at any time to manually trigger an immediate warm.
 
 ---
 

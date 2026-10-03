@@ -967,7 +967,9 @@ async function pollPipelineRun(runId) {
             writeTerminal(`Pipeline completed successfully: ${run.name}`, 'success');
             showToast('Pipeline completed successfully');
             checkAndDisplayApk(run.currentJobId || '', run.app, run.flavor);
+            if (typeof checkAndDisplayIpa === 'function') checkAndDisplayIpa(run.currentJobId || '', run.app, run.flavor);
             checkAndDisplayBuildSize(run.currentJobId || '', run.app, run.flavor);
+            if (typeof checkAndDisplayBuildProfile === 'function') checkAndDisplayBuildProfile(run.currentJobId || '');
         } else if (run.status === 'stopped') {
             writeTerminal(`Pipeline stopped: ${run.name}`, 'warning');
             showToast('Pipeline stopped');
