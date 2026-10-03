@@ -283,7 +283,7 @@ def execute_command(
     job_id = _new_job_id()
 
     if is_cloud_runner:
-        import github_actions
+        from automation import github_actions
         stop_event = threading.Event()
         cmd_str = f"github-actions dispatch {template_id or command} ({flavor or 'prod'})"
         with _JOBS_LOCK:

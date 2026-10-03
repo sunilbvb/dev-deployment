@@ -260,10 +260,7 @@ Every tracked file and what it owns. Paths are relative to the repository root.
 | `server_manager/` | Server process lifecycle management, desktop launcher generation (`.desktop`), and systemd user service registration (`paths.py`, `desktop.py`, `service.py`) | `get_server_status`, `install_desktop_launcher`, `install_systemd_service`, `get_service_status` |
 | `docs_provider.py` | In-app documentation repository provider, dynamic Markdown overview generator, and document security validator | `list_available_docs`, `get_doc_content` |
 | `artifacts/` | Local APK/AAB/IPA build artifact scanning, safe path resolution, file metadata extraction, Apple OTA `manifest.plist` generation, and local download endpoint serving (`network.py`, `scanner.py`, `distributor.py`) | `find_apk_artifact`, `find_ipa_artifact`, `resolve_safe_apk_path`, `resolve_safe_ipa_path`, `get_apk_download_info`, `get_ipa_download_info`, `generate_ota_manifest_plist`, `get_lan_ip` |
-| `adb_manager.py` | Wireless & USB Android device discovery (`adb devices -l`), Wi-Fi pairing (`adb connect`), and multi-threaded parallel APK push (`adb install -r`) | `get_adb_devices`, `connect_wireless_adb`, `disconnect_wireless_adb`, `push_apk_to_devices` |
-| `build_profiler.py` | Real-time build log parser categorizing execution into 6 mobile phases (Dependencies, Compilation, Assets, Linking, Packaging, Signing), bottleneck detection (≥30%), and acceleration tips | `get_job_build_profile` |
-| `cache_warmer.py` | Low-priority background daemon watching Git branch switches and lockfile hashes (`pubspec.yaml`, `pubspec.lock`, `Podfile.lock`), executing silent background `flutter pub get` when idle | `get_cache_warmer_status`, `trigger_cache_warm`, `start_cache_warmer_daemon`, `stop_cache_warmer_daemon` |
-| `github_actions.py` | GitHub Actions Cloud CI integration: workflow dispatch via REST / `gh` CLI, runner status polling, and `.github/workflows/deploy-android.yml` installation | `detect_github_repo`, `detect_git_branch`, `get_stored_github_token`, `install_workflow_template`, `dispatch_workflow` |
+| `automation/` | Mobile automation suite: Wireless ADB device discovery and parallel push (`adb_manager.py`), compilation bottleneck profiler (`build_profiler.py`), silent dependency cache warmer (`cache_warmer.py`), and GitHub Actions cloud CI runner (`github_actions.py`) | `get_adb_devices`, `connect_wireless_adb`, `push_apk_to_devices`, `get_job_build_profile`, `get_cache_warmer_status`, `trigger_cache_warm`, `start_cache_warmer_daemon`, `dispatch_workflow` |
 | `qr/` | Pure Python QR code generation (zero external pip dependencies), GF(256) Reed-Solomon engine, SVG/ASCII renderers (`matrix.py`, `renderer.py`) | `generate_qr_matrix`, `generate_qr`, `qr_svg`, `qr_ascii` |
 | `sentinel/` | Expiry sentinel monitors for Apple certificates (.cer/.p12/.mobileprovision), Android Keystores, and Firebase project configuration mismatch checks (`parsers.py`, `apple_sentinel.py`, `android_sentinel.py`, `firebase_sentinel.py`, `runner.py`) | `check_app_sentinel`, `check_workspace_sentinel`, `check_apple_expiry`, `check_android_keystore_expiry`, `check_firebase_mismatch` |
 | `build_size/` | Build size archive diffing, historical artifact tracking, uncompressed raw asset detection (`ZIP_STORED` ≥ 500 KB), breakdown by file type (`formatter.py`, `archive_inspector.py`, `history_tracker.py`, `analyzer.py`) | `find_build_artifact`, `inspect_archive_contents`, `compare_build_size`, `inspect_and_diff_job`, `get_build_size_info` |
@@ -283,22 +280,22 @@ Every tracked file and what it owns. Paths are relative to the repository root.
 | `app.js` | Fetch wrapper (adds `X-API-Token` and the tab's `X-Workspace`), project tabs (`selectProject`), apps/commands loading and grouping, job run/poll/stop, history, Import Project dialog (`inspectImportFolder`) |
 | `setup.js` | Configure dialog orchestrator: app sidebar, tabs (`showSetupTab`), form load/save, auto-scan, `.p8` dropzone, credential status (`loadCredentialStatus`), Play key upload, folder scan and import (`runCredentialScan`, `importScanned`), native picker helper (`pickNativePath`) |
 | `styles.css` | Dashboard styles on top of the UI kit: Import result, Configure tabs, status dots, banner animations |
-| `modules/app_workspace.js` | Project folder import inspector, layout detection preview, and multi-workspace tab switcher |
-| `modules/app_sentinel.js` | Signing certificate & keystore expiration sentinel alerts, warnings banner, and expiration details modal |
-| `modules/app_doctor.js` | Pre-flight App Doctor diagnostics runner, categorized health checks, and actionable fix recommendations |
-| `modules/app_apk_qr.js` | Local APK and iOS IPA artifact detection, download buttons, and camera QR scan-to-install modal overlays |
-| `modules/app_adb.js` | Wireless & USB ADB device detection, Wi-Fi device pairing, and multi-threaded parallel APK push modal |
-| `modules/app_profiler.js` | Build Time Profiler modal, visual segmented heatmap progress bar, bottleneck detection cards, and phase timings |
-| `modules/app_cache_warmer.js` | Smart Silent Cache Warmer status monitoring in top navigation badge, periodic status refresh, and manual warm trigger |
-| `modules/app_build_size.js` | Build size inspector, ZIP central directory analysis, uncompressed asset warnings, and historical diffing |
-| `modules/app_docs.js` | In-app documentation and user guide viewer with Markdown rendering and search filter |
-| `modules/app_server.js` | Server Console modal: uptime, memory, health check, restart/stop controls, and 1-click desktop/systemd launchers |
-| `modules/app_demo.js` | Offline Welcome Console and interactive simulated demo mode |
-| `modules/setup_scanner.js` | Configure Auto-Scan: static code inspection for bundle IDs, package names, flavors, and keystores |
-| `modules/setup_webhooks.js` | Multi-destination outgoing webhook configuration (Slack, Discord, Teams, Google Chat, WhatsApp) and live test pings |
-| `modules/setup_pipelines.js` | Visual pipeline workflow designer, drag-and-drop step catalog, custom shell steps, and step reordering |
-| `modules/setup_credentials.js` | Signing credentials manager: Google Play service accounts, App Store Connect `.p8` keys, and keystores |
-| `modules/setup_github.js` | GitHub Actions Cloud CI configuration: PAT setup, repo override, workflow template installer, and status badges |
+| `modules/dashboard/app_workspace.js` | Project folder import inspector, layout detection preview, and multi-workspace tab switcher |
+| `modules/dashboard/app_sentinel.js` | Signing certificate & keystore expiration sentinel alerts, warnings banner, and expiration details modal |
+| `modules/dashboard/app_doctor.js` | Pre-flight App Doctor diagnostics runner, categorized health checks, and actionable fix recommendations |
+| `modules/dashboard/app_apk_qr.js` | Local APK and iOS IPA artifact detection, download buttons, and camera QR scan-to-install modal overlays |
+| `modules/dashboard/app_adb.js` | Wireless & USB ADB device detection, Wi-Fi device pairing, and multi-threaded parallel APK push modal |
+| `modules/dashboard/app_profiler.js` | Build Time Profiler modal, visual segmented heatmap progress bar, bottleneck detection cards, and phase timings |
+| `modules/dashboard/app_cache_warmer.js` | Smart Silent Cache Warmer status monitoring in top navigation badge, periodic status refresh, and manual warm trigger |
+| `modules/dashboard/app_build_size.js` | Build size inspector, ZIP central directory analysis, uncompressed asset warnings, and historical diffing |
+| `modules/dashboard/app_docs.js` | In-app documentation and user guide viewer with Markdown rendering and search filter |
+| `modules/dashboard/app_server.js` | Server Console modal: uptime, memory, health check, restart/stop controls, and 1-click desktop/systemd launchers |
+| `modules/dashboard/app_demo.js` | Offline Welcome Console and interactive simulated demo mode |
+| `modules/setup/setup_scanner.js` | Configure Auto-Scan: static code inspection for bundle IDs, package names, flavors, and keystores |
+| `modules/setup/setup_webhooks.js` | Multi-destination outgoing webhook configuration (Slack, Discord, Teams, Google Chat, WhatsApp) and live test pings |
+| `modules/setup/setup_pipelines.js` | Visual pipeline workflow designer, drag-and-drop step catalog, custom shell steps, and step reordering |
+| `modules/setup/setup_credentials.js` | Signing credentials manager: Google Play service accounts, App Store Connect `.p8` keys, and keystores |
+| `modules/setup/setup_github.js` | GitHub Actions Cloud CI configuration: PAT setup, repo override, workflow template installer, and status badges |
 | `modules/api.js`, `modules/certs.js`, `modules/utils.js` | *Unused* — Legacy ES modules |
 
 ---

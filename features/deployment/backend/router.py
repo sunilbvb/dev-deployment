@@ -1,12 +1,9 @@
-import adb_manager
 import artifacts
-import build_profiler
+import automation
 import build_size
-import cache_warmer
 import credentials
 import docs_provider
 import doctor
-import github_actions
 import notifications
 import picker
 import pipelines
@@ -112,15 +109,15 @@ inspect_archive_contents = build_size.inspect_archive_contents
 compare_build_size = build_size.compare_build_size
 inspect_and_diff_job = build_size.inspect_and_diff_job
 get_build_size_info = build_size.get_build_size_info
-get_adb_devices = adb_manager.get_adb_devices
-connect_wireless_adb = adb_manager.connect_wireless_adb
-disconnect_wireless_adb = adb_manager.disconnect_wireless_adb
-push_apk_to_devices = adb_manager.push_apk_to_devices
-get_job_build_profile = build_profiler.get_job_build_profile
-get_cache_warmer_status = cache_warmer.get_cache_warmer_status
-trigger_cache_warm = cache_warmer.trigger_cache_warm
-start_cache_warmer_daemon = cache_warmer.start_cache_warmer_daemon
-stop_cache_warmer_daemon = cache_warmer.stop_cache_warmer_daemon
+get_adb_devices = automation.get_adb_devices
+connect_wireless_adb = automation.connect_wireless_adb
+disconnect_wireless_adb = automation.disconnect_wireless_adb
+push_apk_to_devices = automation.push_apk_to_devices
+get_job_build_profile = automation.get_job_build_profile
+get_cache_warmer_status = automation.get_cache_warmer_status
+trigger_cache_warm = automation.trigger_cache_warm
+start_cache_warmer_daemon = automation.start_cache_warmer_daemon
+stop_cache_warmer_daemon = automation.stop_cache_warmer_daemon
 
 get_doc_content = docs_provider.get_doc_content
 list_available_docs = docs_provider.list_available_docs
@@ -132,10 +129,10 @@ get_service_status = server_manager.get_service_status
 
 def get_github_status(app_id: str = "") -> dict:
     ws_root = get_workspace_root()
-    repo = github_actions.detect_github_repo(ws_root)
-    branch = github_actions.detect_git_branch(ws_root)
-    token = github_actions.get_stored_github_token()
-    wf_file = github_actions.find_workflow_file(ws_root)
+    repo = automation.detect_github_repo(ws_root)
+    branch = automation.detect_git_branch(ws_root)
+    token = automation.get_stored_github_token()
+    wf_file = automation.find_workflow_file(ws_root)
     wf_exists = (ws_root / ".github" / "workflows" / wf_file).exists()
     return {
         "success": True,
@@ -150,18 +147,18 @@ def get_github_status(app_id: str = "") -> dict:
 
 def save_github_config(token: str | None = None, repo: str | None = None) -> dict:
     if token is not None:
-        github_actions.save_github_token(token)
+        automation.save_github_token(token)
     if repo is not None:
-        github_actions.save_repo_override(repo)
+        automation.save_repo_override(repo)
     return {"success": True, "message": "GitHub configuration saved."}
 
 
 def get_github_workflow_template() -> dict:
-    return {"success": True, "template": github_actions.get_android_workflow_template()}
+    return {"success": True, "template": automation.get_android_workflow_template()}
 
 
 def install_github_workflow() -> dict:
-    ok, msg = github_actions.install_workflow_template(get_workspace_root())
+    ok, msg = automation.install_workflow_template(get_workspace_root())
     return {"success": ok, "message": msg}
 
 

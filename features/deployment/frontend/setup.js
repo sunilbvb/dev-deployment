@@ -1,11 +1,12 @@
 /**
  * setup.js — Deployment Setup Modal Coordinator
  * Handles credential configuration, dynamic form fields, tab orchestration,
- * and command regeneration. Delegates to modular components in modules/:
+ * and command regeneration. Delegates to modular components in modules/setup/:
  * - setup_scanner.js: autoScanConfig, autoScanAllConfig, rescanWorkspace, detectAppFromPath
  * - setup_webhooks.js: multi-channel notification webhooks, modals, cURL snippets
  * - setup_pipelines.js: pipeline builder, step catalog picker, custom shell steps
  * - setup_credentials.js: P8 dropzone/upload, credential inspection, native path picker
+ * - setup_github.js: GitHub Actions cloud CI PAT, repo override, workflow template installer
  */
 
 const setupState = window.setupState = window.setupState || {
