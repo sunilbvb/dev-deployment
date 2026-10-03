@@ -166,6 +166,26 @@ Welcome to the **Dev Deployment Console** — a lightweight, zero-dependency dev
    - Deep zip central directory inspection without extracting files to disk.
    - Alerts developers if huge uncompressed raw assets (`ZIP_STORED` ≥ 500 KB) are accidentally packaged into production bundles.
 
+10. **Instant iOS Over-the-Air QR Install (Bypass TestFlight Wait)**
+    - Serves native Apple `itms-services://?action=download-manifest` and dynamic `manifest.plist` over HTTPS.
+    - QA testers scan the dashboard QR code with native iPhone Camera and install development/ad-hoc IPAs directly in 10 seconds.
+
+11. **Wireless ADB Multi-Device Push (Instant Test Desk Sync)**
+    - Auto-detects connected USB, Wi-Fi, and emulator Android devices via `adb devices -l`.
+    - Pairs wireless test phones and pushes APKs in parallel to all desk phones simultaneously via thread pool.
+
+12. **Two-Way ChatOps Bot (Slack / Discord / WhatsApp)**
+    - Triggers emergency builds remotely from team chats via slash commands (`/deploy <app> <command>`).
+    - Replies directly into the chat thread with build status, direct APK/IPA download buttons, and install QR codes.
+
+13. **Build Time Profiler & Compilation Bottleneck Heatmap**
+    - Parses Gradle task timings and Xcode compile logs into 6 phases: Dependencies, Compilation, Assets, Linking, Packaging, Signing.
+    - Segmented visual heatmap progress bar and bottleneck alerts (≥30%) with targeted compilation speed tips.
+
+14. **Smart Silent Cache Warmer (Zero Cold-Start Lag)**
+    - Low-priority background daemon watching Git branch switches and dependency lockfile changes (`pubspec.yaml`, `Podfile.lock`).
+    - Silently pre-fetches dependencies via `flutter pub get` when no builds are running, eliminating cold-start build delay.
+
 ---
 
 ## 🏁 Starting the Deployment Server
