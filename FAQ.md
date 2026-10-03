@@ -796,9 +796,22 @@ Hybrid Parallel (Recommended):
      ```
    - Or if GitHub CLI (`gh`) is installed locally:
      `gh workflow run build-android.yml -f flavor=prod`
-2. **Parallel Pipeline Step:**
-   - In **Saved Pipelines**, the Android build step dispatches the cloud action asynchronously, while the next local iOS build step begins immediately on the workstation.
-3. **Artifact Sync & QR Code Scan-to-Install:**
-   - When the GitHub Actions Android build completes, it uploads the `.apk` as a workflow artifact and can ping `/api/deployment/webhook/incoming` on the deployment console.
-   - The console downloads the generated APK to its local artifact storage, instantly activating the dashboard **QR Code Scan-to-Install** modal for QA testers!
+### How do I configure and use Hybrid Parallel Builds in the UI?
+1. **Configure GitHub Access (One-time setup):**
+   - Click **Configure (⚙️)** in top navigation bar.
+   - Click the **Cloud CI** tab.
+   - Enter your GitHub Personal Access Token (PAT with `repo` or `actions:write` scope) and click **Save Cloud CI Settings**. (If you use the `gh` CLI locally, the tool auto-detects your auth token!).
+   - Click **Install .github/workflows/deploy-android.yml** to add the automated Android compilation workflow to your project.
+2. **Execute with Runner Selector:**
+   - Select your target project and choose any Android build tile (e.g. `Build AAB`, `Build APK`, `Build & Upload AAB`).
+   - Notice the **Execution Runner** toggle in the Ready to Execute panel:
+     `[ 💻 Local Machine ]  [ ☁️ GitHub Actions ]`
+   - Select **☁️ GitHub Actions** and click **Run**.
+   - The live terminal streams GitHub Actions dispatch and runner status in real time.
+3. **Run Parallel iOS Build Simultaneously:**
+   - While the Android cloud job is running on GitHub Actions, select an iOS command (e.g. `Build IPA (prod)`).
+   - Click **Run** on **Local Machine**.
+   - **Both jobs execute in parallel** with zero lock contention!
+   - When the GitHub Actions Android build completes, the tool automatically downloads the APK artifact and displays the **QR Code Scan-to-Install** banner for QA testers.
+
 
