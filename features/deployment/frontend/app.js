@@ -529,7 +529,9 @@ function updateExecutionPanel() {
         return;
     }
 
+    const runnerSelectRow = document.getElementById('runnerSelectRow');
     if (state.selectedPipeline) {
+        if (runnerSelectRow) runnerSelectRow.style.display = 'none';
         els.executionPanel.classList.remove('hidden');
         const pipeFlavor = state.selectedPipeline.flavor ? ` (${state.selectedPipeline.flavor.toUpperCase()})` : '';
         els.selectedCommandTitle.textContent = state.selectedPipeline.name + pipeFlavor;
@@ -548,11 +550,24 @@ function updateExecutionPanel() {
 
     els.runButton.querySelector('span').textContent = 'Run';
     const command = resolvedCommandForExecution();
-    const runner = state.selectedCommand.runner || 'make';
+    const canUseCloudRunner = state.selectedCommand.platform === 'android' ||
+        ['build_aab', 'build_apk', 'deploy_aab', 'upload_aab'].includes(state.selectedCommand.templateId);
+
+    if (runnerSelectRow) {
+        runnerSelectRow.style.display = canUseCloudRunner ? '' : 'none';
+    }
+
+    const isCloudRunner = canUseCloudRunner && state.selectedRunner === 'github_actions';
+    const runner = isCloudRunner ? 'github_actions' : (state.selectedCommand.runner || 'make');
     const isLocked = state.selectedCommand.configured === false;
     els.executionPanel.classList.remove('hidden');
-    els.selectedCommandTitle.textContent = state.selectedCommand.name || prettyCommandTitle(command);
-    if (runner === 'custom') {
+    els.selectedCommandTitle.textContent = (state.selectedCommand.name || prettyCommandTitle(command)) + (isCloudRunner ? ' [☁️ GitHub Actions]' : '');
+
+    if (isCloudRunner) {
+        const buildType = (state.selectedCommand.templateId || '').includes('aab') ? 'aab' : 'apk';
+        const flv = state.selectedCommand.flavor || selectedEnvForExecution() || 'prod';
+        els.selectedCommandPreview.textContent = `github-actions dispatch deploy-android.yml --flavor ${flv} --build-type ${buildType}\n# Cloud runner: Ubuntu Linux (runs in parallel with local iOS builds)`;
+    } else if (runner === 'custom') {
         els.selectedCommandPreview.textContent = command;
     } else if (runner === 'melos') {
         els.selectedCommandPreview.textContent = `melos run ${command}`;
@@ -680,7 +695,10 @@ function stopTimer() {
 async function executeSelected(confirmed = false) {
     if (!state.selectedApp || !state.selectedCommand) return;
     const command = state.selectedCommand.key || state.selectedCommand.id;
-    const runner = state.selectedCommand.runner || 'make';
+    const canUseCloudRunner = state.selectedCommand.platform === 'android' ||
+        ['build_aab', 'build_apk', 'deploy_aab', 'upload_aab'].includes(state.selectedCommand.templateId);
+    const isCloudRunner = canUseCloudRunner && state.selectedRunner === 'github_actions';
+    const runner = isCloudRunner ? 'github_actions' : (state.selectedCommand.runner || 'make');
     const env = selectedEnvForExecution();
 
     state.activeJobId = null;
@@ -1061,6 +1079,17 @@ els.runButton.addEventListener('click', () => {
 });
 els.stopJobBtn.addEventListener('click', stopActiveJob);
 els.clearTerminalBtn.addEventListener('click', clearTerminal);
+
+const runnerTabs = document.getElementById('runnerTabs');
+if (runnerTabs) {
+    runnerTabs.addEventListener('click', (e) => {
+        const btn = e.target.closest('.ui-segment');
+        if (!btn || !btn.dataset.runner) return;
+        runnerTabs.querySelectorAll('.ui-segment').forEach(s => s.classList.toggle('active', s === btn));
+        state.selectedRunner = btn.dataset.runner;
+        updateExecutionPanel();
+    });
+}
 
 // Prod confirm modal
 els.confirmProdDeployBtn.addEventListener('click', () => {

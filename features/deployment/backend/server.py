@@ -320,6 +320,12 @@ class DeploymentHandler(http.server.SimpleHTTPRequestHandler):
             if parsed.path == "/api/deployment/deploy-config":
                 self.write_json({"success": True, "config": router.load_deploy_config()})
                 return
+            if parsed.path == "/api/deployment/github/status":
+                self.write_json(router.get_github_status(query.get("app", [""])[0]))
+                return
+            if parsed.path == "/api/deployment/github/template":
+                self.write_json(router.get_github_workflow_template())
+                return
             if parsed.path == "/api/deployment/credentials":
                 self.write_json(router.get_credentials_status(query.get("app", [""])[0]))
                 return
@@ -731,6 +737,22 @@ class DeploymentHandler(http.server.SimpleHTTPRequestHandler):
                 app_val = str(data.get("app") or "")
                 pipe_id = str(data.get("pipelineId") or data.get("id") or "")
                 self.write_json(router.delete_pipeline(app_val, pipe_id))
+                return
+            if parsed.path == "/api/deployment/github/config":
+                token = data.get("token")
+                repo = data.get("repo")
+                self.write_json(router.save_github_config(token=token, repo=repo))
+                return
+            if parsed.path == "/api/deployment/github/install-template":
+                self.write_json(router.install_github_workflow())
+                return
+            if parsed.path == "/api/deployment/github/dispatch":
+                self.write_json(router.dispatch_github_workflow(
+                    app=str(data.get("app") or ""),
+                    flavor=str(data.get("flavor") or "prod"),
+                    build_type=str(data.get("buildType") or data.get("build_type") or "apk"),
+                    ref=str(data.get("ref") or ""),
+                ))
                 return
             if parsed.path == "/api/deployment/notifications/test":
                 self.write_json(router.test_webhook(

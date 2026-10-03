@@ -173,6 +173,17 @@
                     <div class="timer" id="executionTimer">00:00</div>
                 </div>
                 <div id="iosCertBanner" class="cert-expiry-banner hidden"></div>
+                <!-- Runner Target Selector for Hybrid Parallel Builds -->
+                <div id="runnerSelectRow" class="runner-select-row" style="margin: 8px 0 10px 0; display: none;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                        <label style="font-size: 0.74rem; font-weight: 600; color: var(--ui-text-muted);">Execution Runner:</label>
+                        <span id="runnerHybridBadge" class="ui-badge" data-variant="info" style="font-size: 0.68rem; padding: 2px 6px;">⚡ Hybrid Parallel Ready</span>
+                    </div>
+                    <div class="ui-segmented-control" id="runnerTabs" style="width: 100%;">
+                        <button class="ui-segment active" type="button" data-runner="local" style="font-size: 0.76rem; padding: 4px 8px;">💻 Local Machine</button>
+                        <button class="ui-segment" type="button" data-runner="github_actions" style="font-size: 0.76rem; padding: 4px 8px;">☁️ GitHub Actions</button>
+                    </div>
+                </div>
                 <pre id="selectedCommandPreview"></pre>
                 <div class="action-row">
                     <button id="runButton" class="ui-button" data-variant="primary" type="button" disabled>
@@ -705,6 +716,7 @@
                         <button type="button" role="tab" class="setup-tab" data-tab="firebase" aria-selected="false">Firebase</button>
                         <button type="button" role="tab" class="setup-tab" data-tab="release" aria-selected="false">Release</button>
                         <button type="button" role="tab" class="setup-tab" data-tab="server" aria-selected="false">Server</button>
+                        <button type="button" role="tab" class="setup-tab" data-tab="github" aria-selected="false">Cloud CI</button>
                     </div>
 
                     <!-- Pipelines Configuration Card -->
@@ -1178,6 +1190,67 @@
                         </div>
                     </div>
 
+                    <!-- Cloud CI / GitHub Actions Configuration Card -->
+                    <div class="ui-card" data-setup-panel="github" style="margin-bottom: 20px; display: none;">
+                        <div class="ui-card-header" style="display: flex; justify-content: space-between; align-items: center;">
+                            <div>
+                                <h4 class="ui-card-title">Cloud CI &amp; GitHub Actions (Hybrid Runner)</h4>
+                                <p class="ui-help-text" style="margin: 2px 0 0 0;">Dispatch Android builds to GitHub Actions cloud runners while building iOS locally to cut wait time in half.</p>
+                            </div>
+                            <span class="ui-badge" data-variant="info">⚡ 50% Faster Builds</span>
+                        </div>
+                        <div class="ui-card-body">
+                            <div class="ui-alert" data-variant="info" style="margin-bottom: 16px;">
+                                <div class="ui-alert-icon"><i data-lucide="zap"></i></div>
+                                <div class="ui-alert-content">
+                                    <div class="ui-alert-title">Hybrid Distributed Architecture</div>
+                                    <div class="ui-alert-description">Compile Android on free GitHub Actions Ubuntu runners while simultaneously compiling iOS locally on your Apple Silicon Mac. Both build in parallel without CPU lockups or expensive macOS cloud bills.</div>
+                                </div>
+                            </div>
+
+                            <div class="ui-field" style="margin-bottom: 16px;">
+                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                                    <label class="ui-label" for="cfgGithubRepo">GitHub Repository (owner/repo)</label>
+                                    <span id="githubBranchBadge" class="ui-badge" data-variant="secondary">develop</span>
+                                </div>
+                                <input id="cfgGithubRepo" class="ui-input" type="text" placeholder="e.g. sunilbvb/my-mobile-app">
+                                <p class="ui-help-text">Auto-detected from git origin remote. Override here if using a custom repository.</p>
+                            </div>
+
+                            <div class="ui-field" style="margin-bottom: 16px;">
+                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                                    <label class="ui-label" for="cfgGithubToken">GitHub Personal Access Token (PAT)</label>
+                                    <span id="githubTokenBadge" class="ui-badge" data-variant="neutral">Checking...</span>
+                                </div>
+                                <input id="cfgGithubToken" class="ui-input" type="password" placeholder="ghp_xxxxxxxxxxxxxxxxxxxx (needs 'repo' or 'actions:write' scope)">
+                                <p class="ui-help-text">Saved securely at <code>~/.config/dev-deployment/github_token.txt</code> (chmod 600). Also checks <code>GITHUB_TOKEN</code> env or local <code>gh auth token</code>.</p>
+                            </div>
+
+                            <div class="ui-card" style="background: var(--ui-bg-subtle, rgba(255,255,255,0.02)); border: 1px solid var(--ui-border-color); padding: 14px; margin-bottom: 16px; border-radius: 8px;">
+                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                                    <div>
+                                        <div style="font-weight: 600; font-size: 0.85rem;">Android Workflow Template</div>
+                                        <div style="font-size: 0.76rem; color: var(--ui-text-muted);">Standard GitHub Actions workflow for building release APK and AAB.</div>
+                                    </div>
+                                    <span id="githubWfBadge" class="ui-badge" data-variant="neutral">Checking...</span>
+                                </div>
+                                <div style="display: flex; gap: 8px;">
+                                    <button id="installGithubWfBtn" type="button" class="ui-button" data-variant="secondary" data-size="sm">
+                                        <i data-lucide="download"></i>
+                                        <span>Install .github/workflows/deploy-android.yml</span>
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div style="display: flex; justify-content: flex-end;">
+                                <button id="saveGithubConfigBtn" type="button" class="ui-button" data-variant="primary">
+                                    <i data-lucide="check"></i>
+                                    <span>Save Cloud CI Settings</span>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
                     <!-- Footer Action Toolbar -->
                     <div class="setup-actions-toolbar" style="display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 28px; padding-top: 20px; border-top: 1px solid var(--ui-border-color, #334155);">
                         <div style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center;">
@@ -1605,6 +1678,7 @@
 <script src="modules/setup_webhooks.js"></script>
 <script src="modules/setup_pipelines.js"></script>
 <script src="modules/setup_credentials.js"></script>
+<script src="modules/setup_github.js"></script>
 <script src="setup.js"></script>
 </body>
 </html>

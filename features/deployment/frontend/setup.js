@@ -462,12 +462,20 @@ const setupTabs = document.getElementById('setupTabs');
 
 function showSetupTab(tabName) {
     if (!setupTabs) return;
-    setupTabs.querySelectorAll('.setup-tab-btn').forEach(btn => {
-        btn.classList.toggle('active', btn.dataset.tab === tabName);
+    setupTabs.querySelectorAll('.setup-tab-btn, .setup-tab').forEach(btn => {
+        const isActive = btn.dataset.tab === tabName;
+        btn.classList.toggle('active', isActive);
+        btn.setAttribute('aria-selected', isActive ? 'true' : 'false');
+    });
+    document.querySelectorAll('[data-setup-panel]').forEach(pane => {
+        pane.style.display = (pane.dataset.setupPanel === tabName) ? '' : 'none';
     });
     document.querySelectorAll('.setup-tab-pane').forEach(pane => {
         pane.classList.toggle('active', pane.dataset.tabPane === tabName);
     });
+    if (tabName === 'github' && typeof loadGitHubConfig === 'function') {
+        loadGitHubConfig();
+    }
     try { sessionStorage.setItem(SETUP_TAB_KEY, tabName); } catch (_) {}
 }
 
@@ -480,7 +488,7 @@ function setTabStatus(tabName, isReady) {
 
 if (setupTabs) {
     setupTabs.addEventListener('click', e => {
-        const btn = e.target.closest('.setup-tab-btn');
+        const btn = e.target.closest('.setup-tab-btn, .setup-tab');
         if (btn && btn.dataset.tab) {
             showSetupTab(btn.dataset.tab);
         }

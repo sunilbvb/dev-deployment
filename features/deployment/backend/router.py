@@ -3,6 +3,7 @@ import build_size
 import credentials
 import docs_provider
 import doctor
+import github_actions
 import notifications
 import picker
 import pipelines
@@ -111,5 +112,54 @@ get_server_status_info = docs_provider.get_server_status_info
 install_desktop_launcher = server_manager.install_desktop_launcher
 install_systemd_service = server_manager.install_systemd_service
 get_service_status = server_manager.get_service_status
+
+
+def get_github_status(app_id: str = "") -> dict:
+    ws_root = get_workspace_root()
+    repo = github_actions.detect_github_repo(ws_root)
+    branch = github_actions.detect_git_branch(ws_root)
+    token = github_actions.get_stored_github_token()
+    wf_file = github_actions.find_workflow_file(ws_root)
+    wf_exists = (ws_root / ".github" / "workflows" / wf_file).exists()
+    return {
+        "success": True,
+        "repo": repo,
+        "branch": branch,
+        "tokenConfigured": bool(token),
+        "tokenMasked": (token[:4] + "..." + token[-4:]) if token and len(token) > 8 else ("configured" if token else None),
+        "workflowFile": wf_file,
+        "workflowExists": wf_exists,
+    }
+
+
+def save_github_config(token: str | None = None, repo: str | None = None) -> dict:
+    if token is not None:
+        github_actions.save_github_token(token)
+    if repo is not None:
+        github_actions.save_repo_override(repo)
+    return {"success": True, "message": "GitHub configuration saved."}
+
+
+def get_github_workflow_template() -> dict:
+    return {"success": True, "template": github_actions.get_android_workflow_template()}
+
+
+def install_github_workflow() -> dict:
+    ok, msg = github_actions.install_workflow_template(get_workspace_root())
+    return {"success": ok, "message": msg}
+
+
+def dispatch_github_workflow(app: str, flavor: str = "prod", build_type: str = "apk", ref: str = "") -> dict:
+    cmd = f"github-actions build {build_type} --flavor {flavor}"
+    template_id = f"build_{build_type}"
+    return execute_command(
+        app=app,
+        command=cmd,
+        runner="github_actions",
+        flavor=flavor,
+        template_id=template_id,
+        env=flavor,
+        confirmed=True,
+    )
 
 

@@ -208,11 +208,12 @@ def execute_command(
         }
 
     ws_root = get_workspace_root()
-    lock_key = f"{ws_root.resolve()}:{app}"
+    is_cloud_runner = (runner == "github_actions")
+    lock_key = f"{ws_root.resolve()}:{app}:cloud" if is_cloud_runner else f"{ws_root.resolve()}:{app}"
 
     if not _assume_app_lock_held:
         with _JOBS_LOCK:
-            existing = _APP_LOCKS.get(lock_key) or _APP_LOCKS.get(app)
+            existing = _APP_LOCKS.get(lock_key) if is_cloud_runner else (_APP_LOCKS.get(lock_key) or _APP_LOCKS.get(app))
             if existing is not None:
                 started_at = existing.get("started_at")
                 elapsed_sec = int(time.time() - started_at) if started_at else None
@@ -225,10 +226,11 @@ def execute_command(
                 else:
                     elapsed_str = "running"
 
+                prefix = "A GitHub Actions cloud job" if is_cloud_runner else "A deployment job"
                 return {
                     "success": False,
                     "error": (
-                        f"A deployment job is already running for '{app}' "
+                        f"{prefix} is already running for '{app}' "
                         f"({existing.get('flavor') or 'any flavor'}) ({elapsed_str}): {existing.get('command')}. "
                         "Wait for it to finish, check the History tab, or stop it before starting another."
                     ),
@@ -248,6 +250,7 @@ def execute_command(
                 "started_at": time.time(),
                 "workspace": str(ws_root.resolve()),
                 "app": app,
+                "runner": runner,
             }
 
     try:
@@ -277,6 +280,90 @@ def execute_command(
 
     _prune_jobs()
     job_id = _new_job_id()
+
+    if is_cloud_runner:
+        import github_actions
+        stop_event = threading.Event()
+        cmd_str = f"github-actions dispatch {template_id or command} ({flavor or 'prod'})"
+        with _JOBS_LOCK:
+            _JOBS[job_id] = {
+                "id": job_id,
+                "command": cmd_str,
+                "status": "running",
+                "return_code": None,
+                "output": "",
+                "error": "",
+                "pid": None,
+                "pgid": None,
+                "process": None,
+                "stop_event": stop_event,
+                "app": app,
+                "template_id": template_id,
+                "env": env,
+                "flavor": flavor or env,
+                "chained_job_id": chained_parent_id,
+                "is_pipeline_step": bool(_assume_app_lock_held),
+                "started_at": time.time(),
+                "workspace": str(ws_root.resolve()),
+                "runner": "github_actions",
+            }
+            lock_entry = _APP_LOCKS.get(lock_key)
+            if lock_entry is not None:
+                lock_entry["job_id"] = job_id
+                lock_entry["command"] = cmd_str
+            else:
+                _APP_LOCKS[lock_key] = {
+                    "job_id": job_id,
+                    "flavor": flavor,
+                    "command": cmd_str,
+                    "started_at": time.time(),
+                    "workspace": str(ws_root.resolve()),
+                    "app": app,
+                    "runner": "github_actions",
+                }
+
+        def finish_cloud_job(return_code: int = 0, artifact_path: Optional[str] = None) -> None:
+            finished_ts = time.time()
+            with _JOBS_LOCK:
+                job = _JOBS.get(job_id)
+                if not job:
+                    return
+                job["return_code"] = return_code
+                status = "stopped" if job.get("status") == "stopping" else ("success" if return_code == 0 else "error")
+                job["status"] = status
+                job["finished_at"] = finished_ts
+                if artifact_path:
+                    job["artifact"] = artifact_path
+                if not _assume_app_lock_held:
+                    held = _APP_LOCKS.get(lock_key)
+                    if held is not None and (held.get("job_id") == job_id or held.get("job_id") is None):
+                        _APP_LOCKS.pop(lock_key, None)
+
+            _record_history_entry(job_id)
+            try:
+                import notifications
+                with _JOBS_LOCK:
+                    finished_job_copy = dict(_JOBS.get(job_id) or {})
+                notifications.notify_job_finished(finished_job_copy)
+            except Exception:
+                logging.exception("Failed to dispatch outgoing notification for cloud job %s", job_id)
+            _prune_jobs()
+
+        def worker_target() -> None:
+            github_actions.run_github_job_worker(
+                job_id=job_id,
+                app=app,
+                flavor=flavor or "prod",
+                template_id=template_id,
+                command=command,
+                ws_root=ws_root,
+                append_log_fn=_append_job_log,
+                finish_job_fn=finish_cloud_job,
+                stop_event=stop_event,
+            )
+
+        _start_in_context(worker_target)
+        return {"success": True, "jobId": job_id, "command": cmd_str}
     try:
         process = subprocess.Popen(
             cmd,
@@ -436,7 +523,7 @@ def get_job(job_id: Optional[str]) -> dict[str, Any]:
         job = _JOBS.get(str(job_id))
         if not job:
             return {"success": False, "error": "Job not found"}
-        payload = {k: v for k, v in job.items() if k != "process"}
+        payload = {k: v for k, v in job.items() if k not in ("process", "stop_event")}
     return {"success": True, "job": payload}
 
 
@@ -449,9 +536,13 @@ def stop_job(job_id: Optional[str]) -> dict[str, Any]:
         if not job:
             return {"success": False, "error": "Job not found"}
         process = job.get("process")
-        if process is None:
+        stop_event = job.get("stop_event")
+        if process is None and stop_event is None:
             return {"success": False, "error": "Job is not running"}
         job["status"] = "stopping"
+        if stop_event is not None:
+            stop_event.set()
+            return {"success": True, "message": "Cloud job cancellation requested"}
 
     try:
         pgid = job.get("pgid")

@@ -2725,5 +2725,160 @@ class TestDocumentationAndServerStatus(unittest.TestCase):
             else:
                 os.environ.pop("WEBHOOK_SECRET", None)
 
+    def test_github_actions_workflow_template_and_install(self):
+        import github_actions
+        import tempfile
+        tmpl = github_actions.get_android_workflow_template()
+        self.assertIn("workflow_dispatch:", tmpl)
+        self.assertIn("flutter build apk", tmpl)
+        self.assertIn("flutter build appbundle", tmpl)
+
+        with tempfile.TemporaryDirectory() as td:
+            td_path = Path(td)
+            ok, msg = github_actions.install_workflow_template(td_path)
+            self.assertTrue(ok)
+            installed_file = td_path / ".github" / "workflows" / "deploy-android.yml"
+            self.assertTrue(installed_file.exists())
+            content = installed_file.read_text(encoding="utf-8")
+            self.assertIn("name: Build & Package Android", content)
+
+    def test_github_token_and_repo_storage(self):
+        import github_actions
+        import tempfile
+        with tempfile.TemporaryDirectory() as td:
+            orig_cfg = github_actions._CONFIG_DIR
+            orig_tok = github_actions._GITHUB_TOKEN_FILE
+            orig_rep = github_actions._GITHUB_REPO_OVERRIDE_FILE
+            try:
+                github_actions._CONFIG_DIR = Path(td)
+                github_actions._GITHUB_TOKEN_FILE = Path(td) / "github_token.txt"
+                github_actions._GITHUB_REPO_OVERRIDE_FILE = Path(td) / "github_repo.txt"
+
+                saved = github_actions.save_github_token("ghp_test_token_1234567890")
+                self.assertTrue(saved)
+                self.assertEqual(github_actions.get_stored_github_token(), "ghp_test_token_1234567890")
+
+                saved_repo = github_actions.save_repo_override("my-org/my-app")
+                self.assertTrue(saved_repo)
+                self.assertEqual(github_actions.get_stored_repo_override(), "my-org/my-app")
+                self.assertEqual(github_actions.detect_github_repo(), "my-org/my-app")
+            finally:
+                github_actions._CONFIG_DIR = orig_cfg
+                github_actions._GITHUB_TOKEN_FILE = orig_tok
+                github_actions._GITHUB_REPO_OVERRIDE_FILE = orig_rep
+
+    def test_cloud_runner_parallel_lock_separation(self):
+        """Verify local build locks and cloud runner locks do NOT block each other."""
+        import jobs
+        import time
+        from config import get_workspace_root
+
+        ws_root = get_workspace_root()
+        local_lock = f"{ws_root.resolve()}:app_hybrid_test"
+        cloud_lock = f"{ws_root.resolve()}:app_hybrid_test:cloud"
+
+        with jobs._JOBS_LOCK:
+            # Simulate a local iOS build currently running
+            jobs._APP_LOCKS[local_lock] = {
+                "job_id": "job_local_123",
+                "flavor": "prod",
+                "command": "flutter build ipa",
+                "started_at": time.time(),
+                "workspace": str(ws_root.resolve()),
+                "app": "app_hybrid_test",
+                "runner": "custom",
+            }
+
+        try:
+            # Disallow second local build for the same app
+            busy_res = jobs.execute_command(
+                app="app_hybrid_test",
+                command="flutter build ipa",
+                flavor="prod",
+                runner="custom",
+            )
+            self.assertFalse(busy_res["success"])
+            self.assertEqual(busy_res.get("code"), "APP_BUSY")
+            self.assertIn("A deployment job is already running", busy_res.get("error", ""))
+
+            # A cloud GitHub Actions run uses cloud lock and is NOT blocked by the local lock
+            cloud_res = jobs.execute_command(
+                app="app_hybrid_test",
+                command="github-actions build",
+                flavor="prod",
+                runner="github_actions",
+            )
+            # Cloud run starts successfully despite local build running simultaneously!
+            self.assertTrue(cloud_res["success"])
+            self.assertIn("jobId", cloud_res)
+
+            # Stopping cloud job
+            stop_res = jobs.stop_job(cloud_res["jobId"])
+            self.assertTrue(stop_res["success"])
+        finally:
+            with jobs._JOBS_LOCK:
+                jobs._APP_LOCKS.pop(local_lock, None)
+                jobs._APP_LOCKS.pop(cloud_lock, None)
+
+    def test_github_actions_api_routes(self):
+        """Test GET and POST GitHub Actions endpoints on backend server."""
+        import http.client
+        import http.server
+        import json
+        import threading
+        import server
+        from server import _get_auth_token
+
+        handler = server.DeploymentHandler
+        httpd = http.server.ThreadingHTTPServer(("127.0.0.1", 0), handler)
+        port = httpd.server_address[1]
+        t = threading.Thread(target=httpd.serve_forever, daemon=True)
+        t.start()
+
+        token = _get_auth_token()
+        headers = {
+            "Host": f"localhost:{port}",
+            "X-API-Token": token,
+            "Content-Type": "application/json",
+        }
+
+        try:
+            conn = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
+
+            # 1. GET /api/deployment/github/status
+            conn.request("GET", "/api/deployment/github/status", headers=headers)
+            res_status = conn.getresponse()
+            self.assertEqual(res_status.status, 200)
+            data_status = json.loads(res_status.read().decode("utf-8"))
+            self.assertTrue(data_status.get("success"))
+            self.assertIn("workflowFile", data_status)
+
+            # 2. GET /api/deployment/github/template
+            conn.request("GET", "/api/deployment/github/template", headers=headers)
+            res_tmpl = conn.getresponse()
+            self.assertEqual(res_tmpl.status, 200)
+            data_tmpl = json.loads(res_tmpl.read().decode("utf-8"))
+            self.assertTrue(data_tmpl.get("success"))
+            self.assertIn("workflow_dispatch:", data_tmpl.get("template", ""))
+
+            # 3. POST /api/deployment/github/config
+            body_cfg = json.dumps({"token": "ghp_api_test_tok_99", "repo": "test-org/test-repo"})
+            conn.request("POST", "/api/deployment/github/config", body=body_cfg.encode("utf-8"), headers=headers)
+            res_cfg = conn.getresponse()
+            self.assertEqual(res_cfg.status, 200)
+            data_cfg = json.loads(res_cfg.read().decode("utf-8"))
+            self.assertTrue(data_cfg.get("success"))
+
+            # 4. POST /api/deployment/github/install-template
+            conn.request("POST", "/api/deployment/github/install-template", body=b"{}", headers=headers)
+            res_inst = conn.getresponse()
+            self.assertEqual(res_inst.status, 200)
+            data_inst = json.loads(res_inst.read().decode("utf-8"))
+            self.assertTrue(data_inst.get("success"))
+        finally:
+            httpd.shutdown()
+            httpd.server_close()
+
+
 
 
