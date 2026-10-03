@@ -762,3 +762,43 @@ Cloud CI platforms (Codemagic, Bitrise, CircleCI) operate under a **multi-tenant
 | **Offline Capability** | ❌ None (fails without active internet) | **✓ 100% offline** (works without internet, on planes or air-gapped LANs) |
 | **Secret & Code Privacy** | Source code, keystores, and `.p8` keys uploaded to third-party cloud | Source code and private keys never leave your workstation/server |
 
+---
+
+## 19. Hybrid Distributed Builds (GitHub Actions + Local Parallel Matrix)
+
+### Can I build Android on GitHub Actions while building iOS locally to cut build time in half?
+**Yes! This is the Hybrid Distributed Build pattern.**
+
+Instead of running iOS and Android sequentially on a single workstation (taking 15 min + 15 min = **30 minutes**):
+```
+Sequential Local (Traditional):
+[----- 15m iOS Build -----][----- 15m Android Build -----]  --> Total: 30 minutes
+
+Hybrid Parallel (Recommended):
+[----- 15m iOS Build (Local Mac) -----]                     --> Total: 15 minutes (50% faster!)
+[----- 12m Android Build (GitHub Actions Cloud) -----]
+```
+
+### Why is this idea brilliant?
+1. **50% Wall-Clock Time Reduction:** Both builds compile simultaneously in parallel. Total wait time drops from 30 minutes down to ~15 minutes.
+2. **Zero Cloud macOS Surcharges:** GitHub Actions charges **10x higher minute rates** for macOS runners. By compiling iOS locally on your Apple Silicon Mac and offloading only Android to GitHub's free/cheap standard Ubuntu Linux runners (2,000–3,000 free minutes/mo), your cloud bill is **$0**.
+3. **Local Machine Hardware Relief:** Compiling heavy Gradle daemons and Xcode simultaneously on a single laptop causes severe thermal throttling, 100% CPU lockups, and RAM exhaustion. Offloading Android to GitHub leaves 100% of your local machine's CPU and RAM dedicated to Xcode.
+
+### How does the tool trigger and manage GitHub Actions?
+1. **GitHub `workflow_dispatch` API or `gh` CLI:**
+   - The deployment tool can dispatch a GitHub Actions workflow using Python's standard `urllib.request`:
+     ```bash
+     curl -X POST \
+       -H "Authorization: Bearer $GITHUB_PAT" \
+       -H "Accept: application/vnd.github+json" \
+       https://api.github.com/repos/:owner/:repo/actions/workflows/build-android.yml/dispatches \
+       -d '{"ref":"develop", "inputs":{"flavor":"prod", "upload":"google_play"}}'
+     ```
+   - Or if GitHub CLI (`gh`) is installed locally:
+     `gh workflow run build-android.yml -f flavor=prod`
+2. **Parallel Pipeline Step:**
+   - In **Saved Pipelines**, the Android build step dispatches the cloud action asynchronously, while the next local iOS build step begins immediately on the workstation.
+3. **Artifact Sync & QR Code Scan-to-Install:**
+   - When the GitHub Actions Android build completes, it uploads the `.apk` as a workflow artifact and can ping `/api/deployment/webhook/incoming` on the deployment console.
+   - The console downloads the generated APK to its local artifact storage, instantly activating the dashboard **QR Code Scan-to-Install** modal for QA testers!
+
