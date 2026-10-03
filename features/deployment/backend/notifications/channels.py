@@ -110,21 +110,34 @@ def build_slack_payload(event: dict[str, Any]) -> dict[str, Any]:
             },
         })
 
+    action_buttons = []
+    if event.get("itmsUrl"):
+        action_buttons.append({
+            "type": "button",
+            "text": {"type": "plain_text", "text": "🍎 Install iOS OTA (10s)", "emoji": True},
+            "url": event["itmsUrl"],
+            "style": "primary",
+        })
     if download_url:
+        is_ios = "ios" in platform.lower() or download_url.endswith(".ipa")
+        btn_label = "🍎 Download IPA" if is_ios else "📱 Download APK"
+        action_buttons.append({
+            "type": "button",
+            "text": {"type": "plain_text", "text": btn_label, "emoji": True},
+            "url": download_url,
+            "style": "primary" if not event.get("itmsUrl") else "default",
+        })
+    if event.get("qrUrl"):
+        action_buttons.append({
+            "type": "button",
+            "text": {"type": "plain_text", "text": "📷 Scan QR Code", "emoji": True},
+            "url": event["qrUrl"],
+        })
+
+    if action_buttons:
         blocks.append({
             "type": "actions",
-            "elements": [
-                {
-                    "type": "button",
-                    "text": {
-                        "type": "plain_text",
-                        "text": "📱 Download APK",
-                        "emoji": True,
-                    },
-                    "url": download_url,
-                    "style": "primary",
-                }
-            ],
+            "elements": action_buttons,
         })
 
     fallback_text = f"{title} | {flavor} | {duration}"
@@ -624,6 +637,20 @@ def notify_job_finished(job: dict[str, Any], ws_root: Optional[Path] = None) -> 
                 logging.exception("Exception during outgoing webhook dispatch")
 
         threading.Thread(target=_async_send, name="WebhookNotifyThread", daemon=True).start()
+
+    # Two-way ChatOps: reply directly to trigger channel if response_url is present
+    chatops_url = job.get("response_url")
+    if chatops_url:
+        chatops_payload = build_slack_payload(event_data)
+        def _async_send_chatops(target_url=chatops_url, p=chatops_payload):
+            try:
+                res = send_outgoing_webhook(target_url, p)
+                if not res.get("success"):
+                    logging.warning("ChatOps response_url dispatch failed: %s", res.get("error"))
+            except Exception:
+                logging.exception("Exception during ChatOps response_url dispatch")
+
+        threading.Thread(target=_async_send_chatops, name="ChatOpsReplyThread", daemon=True).start()
 
 
 def notify_pipeline_finished(run: dict[str, Any], ws_root: Optional[Path] = None) -> None:

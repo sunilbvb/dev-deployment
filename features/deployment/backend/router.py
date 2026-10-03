@@ -1,5 +1,8 @@
+import adb_manager
 import artifacts
+import build_profiler
 import build_size
+import cache_warmer
 import credentials
 import docs_provider
 import doctor
@@ -83,6 +86,10 @@ diagnose_app = doctor.diagnose_app
 get_apk_download_info = artifacts.get_apk_download_info
 resolve_safe_apk_path = artifacts.resolve_safe_apk_path
 find_apk_artifact = artifacts.find_apk_artifact
+get_ipa_download_info = artifacts.get_ipa_download_info
+resolve_safe_ipa_path = artifacts.resolve_safe_ipa_path
+find_ipa_artifact = artifacts.find_ipa_artifact
+generate_ota_manifest_plist = artifacts.generate_ota_manifest_plist
 get_lan_ip = artifacts.get_lan_ip
 qr_svg = qr.qr_svg
 qr_ascii = qr.qr_ascii
@@ -105,6 +112,15 @@ inspect_archive_contents = build_size.inspect_archive_contents
 compare_build_size = build_size.compare_build_size
 inspect_and_diff_job = build_size.inspect_and_diff_job
 get_build_size_info = build_size.get_build_size_info
+get_adb_devices = adb_manager.get_adb_devices
+connect_wireless_adb = adb_manager.connect_wireless_adb
+disconnect_wireless_adb = adb_manager.disconnect_wireless_adb
+push_apk_to_devices = adb_manager.push_apk_to_devices
+get_job_build_profile = build_profiler.get_job_build_profile
+get_cache_warmer_status = cache_warmer.get_cache_warmer_status
+trigger_cache_warm = cache_warmer.trigger_cache_warm
+start_cache_warmer_daemon = cache_warmer.start_cache_warmer_daemon
+stop_cache_warmer_daemon = cache_warmer.stop_cache_warmer_daemon
 
 get_doc_content = docs_provider.get_doc_content
 list_available_docs = docs_provider.list_available_docs

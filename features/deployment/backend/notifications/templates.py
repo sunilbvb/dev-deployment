@@ -216,16 +216,32 @@ def compile_event_data(
     commit = get_git_commit_summary(ws)
 
     download_url = ""
+    itms_url = ""
+    qr_url = ""
     if artifact and artifact.get("download_url"):
         download_url = artifact["download_url"]
     elif artifact and artifact.get("path"):
         try:
             import artifacts
-            dl_info = artifacts.get_apk_download_info(app_id=app, flavor=flavor)
-            if dl_info.get("hasApk") and dl_info.get("downloadUrl"):
-                download_url = dl_info["downloadUrl"]
+            p_str = str(artifact["path"]).lower()
+            if p_str.endswith(".ipa") or "ios" in platform.lower():
+                dl_info = artifacts.get_ipa_download_info(app_id=app, flavor=flavor)
+                if dl_info.get("hasIpa"):
+                    download_url = dl_info.get("ipaDownloadUrl", "")
+                    itms_url = dl_info.get("itmsUrl", "")
+            else:
+                dl_info = artifacts.get_apk_download_info(app_id=app, flavor=flavor)
+                if dl_info.get("hasApk") and dl_info.get("downloadUrl"):
+                    download_url = dl_info["downloadUrl"]
         except Exception:
             pass
+
+    if download_url or itms_url:
+        target_link = itms_url or download_url
+        base_origin = download_url.split("/api/")[0] if "/api/" in download_url else ""
+        if base_origin:
+            import urllib.parse
+            qr_url = f"{base_origin}/api/deployment/qr?text={urllib.parse.quote(target_link)}"
 
     build_size_summary = (build_size or {}).get("summary", "")
 
@@ -240,6 +256,8 @@ def compile_event_data(
         "durationFormatted": format_duration(duration_sec),
         "commit": commit,
         "downloadUrl": download_url,
+        "itmsUrl": itms_url,
+        "qrUrl": qr_url,
         "track": track,
         "command": command,
         "templateId": template_id,

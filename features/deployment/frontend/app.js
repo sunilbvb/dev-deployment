@@ -93,6 +93,50 @@ const els = window.els = {
     copyQrUrlBtn: document.getElementById('copyQrUrlBtn'),
     directDownloadApkBtn: document.getElementById('directDownloadApkBtn'),
     qrLanIpLabel: document.getElementById('qrLanIpLabel'),
+    // iOS OTA IPA Elements
+    ipaInstallBanner: document.getElementById('ipaInstallBanner'),
+    ipaBannerFilename: document.getElementById('ipaBannerFilename'),
+    ipaBannerSize: document.getElementById('ipaBannerSize'),
+    openIpaQrModalBtn: document.getElementById('openIpaQrModalBtn'),
+    bannerIpaDownloadBtn: document.getElementById('bannerIpaDownloadBtn'),
+    ipaQrModalOverlay: document.getElementById('ipaQrModalOverlay'),
+    closeIpaQrModalBtn: document.getElementById('closeIpaQrModalBtn'),
+    ipaQrCodeContainer: document.getElementById('ipaQrCodeContainer'),
+    qrIpaSize: document.getElementById('qrIpaSize'),
+    qrIpaFilename: document.getElementById('qrIpaFilename'),
+    qrIpaBundleId: document.getElementById('qrIpaBundleId'),
+    qrIpaUrlInput: document.getElementById('qrIpaUrlInput'),
+    copyIpaQrUrlBtn: document.getElementById('copyIpaQrUrlBtn'),
+    directDownloadIpaBtn: document.getElementById('directDownloadIpaBtn'),
+    // Wireless ADB Elements
+    adbPushBtn: document.getElementById('adbPushBtn'),
+    adbModalOverlay: document.getElementById('adbModalOverlay'),
+    closeAdbModalBtn: document.getElementById('closeAdbModalBtn'),
+    adbConnectAddressInput: document.getElementById('adbConnectAddressInput'),
+    adbConnectBtn: document.getElementById('adbConnectBtn'),
+    adbDeviceCount: document.getElementById('adbDeviceCount'),
+    adbRefreshDevicesBtn: document.getElementById('adbRefreshDevicesBtn'),
+    adbDeviceListContainer: document.getElementById('adbDeviceListContainer'),
+    adbInstallResults: document.getElementById('adbInstallResults'),
+    adbModalApkInfo: document.getElementById('adbModalApkInfo'),
+    adbInstallSubmitBtn: document.getElementById('adbInstallSubmitBtn'),
+    // Build Time Profiler Elements
+    buildProfilerBanner: document.getElementById('buildProfilerBanner'),
+    buildProfilerSummaryText: document.getElementById('buildProfilerSummaryText'),
+    buildProfilerSubtext: document.getElementById('buildProfilerSubtext'),
+    buildProfilerBadge: document.getElementById('buildProfilerBadge'),
+    buildProfilerModalOverlay: document.getElementById('buildProfilerModalOverlay'),
+    closeBuildProfilerModalBtn: document.getElementById('closeBuildProfilerModalBtn'),
+    closeBuildProfilerBtn: document.getElementById('closeBuildProfilerBtn'),
+    bpTotalDurationText: document.getElementById('bpTotalDurationText'),
+    bpSummaryText: document.getElementById('bpSummaryText'),
+    bpProgressBar: document.getElementById('bpProgressBar'),
+    bpBottlenecksContainer: document.getElementById('bpBottlenecksContainer'),
+    bpTableBody: document.getElementById('bpTableBody'),
+    bpFooterJobInfo: document.getElementById('bpFooterJobInfo'),
+    // Cache Warmer Elements
+    cacheWarmerHeaderBadge: document.getElementById('cacheWarmerHeaderBadge'),
+    cacheWarmerBadgeText: document.getElementById('cacheWarmerBadgeText'),
     // Sentinel Elements
     sentinelHeaderBadge: document.getElementById('sentinelHeaderBadge'),
     sentinelHeaderBadgeText: document.getElementById('sentinelHeaderBadgeText'),
@@ -704,9 +748,14 @@ async function executeSelected(confirmed = false) {
     state.activeJobId = null;
     state.stdoutLength = 0;
     if (els.apkInstallBanner) els.apkInstallBanner.classList.add('hidden');
+    if (els.ipaInstallBanner) els.ipaInstallBanner.classList.add('hidden');
     if (els.buildSizeBanner) {
         els.buildSizeBanner.classList.add('hidden');
         els.buildSizeBanner.style.display = 'none';
+    }
+    if (els.buildProfilerBanner) {
+        els.buildProfilerBanner.classList.add('hidden');
+        els.buildProfilerBanner.style.display = 'none';
     }
     els.runButton.disabled = true;
     els.stopJobBtn.disabled = true;
@@ -791,7 +840,9 @@ async function pollJob(jobId) {
             writeTerminal(`Completed successfully: ${job.command}`, 'success');
             showToast('Deployment command completed');
             checkAndDisplayApk(jobId, job.app, job.flavor || job.env);
+            checkAndDisplayIpa(jobId, job.app, job.flavor || job.env);
             checkAndDisplayBuildSize(jobId, job.app, job.flavor || job.env);
+            checkAndDisplayBuildProfile(jobId);
         } else if (job.status === 'stopped') {
             writeTerminal(`Stopped: ${job.command}`, 'error');
             showToast('Deployment command stopped');

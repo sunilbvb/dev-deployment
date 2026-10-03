@@ -184,6 +184,7 @@ def execute_command(
     confirmed: bool = False,
     _assume_app_lock_held: bool = False,
     chained_parent_id: Optional[str] = None,
+    response_url: Optional[str] = None,
 ) -> dict[str, Any]:
     if not app or not command:
         return {"success": False, "error": "App and command are required"}
@@ -306,6 +307,7 @@ def execute_command(
                 "started_at": time.time(),
                 "workspace": str(ws_root.resolve()),
                 "runner": "github_actions",
+                "response_url": response_url,
             }
             lock_entry = _APP_LOCKS.get(lock_key)
             if lock_entry is not None:
@@ -401,6 +403,7 @@ def execute_command(
             "is_pipeline_step": bool(_assume_app_lock_held),
             "started_at": time.time(),
             "workspace": str(ws_root.resolve()),
+            "response_url": response_url,
         }
         lock_entry = _APP_LOCKS.get(lock_key) or _APP_LOCKS.get(app)
         if lock_entry is not None:

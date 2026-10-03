@@ -19,6 +19,10 @@ The Dev Deployment Console provides a robust REST API powering both the web UI a
 11. [Server Management & 1-Click Launchers](#server-management--1-click-launchers)
 12. [Team Webhook Notifications](#team-webhook-notifications)
 13. [Documentation Provider](#documentation-provider)
+14. [iOS OTA Installation & Direct IPA Hosting](#ios-ota-installation--direct-ipa-hosting)
+15. [Wireless ADB Device Management & Parallel Push](#wireless-adb-device-management--parallel-push)
+16. [Build Time Profiler & Bottleneck Heatmap](#build-time-profiler--bottleneck-heatmap)
+17. [Smart Silent Cache Warmer](#smart-silent-cache-warmer)
 
 ---
 
@@ -274,3 +278,43 @@ Incoming requests are accepted if ANY of the following match:
 |:---|:---|:---|:---|
 | `GET` | `/api/deployment/docs/list` | – | Returns list of all available documentation guides and categories. |
 | `GET` | `/api/deployment/docs` | `?doc=<id>` | Returns markdown document content for display in the interactive docs viewer. |
+
+---
+
+## iOS OTA Installation & Direct IPA Hosting
+
+| Method | Endpoint | Query Parameters | Returns / Purpose |
+|:---|:---|:---|:---|
+| `GET` | `/api/deployment/ipa-info` | `?app=<app_id>&flavor=<flavor>` | Locates latest `.ipa` artifact and returns direct download URL and native `itms-services://` OTA link. |
+| `GET` | `/api/deployment/download-ipa/<target>` | `?token=<auth_token>` | Streams compiled `.ipa` binary with chunked range support. |
+| `GET` | `/api/deployment/ota/manifest.plist` | `?app=<app>&flavor=<flavor>&token=<token>` | Generates Apple's dynamic XML `manifest.plist` for 10-second Camera QR OTA install. |
+
+---
+
+## Wireless ADB Device Management & Parallel Push
+
+| Method | Endpoint | Query / Body | Returns / Purpose |
+|:---|:---|:---|:---|
+| `GET` | `/api/deployment/adb/devices` | – | Discovers connected USB, Wi-Fi, and emulator Android devices via `adb devices -l`. |
+| `POST` | `/api/deployment/adb/connect` | `{"ip": "192.168.1.50", "port": 5555}` | Pairs wireless device via `adb connect`. |
+| `POST` | `/api/deployment/adb/disconnect` | `{"ip": "192.168.1.50", "port": 5555}` | Disconnects device via `adb disconnect`. |
+| `POST` | `/api/deployment/adb/push` | `{"app": "...", "deviceIds": ["..."]}` | Pushes and installs APK in parallel across all selected devices. |
+
+---
+
+## Build Time Profiler & Bottleneck Heatmap
+
+| Method | Endpoint | Query Parameters | Returns / Purpose |
+|:---|:---|:---|:---|
+| `GET` | `/api/deployment/build-profile` | – | Analyzes latest completed job log into 6 mobile phases with bottleneck detection (≥30%). |
+| `GET` | `/api/deployment/job/profile` | `?job_id=<id>` | Analyzes compilation timings and phase breakdown for specific historical job. |
+
+---
+
+## Smart Silent Cache Warmer
+
+| Method | Endpoint | Query / Body | Returns / Purpose |
+|:---|:---|:---|:---|
+| `GET` | `/api/deployment/cache-warmer/status` | – | Returns daemon status (`idle`, `warming`, `ready`), watched branch, and last warm time. |
+| `POST` | `/api/deployment/cache-warmer/warm` | – | Triggers background dependency resolution (`flutter pub get`) when no jobs are active. |
+
