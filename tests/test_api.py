@@ -8,6 +8,16 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "features" / "deplo
 import config
 import router
 
+from _isolation import isolate_dashboard_config, restore_dashboard_config
+
+
+def setUpModule():
+    isolate_dashboard_config()
+
+
+def tearDownModule():
+    restore_dashboard_config()
+
 
 class TestAPIRoutesAndHealth(unittest.TestCase):
 
