@@ -190,6 +190,10 @@
                     </div>
                 </div>
                 <pre id="selectedCommandPreview"></pre>
+                <label id="cleanBuildRow" class="clean-build-row hidden">
+                    <input type="checkbox" id="cleanBuildToggle">
+                    <span><strong>Clean build</strong> — wipe <code>build/</code> first (slower, safest). Off reuses Gradle's previous output.</span>
+                </label>
                 <div class="action-row">
                     <button id="runButton" class="ui-button" data-variant="primary" type="button" disabled>
                         <i data-lucide="play"></i>

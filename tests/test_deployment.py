@@ -803,6 +803,21 @@ class TestCredentials(unittest.TestCase):
         self.assertEqual(len(p8s[0]["paths"]), 2)
         self.assertEqual(p8s[0]["in_use_by"], ["shop"])
 
+    def test_env_file_apple_key_is_flavor_specific_and_unlocks_ios_upload(self):
+        import commands
+        app = self.ws / "apps" / "shop"
+        (app / "env").mkdir()
+        (app / "env" / "dev.json").write_text('{"APPLE_API_KEY": "DEVKEY1234", "APPLE_API_ISSUER": "i"}', encoding="utf-8")
+        (app / "env" / "qa.json").write_text('{"APPLE_API_KEY": "QAKEY12345", "APPLE_API_ISSUER": "i"}', encoding="utf-8")
+        self.cred.APPLE_KEYS_DIR.mkdir(parents=True)
+        (self.cred.APPLE_KEYS_DIR / "AuthKey_QAKEY12345.p8").write_bytes(P8_PEM)
+        self.assertEqual(self.cred.get_credentials_status("shop", "qa")["apple"]["source"], "env file (qa.json)")
+        self.assertEqual(self.cred.get_credentials_status("shop", "dev")["apple"]["key_id"], "DEVKEY1234")
+        cfg = {"apps": {"shop": {"bundle_id": "com.acme.shop"}}}
+        self.assertTrue(commands._is_flavor_configured("shop", "qa", "deploy_ipa", deploy_cfg=cfg))
+        # dev's key file is missing, so dev iOS uploads stay locked
+        self.assertFalse(commands._is_flavor_configured("shop", "dev", "deploy_ipa", deploy_cfg=cfg))
+
     def test_conventional_play_key_is_auto_detected(self):
         (self.ws / "private_keys").mkdir()
         (self.ws / "private_keys" / "play-store-deployer.json").write_bytes(SERVICE_ACCOUNT)
@@ -1438,6 +1453,28 @@ class TestApkHostingAndQr(unittest.TestCase):
                 bits = sum(int(q[i // 3][n - 11 + i % 3]) << i for i in range(18))
                 self.assertEqual(bits, M._version_info_bits(version))
 
+    def test_download_tokens_are_scoped_to_target_and_purpose(self):
+        from artifacts import download_tokens as dt
+        tok = dt.issue("job_1", {"apk"})
+        self.assertTrue(dt.check(tok, "job_1", "apk"))
+        self.assertFalse(dt.check(tok, "job_2", "apk"))
+        self.assertFalse(dt.check(tok, "job_1", "ipa"))
+        self.assertFalse(dt.check("not-a-token", "job_1", "apk"))
+        saved = dt.DOWNLOAD_TOKEN_TTL
+        dt.DOWNLOAD_TOKEN_TTL = -1
+        try:
+            self.assertFalse(dt.check(dt.issue("job_1", {"apk"}), "job_1", "apk"))
+        finally:
+            dt.DOWNLOAD_TOKEN_TTL = saved
+
+    def test_clean_build_default_is_on_for_prod_only(self):
+        import jobs
+        self.assertEqual(jobs.clean_build_env_value(None, "prod"), "true")
+        self.assertEqual(jobs.clean_build_env_value(None, ""), "true")
+        self.assertEqual(jobs.clean_build_env_value(None, "qa"), "false")
+        self.assertEqual(jobs.clean_build_env_value(True, "qa"), "true")
+        self.assertEqual(jobs.clean_build_env_value(False, "prod"), "false")
+
     def test_no_qr_for_aab_job(self):
         import artifacts
         import jobs
@@ -1543,6 +1580,19 @@ class TestApkHostingAndQr(unittest.TestCase):
             self.assertIn("downloadUrl", data)
             self.assertIn("qrSvg", data)
             self.assertIn("qrAscii", data)
+            # The phone link carries a scoped download token, never the master token
+            self.assertNotIn(token, data["downloadUrl"])
+            dl_path = data["downloadUrl"].split(f":{port}", 1)[1] if f":{port}" in data["downloadUrl"] else \
+                "/api/deployment/download/" + data["downloadUrl"].split("/api/deployment/download/", 1)[1]
+            conn_dl = http.client.HTTPConnection("127.0.0.1", port)
+            conn_dl.request("GET", dl_path)
+            res_dl = conn_dl.getresponse()
+            self.assertEqual(res_dl.status, 200)
+            self.assertEqual(res_dl.read(), self.apk_content)
+            scoped = dl_path.split("token=", 1)[1]
+            conn_other = http.client.HTTPConnection("127.0.0.1", port)
+            conn_other.request("GET", f"/api/deployment/download/other_app?token={scoped}")
+            self.assertEqual(conn_other.getresponse().status, 401)
 
             # 2. Test /api/deployment/download/<target>?token=<token> (Phone camera flow)
             conn2 = http.client.HTTPConnection("127.0.0.1", port)

@@ -47,6 +47,8 @@ const els = window.els = {
     toast: document.getElementById('toast'),
     iosCertBanner: document.getElementById('iosCertBanner'),
     uploadKeyInfo: document.getElementById('uploadKeyInfo'),
+    cleanBuildRow: document.getElementById('cleanBuildRow'),
+    cleanBuildToggle: document.getElementById('cleanBuildToggle'),
     // History tab
     outputTabs: document.getElementById('outputTabs'),
     terminalView: document.getElementById('terminalView'),
@@ -572,6 +574,7 @@ function updateExecutionPanel() {
         els.runButton.disabled = true;
         els.iosCertBanner.classList.add('hidden');
         if (els.uploadKeyInfo) els.uploadKeyInfo.classList.add('hidden');
+        if (els.cleanBuildRow) els.cleanBuildRow.classList.add('hidden');
         return;
     }
 
@@ -592,6 +595,7 @@ function updateExecutionPanel() {
         els.runButton.querySelector('span').textContent = 'Run Pipeline';
         els.iosCertBanner.classList.add('hidden');
         if (els.uploadKeyInfo) els.uploadKeyInfo.classList.add('hidden');
+        if (els.cleanBuildRow) els.cleanBuildRow.classList.add('hidden');
         return;
     }
 
@@ -627,6 +631,28 @@ function updateExecutionPanel() {
     const isProdIos = state.selectedCommand.platform === 'ios' && state.selectedCommand.flavor === 'prod';
     renderCertExpiryBanner(isProdIos ? state.selectedApp : null);
     renderUploadKeyInfo(state.selectedApp, state.selectedCommand);
+    renderCleanBuildToggle(state.selectedCommand, isCloudRunner);
+}
+
+// Android builds wipe build/ only when asked (CLEAN_BUILD). Default: on for prod,
+// off for other flavors; reset whenever the selected command changes.
+const CLEAN_BUILD_TEMPLATES = new Set(['build_aab', 'build_apk', 'deploy_aab', 'deploy_both']);
+let cleanBuildCommandId = null;
+
+function renderCleanBuildToggle(cmd, isCloudRunner) {
+    if (!els.cleanBuildRow) return;
+    const show = !!cmd && !isCloudRunner && CLEAN_BUILD_TEMPLATES.has(cmd.templateId);
+    els.cleanBuildRow.classList.toggle('hidden', !show);
+    if (show && cleanBuildCommandId !== cmd.id) {
+        const flavor = cmd.flavor && cmd.flavor !== 'any' ? cmd.flavor : selectedEnvForExecution();
+        els.cleanBuildToggle.checked = !flavor || flavor === 'prod';
+        cleanBuildCommandId = cmd.id;
+    }
+}
+
+function cleanBuildForRequest() {
+    if (!els.cleanBuildRow || els.cleanBuildRow.classList.contains('hidden')) return undefined;
+    return !!els.cleanBuildToggle.checked;
 }
 
 // Which store keys an upload will use, shown before Run so a key picked up silently
@@ -659,7 +685,8 @@ async function renderUploadKeyInfo(appId, cmd) {
     box.textContent = 'Checking which store keys this upload will use…';
     let status;
     try {
-        status = await fetch(api(`/api/deployment/credentials?app=${encodeURIComponent(appId)}`)).then(r => r.json());
+        const flavor = cmd.flavor && cmd.flavor !== 'any' ? cmd.flavor : selectedEnvForExecution();
+        status = await fetch(api(`/api/deployment/credentials?app=${encodeURIComponent(appId)}&flavor=${encodeURIComponent(flavor || '')}`)).then(r => r.json());
     } catch (err) {
         status = { success: false, error: err.message };
     }
@@ -854,6 +881,7 @@ async function executeSelected(confirmed = false) {
                 templateId: state.selectedCommand.templateId || '',
                 flavor: state.selectedCommand.flavor || '',
                 confirmed: !!confirmed,
+                cleanBuild: cleanBuildForRequest(),
             }),
         });
         const data = await res.json();

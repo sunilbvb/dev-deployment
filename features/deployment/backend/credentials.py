@@ -452,12 +452,18 @@ def _effective(app_id: str) -> dict[str, Any]:
     return {"values": merged, "sources": sources}
 
 
-def _apple_from_env_files(app_id: str) -> Optional[dict[str, Any]]:
-    """Apple key IDs that the app's env/<flavor>.json files already provide to builds."""
+def _apple_from_env_files(app_id: str, flavor: str = "") -> Optional[dict[str, Any]]:
+    """Apple key IDs that the app's env/<flavor>.json files already provide to builds.
+
+    With a flavor whose env/<flavor>.json exists, only that file counts: it is the one
+    the build reads, so another flavor's key must not be reported for it.
+    """
     env_dir = _resolve_app_dir(app_id) / "env"
     if not env_dir.is_dir():
         return None
-    for env_file in sorted(env_dir.glob("*.json")):
+    flavor_file = env_dir / f"{flavor}.json" if flavor and SAFE_ID_PATTERN.match(flavor) else None
+    files = [flavor_file] if flavor_file and flavor_file.is_file() else sorted(env_dir.glob("*.json"))
+    for env_file in files:
         try:
             data = json.loads(env_file.read_text(encoding="utf-8"))
         except (OSError, ValueError):
@@ -486,8 +492,8 @@ def _describe_play(path: str) -> dict[str, Any]:
     return out
 
 
-def get_credentials_status(app_id: str) -> dict[str, Any]:
-    err = _validate_scope(app_id, "")
+def get_credentials_status(app_id: str, flavor: str = "") -> dict[str, Any]:
+    err = _validate_scope(app_id, flavor)
     if err or not app_id:
         return {"success": False, "error": err or "app is required"}
     eff = _effective(app_id)
@@ -500,7 +506,7 @@ def get_credentials_status(app_id: str) -> dict[str, Any]:
         status["apple"] = {"key_id": v["apple_key_id"], "issuer_id": v.get("apple_issuer_id", ""),
                            "path": p8, "exists": Path(p8).is_file(), "source": src.get("apple_key_id")}
     else:
-        status["apple"] = _apple_from_env_files(app_id)
+        status["apple"] = _apple_from_env_files(app_id, flavor)
     return status
 
 

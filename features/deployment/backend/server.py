@@ -18,6 +18,7 @@ from typing import Any, Optional
 from urllib.parse import parse_qs, urlparse
 
 import router
+from artifacts import download_tokens
 
 FRONTEND_DIR = Path(__file__).resolve().parents[1] / "frontend"
 SHARED_FRONTEND_DIR = Path(__file__).resolve().parents[3] / "frontend"
@@ -167,7 +168,14 @@ class DeploymentHandler(http.server.SimpleHTTPRequestHandler):
             return False
         return hmac.compare_digest(token, expected_token)
 
-    def _verify_auth_with_query(self, parsed_query: Optional[dict[str, list[str]]] = None) -> bool:
+    def _verify_auth_with_query(
+        self,
+        parsed_query: Optional[dict[str, list[str]]] = None,
+        scope: str = "",
+        target: str = "",
+    ) -> bool:
+        """Master token (header or ?token=), or — when scope is given — a download token
+        issued for exactly this target and scope (see artifacts/download_tokens.py)."""
         expected_token = _get_auth_token()
         if not expected_token:
             return False
@@ -176,10 +184,18 @@ class DeploymentHandler(http.server.SimpleHTTPRequestHandler):
             token = parsed_query.get("token", parsed_query.get("auth", [""]))[0].strip()
         if not token:
             return False
-        return hmac.compare_digest(token, expected_token)
+        if hmac.compare_digest(token, expected_token):
+            return True
+        return bool(scope) and download_tokens.check(token, target, scope)
+
+    def _is_loopback_client(self) -> bool:
+        try:
+            return ipaddress.ip_address(self.client_address[0]).is_loopback
+        except (ValueError, IndexError, TypeError):
+            return False
 
     def serve_apk_download(self, target: str, query: dict[str, list[str]], is_head: bool = False) -> None:
-        if not self._verify_auth_with_query(query):
+        if not self._verify_auth_with_query(query, scope="apk", target=target):
             self.write_json({"success": False, "error": "Unauthorized: valid token required"}, status=401)
             return
 
@@ -204,7 +220,7 @@ class DeploymentHandler(http.server.SimpleHTTPRequestHandler):
             logging.exception("Failed to stream APK download: %s", cand_path)
 
     def serve_ipa_download(self, target: str, query: dict[str, list[str]], is_head: bool = False) -> None:
-        if not self._verify_auth_with_query(query):
+        if not self._verify_auth_with_query(query, scope="ipa", target=target):
             self.write_json({"success": False, "error": "Unauthorized: valid token required"}, status=401)
             return
 
@@ -229,12 +245,15 @@ class DeploymentHandler(http.server.SimpleHTTPRequestHandler):
             logging.exception("Failed to stream IPA download: %s", cand_path)
 
     def serve_ota_manifest(self, query: dict[str, list[str]], is_head: bool = False) -> None:
-        if not self._verify_auth_with_query(query):
+        target = query.get("target", ["latest"])[0]
+        if not self._verify_auth_with_query(query, scope="manifest", target=target):
             self.write_json({"success": False, "error": "Unauthorized: valid token required"}, status=401)
             return
 
-        target = query.get("target", ["latest"])[0]
-        token = query.get("token", [""])[0] or _get_auth_token()
+        # The manifest points the device at the IPA: give it a scoped token, never the master one.
+        token = query.get("token", [""])[0]
+        if not download_tokens.check(token, target, "ipa"):
+            token = download_tokens.issue(target, {"ipa", "manifest"})
         port = getattr(self.server, "server_port", 18112) or 18112
         host_override = query.get("host", [""])[0]
 
@@ -316,11 +335,13 @@ class DeploymentHandler(http.server.SimpleHTTPRequestHandler):
             # Enforce API authentication on all GET endpoints
             if parsed.path.startswith("/api/"):
                 if parsed.path.startswith(("/api/deployment/download/", "/api/deployment/download-ipa/")):
-                    if not self._verify_auth_with_query(query):
+                    is_ipa = parsed.path.startswith("/api/deployment/download-ipa/")
+                    dl_target = parsed.path.rsplit("/", 1)[1].strip()
+                    if not self._verify_auth_with_query(query, scope="ipa" if is_ipa else "apk", target=dl_target):
                         self.write_json({"success": False, "error": "Unauthorized: valid token required"}, status=401)
                         return
                 elif parsed.path == "/api/deployment/ota/manifest.plist":
-                    if not self._verify_auth_with_query(query):
+                    if not self._verify_auth_with_query(query, scope="manifest", target=query.get("target", ["latest"])[0]):
                         self.write_json({"success": False, "error": "Unauthorized: valid token required"}, status=401)
                         return
                 elif parsed.path == "/api/deployment/qr" and (query.get("token") or query.get("auth")):
@@ -412,7 +433,8 @@ class DeploymentHandler(http.server.SimpleHTTPRequestHandler):
                 self.write_json(router.get_github_workflow_template())
                 return
             if parsed.path == "/api/deployment/credentials":
-                self.write_json(router.get_credentials_status(query.get("app", [""])[0]))
+                self.write_json(router.get_credentials_status(
+                    query.get("app", [""])[0], query.get("flavor", [""])[0]))
                 return
             if parsed.path == "/api/deployment/templates":
                 self.write_json({"success": True, "templates": router.load_templates()})
@@ -459,7 +481,7 @@ class DeploymentHandler(http.server.SimpleHTTPRequestHandler):
                     app_id=app_id,
                     flavor=flavor,
                     port=port,
-                    token=_get_auth_token(),
+                    token=download_tokens.issue(job_id or app_id or "latest", {"apk"}),
                     host_override=host_override,
                 ))
                 return
@@ -481,7 +503,7 @@ class DeploymentHandler(http.server.SimpleHTTPRequestHandler):
                     app_id=app_id,
                     flavor=flavor,
                     port=port,
-                    token=_get_auth_token(),
+                    token=download_tokens.issue(job_id or app_id or "latest", {"ipa", "manifest"}),
                     host_override=host_override,
                 ))
                 return
@@ -519,7 +541,9 @@ class DeploymentHandler(http.server.SimpleHTTPRequestHandler):
             index_path = FRONTEND_DIR / "index.html"
             if index_path.exists():
                 html = index_path.read_text(encoding="utf-8")
-                token = _get_auth_token()
+                # The server listens on the LAN (for install links); only a page opened
+                # on this machine gets the master token that can run deploys.
+                token = _get_auth_token() if self._is_loopback_client() else ""
                 injected = f'<script>window.__DEPLOYMENT_TOKEN__ = "{token}";</script>'
                 if "<head>" in html:
                     html = html.replace("<head>", f"<head>\n    {injected}", 1)
@@ -963,6 +987,7 @@ class DeploymentHandler(http.server.SimpleHTTPRequestHandler):
                     template_id=target_cmd.get("templateId", req_template_id),
                     flavor=target_cmd.get("flavor", req_flavor),
                     confirmed=bool(data.get("confirmed") or False),
+                    clean_build=data["cleanBuild"] if isinstance(data.get("cleanBuild"), bool) else None,
                 )
                 self.write_json(res)
                 return

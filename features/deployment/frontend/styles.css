@@ -699,3 +699,15 @@ button.ui-sidebar-item {
 .upload-key-title { font-weight: 700; margin-bottom: 2px; }
 .upload-key-row { overflow-wrap: anywhere; }
 .upload-key-hint { margin-top: 4px; color: var(--ui-text-muted); font-size: 0.72rem; }
+
+.clean-build-row {
+    display: flex;
+    gap: 8px;
+    align-items: flex-start;
+    margin: 8px 0 10px;
+    font-size: 0.78rem;
+    color: var(--ui-text-muted);
+    cursor: pointer;
+}
+.clean-build-row input { margin-top: 2px; }
+.clean-build-row strong { color: var(--ui-text, inherit); }
