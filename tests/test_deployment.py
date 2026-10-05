@@ -776,12 +776,22 @@ class TestCredentials(unittest.TestCase):
         self.assertNotIn("apple_p8_base64", cfg_file.read_text(encoding="utf-8"))
         self.assertEqual(self.cred.job_env("shop")["APPLE_API_KEY"], "ABCDE12345")
 
-    def test_other_p8_keys_are_listed_but_not_importable(self):
+    def test_other_p8_keys_are_hidden_and_not_importable(self):
         (self.downloads / "SubscriptionKey_VSN447PHNL.p8").write_bytes(P8_PEM)
-        kinds = [f["kind"] for f in self.cred.scan_credentials(str(self.downloads))["found"]]
-        self.assertIn("apple_other_p8", kinds)
+        res = self.cred.scan_credentials(str(self.downloads))
+        self.assertNotIn("apple_other_p8", [f["kind"] for f in res["found"]])
+        self.assertEqual(res["hidden_other_p8"], 1)
         res = self.cred.import_credential_path(str(self.downloads / "SubscriptionKey_VSN447PHNL.p8"))
         self.assertFalse(res["success"])
+
+    def test_scan_dedupes_identical_copies_and_reports_usage(self):
+        (self.downloads / "copy").mkdir()
+        (self.downloads / "copy" / "AuthKey_ABCDE12345.p8").write_bytes(P8_PEM)
+        self.cred.import_credential_path(str(self.downloads / "AuthKey_ABCDE12345.p8"), app_id="shop")
+        p8s = [f for f in self.cred.scan_credentials(str(self.downloads))["found"] if f["kind"] == "apple_p8"]
+        self.assertEqual(len(p8s), 1)
+        self.assertEqual(len(p8s[0]["paths"]), 2)
+        self.assertEqual(p8s[0]["in_use_by"], ["shop"])
 
     def test_conventional_play_key_is_auto_detected(self):
         (self.ws / "private_keys").mkdir()

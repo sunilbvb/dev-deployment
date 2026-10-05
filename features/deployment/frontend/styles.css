@@ -675,3 +675,11 @@ button.ui-sidebar-item {
     justify-content: flex-start;
     gap: 8px;
 }
+
+/* Key picker rows (Configure → Keys scan results) */
+.cred-pick-row:hover {
+    background: var(--ui-hover-bg, rgba(255, 255, 255, 0.04));
+}
+.cred-pick-row:has(input:checked) {
+    background: rgba(99, 102, 241, 0.1);
+}
