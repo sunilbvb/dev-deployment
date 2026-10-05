@@ -87,4 +87,4 @@ if [ "$OPEN_BROWSER" = "1" ] || [ "${AUTO_OPEN:-0}" = "1" ]; then
     ) &
 fi
 
-exec python3 "features/deployment/backend/server.py" --port "$PORT" "${ARGS[@]}"
+exec python3 "features/deployment/backend/server.py" --port "$PORT" ${ARGS[@]+"${ARGS[@]}"}
