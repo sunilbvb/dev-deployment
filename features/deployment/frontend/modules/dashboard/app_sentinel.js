@@ -4,7 +4,7 @@
  * advisory expiry banners, and the sentinel diagnostics modal.
  */
 
-const SEVERITY_RANK = { expired: 3, warning: 2, unknown: 1, ok: 0, not_ios_app: -1 };
+// SEVERITY_RANK is declared in app.js (loaded first).
 
 function renderCertExpiryBanner(appId) {
     if (!els.iosCertBanner) return;

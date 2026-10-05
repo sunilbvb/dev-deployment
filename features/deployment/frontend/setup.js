@@ -9,439 +9,485 @@
  * - setup_github.js: GitHub Actions cloud CI PAT, repo override, workflow template installer
  */
 
-const setupState = window.setupState = window.setupState || {
-    apps: [],
-    selectedAppId: null,
-    deployConfig: { apps: {} },
-    currentWebhooks: [],
-};
-
-const setupEls = window.setupEls = window.setupEls || {
-    overlay: document.getElementById('setupOverlay'),
-    openBtn: document.getElementById('openSetupBtn'),
-    closeBtn: document.getElementById('closeSetupBtn'),
-    appNav: document.getElementById('setupAppNav'),
-    noApp: document.getElementById('setupNoApp'),
-    form: document.getElementById('setupForm'),
-    appTitle: document.getElementById('setupAppTitle'),
-    appleId: document.getElementById('cfgAppleId'),
-    issuerId: document.getElementById('cfgIssuerId'),
-    playService: document.getElementById('cfgPlayService'),
-    flavors: document.getElementById('cfgFlavors'),
-    autoReleaseEnabled: document.getElementById('cfgAutoReleaseEnabled'),
-    autoReleaseAction: document.getElementById('cfgAutoReleaseAction'),
-    autoReleaseFlavors: document.getElementById('cfgAutoReleaseFlavors'),
-    iosCertStatus: document.getElementById('iosCertStatus'),
-    iosCertRecheckBtn: document.getElementById('iosCertRecheckBtn'),
-    saveBtn: document.getElementById('saveConfigBtn'),
-    regenerateBtn: document.getElementById('regenerateBtn'),
-    scanBtn: document.getElementById('autoScanBtn'),
-    scanAllBtn: document.getElementById('scanAllBtn'),
-    // p8 upload elements
-    p8Dropzone: document.getElementById('p8Dropzone'),
-    p8FileInput: document.getElementById('p8FileInput'),
-    p8DropzoneTitle: document.getElementById('p8DropzoneTitle'),
-    p8UploadStatus: document.getElementById('p8UploadStatus'),
-    p8CurrentKeyInfo: document.getElementById('p8CurrentKeyInfo'),
-    p8CurrentKeyId: document.getElementById('p8CurrentKeyId'),
-    p8CurrentKeyPath: document.getElementById('p8CurrentKeyPath'),
-    // Notification webhook elements
-    webhookUrl: document.getElementById('cfgWebhookUrl'),
-    webhookEnabled: document.getElementById('cfgWebhookEnabled'),
-    webhookProvider: document.getElementById('cfgWebhookProvider'),
-    notifyOnSuccess: document.getElementById('cfgNotifyOnSuccess'),
-    notifyOnFailure: document.getElementById('cfgNotifyOnFailure'),
-    playConsoleTrack: document.getElementById('cfgPlayConsoleTrack'),
-    wsWebhookUrl: document.getElementById('cfgWorkspaceWebhookUrl'),
-    wsWebhookEnabled: document.getElementById('cfgWorkspaceWebhookEnabled'),
-    wsWebhookProvider: document.getElementById('cfgWorkspaceWebhookProvider'),
-    wsNotifyOnSuccess: document.getElementById('cfgWorkspaceNotifySuccess'),
-    wsNotifyOnFailure: document.getElementById('cfgWorkspaceNotifyFailure'),
-    testWebhookBtn: document.getElementById('testWebhookBtn'),
-    testWebhookResult: document.getElementById('testWebhookResult'),
-    openAddWebhookChannelBtn: document.getElementById('openAddWebhookChannelBtn'),
-    webhookChannelsList: document.getElementById('webhookChannelsList'),
-    webhookChannelsCountBadge: document.getElementById('webhookChannelsCountBadge'),
-    webhookChannelModal: document.getElementById('webhookChannelModal'),
-    closeWebhookChannelModalBtn: document.getElementById('closeWebhookChannelModalBtn'),
-    cancelWebhookChannelBtn: document.getElementById('cancelWebhookChannelBtn'),
-    saveWebhookChannelBtn: document.getElementById('saveWebhookChannelBtn'),
-    channelModalId: document.getElementById('channelModalId'),
-    channelModalTitle: document.getElementById('channelModalTitle'),
-    channelModalName: document.getElementById('channelModalName'),
-    channelModalUrl: document.getElementById('channelModalUrl'),
-    channelModalProvider: document.getElementById('channelModalProvider'),
-    channelModalPhone: document.getElementById('channelModalPhone'),
-    channelModalTemplate: document.getElementById('channelModalTemplate'),
-    channelModalHeaders: document.getElementById('channelModalHeaders'),
-    channelModalSuccess: document.getElementById('channelModalSuccess'),
-    channelModalFailure: document.getElementById('channelModalFailure'),
-    channelModalEnabled: document.getElementById('channelModalEnabled'),
-    channelModalTestBtn: document.getElementById('channelModalTestBtn'),
-    channelModalTestFeedback: document.getElementById('channelModalTestFeedback'),
-    channelModalWhatsAppSection: document.getElementById('channelModalWhatsAppSection'),
-    channelModalCustomSection: document.getElementById('channelModalCustomSection'),
-    incomingWebhookSnippetTabs: document.getElementById('incomingWebhookSnippetTabs'),
-    incomingWebhookSnippetCode: document.getElementById('incomingWebhookSnippetCode'),
-    incomingWebhookUrlDisplay: document.getElementById('incomingWebhookUrlDisplay'),
-    copyIncomingWebhookUrlBtn: document.getElementById('copyIncomingWebhookUrlBtn'),
-};
+// setupState / setupEls live in modules/setup/setup_state.js (loaded first).
 
 const addAppForm = document.getElementById('addAppForm');
 const addCustomAppBtn = document.getElementById('addCustomAppBtn');
 const cancelAddAppBtn = document.getElementById('cancelAddAppBtn');
 const saveNewAppBtn = document.getElementById('saveNewAppBtn');
 
+// Core form logic restored from before the modularization (f3e23ef), which
+// broke config load/save endpoints and the identifier field containers.
 function openSetupModal() {
     setupEls.overlay.classList.add('ui-active');
+    let tab = 'general';
+    try { tab = sessionStorage.getItem(SETUP_TAB_KEY) || tab; } catch (_) {}
+    if (!setupTabs || !setupTabs.querySelector(`[data-tab="${tab}"]`)) tab = 'general';
+    showSetupTab(tab);
     loadSetupData();
 }
 
 function closeSetupModal() {
     setupEls.overlay.classList.remove('ui-active');
-    if (addAppForm) addAppForm.classList.add('hidden');
+    addAppForm.classList.add('hidden');
 }
 
 async function loadSetupData() {
-    try {
-        const [appsRes, configRes] = await Promise.all([
-            fetch('/api/deployment/apps').then(r => r.json()),
-            fetch('/api/deployment/config').then(r => r.json()),
-        ]);
-
-        // Packages are not deployable, so they have no per-app settings.
-        setupState.apps = (appsRes.apps || []).filter(a => !a.is_package);
-        setupState.deployConfig = configRes || { apps: {} };
-
-        renderSetupAppNav();
-
-        if (setupState.apps.length > 0) {
-            const currentSelected = setupState.selectedAppId;
-            const valid = setupState.apps.some(a => a.id === currentSelected);
-            selectSetupApp(valid ? currentSelected : setupState.apps[0].id);
-        } else {
-            selectSetupApp(null);
-        }
-    } catch (err) {
-        showToast('Failed to load setup data: ' + err.message);
+    const [appsRes, configRes, templatesRes] = await Promise.all([
+        fetch('/api/deployment/apps').then(r => r.json()),
+        fetch('/api/deployment/deploy-config').then(r => r.json()),
+        fetch('/api/deployment/templates').then(r => r.json()),
+    ]);
+    setupState.apps = (appsRes.apps || []).filter(a => !a.is_package);
+    setupState.deployConfig = configRes.config || { apps: {} };
+    renderReleaseActionOptions((templatesRes.templates || {}).release || []);
+    renderSetupAppNav();
+    if (setupState.apps.length > 0) {
+        selectSetupApp(setupState.selectedAppId || setupState.apps[0].id);
+    } else {
+        setupEls.form.classList.add('hidden');
+        setupEls.noApp.classList.remove('hidden');
+        setupState.selectedAppId = null;
+    }
+    if (window.lucide && typeof lucide.createIcons === 'function') {
+        lucide.createIcons();
     }
 }
 
-function renderReleaseActionOptions(targetSelect, currentAction) {
-    if (!targetSelect) return;
-    const actions = [
-        { id: 'build_aab', label: 'Android AAB only' },
-        { id: 'build_ipa', label: 'iOS IPA only' },
-        { id: 'build_both', label: 'Both platforms' },
-        { id: 'custom', label: 'Custom command' },
-    ];
-    targetSelect.innerHTML = actions.map(act =>
-        `<option value="${act.id}" ${currentAction === act.id ? 'selected' : ''}>${act.label}</option>`
-    ).join('');
+function renderReleaseActionOptions(releaseTemplates) {
+    setupEls.autoReleaseAction.innerHTML = releaseTemplates
+        .map(t => `<option value="${escapeHtml(t.id)}">${escapeHtml(t.name)}</option>`)
+        .join('');
+    if (!releaseTemplates.length) {
+        setupEls.autoReleaseAction.innerHTML = '<option value="release_push">Full Release (Tag & Push to Remote)</option>';
+    }
 }
 
-const certCheckCache = new Map();
+// Shared cert-expiry check cache — read by app.js's renderCertExpiryBanner() so a
+// check done here (opening Setup) doesn't get re-fetched again when the execution
+// panel shows the same app's prod iOS command. Keyed by appId; no TTL (this is a
+// low-traffic single-operator local tool) — the Re-check button bypasses it.
+const _certCheckCache = {};
 
 function getCachedCertCheck(appId) {
-    return certCheckCache.get(appId) || null;
+    return _certCheckCache[appId] || null;
 }
 
 function setCachedCertCheck(appId, result) {
-    certCheckCache.set(appId, result);
+    _certCheckCache[appId] = result;
 }
 
-function renderCertStatusBox(result, container) {
-    if (!container) return;
+function renderCertStatusBox(result) {
     if (!result || !result.success) {
-        container.innerHTML = `<div class="cert-status-box" data-status="error">Check failed: ${escapeHtml(result?.error || 'unknown')}</div>`;
+        setupEls.iosCertStatus.dataset.status = 'unknown';
+        setupEls.iosCertStatus.textContent = 'Could not check (server error).';
         return;
     }
     if (result.status === 'not_ios_app') {
-        container.innerHTML = '<div class="cert-status-box" data-status="ok">Not an iOS app (no ios/ directory)</div>';
+        setupEls.iosCertStatus.dataset.status = 'unknown';
+        setupEls.iosCertStatus.textContent = 'This app has no iOS target.';
         return;
     }
     const cert = result.certificate || {};
-    const prof = result.provisioningProfile || {};
-    const certDays = cert.expiresOn ? Math.ceil((new Date(cert.expiresOn) - new Date()) / 86400000) : null;
-    const profDays = prof.expiresOn ? Math.ceil((new Date(prof.expiresOn) - new Date()) / 86400000) : null;
-
-    container.innerHTML = `
-        <div class="cert-status-box" data-status="${cert.status || 'unknown'}" style="margin-bottom:8px;">
-            <strong>Apple Distribution Cert:</strong> ${cert.status || 'unknown'}
-            ${cert.expiresOn ? ` — expires ${escapeHtml(cert.expiresOn)} (${certDays}d)` : ''}
-            ${cert.source ? ` [${cert.source}]` : ''}
-        </div>
-        <div class="cert-status-box" data-status="${prof.status || 'unknown'}">
-            <strong>Provisioning Profile:</strong> ${prof.status || 'unknown'}
-            ${prof.expiresOn ? ` — expires ${escapeHtml(prof.expiresOn)} (${profDays}d)` : ''}
-            ${prof.source ? ` [${prof.source}]` : ''}
-        </div>
-    `;
+    const profile = result.provisioningProfile || {};
+    const rank = { expired: 3, warning: 2, unknown: 1, ok: 0 };
+    const worst = (rank[profile.status] || 0) > (rank[cert.status] || 0) ? profile : cert;
+    const lines = [];
+    if (cert.status && cert.status !== 'unknown') {
+        lines.push(`Certificate: ${cert.status.toUpperCase()}${cert.expiresOn ? ` (expires ${cert.expiresOn})` : ''} — ${cert.source}${cert.bestEffort ? ' [best-effort]' : ''}`);
+    }
+    if (profile.status && profile.status !== 'unknown') {
+        lines.push(`Profile: ${profile.status.toUpperCase()}${profile.expiresOn ? ` (expires ${profile.expiresOn})` : ''} — ${profile.source}${profile.bestEffort ? ' [best-effort]' : ''}`);
+    }
+    if (!lines.length) {
+        lines.push('No certificate/profile signal found (Keychain, local files, or a prior build) — likely fine if using Cloud Managed signing.');
+    }
+    (result.warnings || []).forEach(w => lines.push(`⚠️ ${w}`));
+    setupEls.iosCertStatus.dataset.status = worst.status || 'unknown';
+    setupEls.iosCertStatus.textContent = lines.join('  ·  ');
 }
 
-async function fetchAndRenderCertStatus(appId, container) {
-    if (!container) return;
-    container.innerHTML = '<div class="cert-status-box" data-status="unknown">Checking certificates…</div>';
+async function fetchAndRenderCertStatus(appId, { bypassCache = false } = {}) {
+    if (!appId) return;
+    if (!bypassCache) {
+        const cached = getCachedCertCheck(appId);
+        if (cached) { renderCertStatusBox(cached); return; }
+    }
+    setupEls.iosCertStatus.dataset.status = 'unknown';
+    setupEls.iosCertStatus.textContent = 'Checking...';
     try {
-        const res = await fetch(`/api/deployment/ios-cert-check?app=${encodeURIComponent(appId)}&flavor=prod`).then(r => r.json());
-        setCachedCertCheck(appId, res);
-        renderCertStatusBox(res, container);
-    } catch (e) {
-        renderCertStatusBox({ success: false, error: e.message }, container);
+        const res = await fetch(`/api/deployment/ios-cert-check?app=${encodeURIComponent(appId)}&flavor=prod`);
+        const result = await res.json();
+        setCachedCertCheck(appId, result);
+        if (setupState.selectedAppId === appId) renderCertStatusBox(result);
+    } catch (error) {
+        setupEls.iosCertStatus.dataset.status = 'unknown';
+        setupEls.iosCertStatus.textContent = `Check failed: ${error.message}`;
     }
 }
 
-function renderSetupAppNav() {
-    const list = document.getElementById('setupAppList');
-    if (!list) return;
-    list.innerHTML = setupState.apps.map(app => `
-        <button type="button" class="ui-sidebar-item setup-app-item" data-state="${app.id === setupState.selectedAppId ? 'active' : ''}" data-app-id="${escapeHtml(app.id)}">
-            <span class="app-dot" style="background: ${escapeHtml(app.color || '#6366f1')}"></span>
-            <span>${escapeHtml(app.name)}</span>
-        </button>
-    `).join('');
+setupEls.iosCertRecheckBtn.addEventListener('click', () => fetchAndRenderCertStatus(setupState.selectedAppId, { bypassCache: true }));
 
-    list.querySelectorAll('.setup-app-item').forEach(btn => {
-        btn.addEventListener('click', () => {
-            selectSetupApp(btn.dataset.appId);
-        });
+function renderSetupAppNav() {
+    const setupAppList = document.getElementById('setupAppList');
+    setupAppList.innerHTML = '';
+    if (!setupState.apps.length) {
+        setupAppList.innerHTML = '<div style="padding: 10px 8px; font-size: 0.75rem; color: var(--ui-text-muted); line-height: 1.4;">No apps configured yet. Click below to add an app.</div>';
+        return;
+    }
+    setupState.apps.forEach(app => {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'ui-sidebar-item' + (app.id === setupState.selectedAppId ? ' ui-active' : '');
+        btn.dataset.appId = app.id;
+        btn.innerHTML = `
+            <span class="app-dot" style="background:${escapeHtml(app.color || '#3b82f6')};"></span>
+            <span style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escapeHtml(app.name || app.id)}</span>
+        `;
+        btn.addEventListener('click', () => selectSetupApp(app.id));
+        setupAppList.appendChild(btn);
     });
 }
 
 function getActiveFlavors() {
-    const raw = setupEls.flavors ? setupEls.flavors.value : '';
-    return raw.split(',').map(f => f.trim().toLowerCase()).filter(Boolean);
+    const val = setupEls.flavors.value.trim();
+    if (!val || val.toLowerCase() === 'none' || val.toLowerCase() === 'single') return [];
+    return val.split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
 }
 
-function renderDynamicFields(flavors, appCfg = {}) {
-    const container = document.getElementById('dynamicFlavorFields');
-    if (!container) return;
+function renderDynamicFields(flavors, cfg) {
+    const bundleContainer = document.getElementById('dynamicBundleIdsContainer');
+    const packageContainer = document.getElementById('dynamicPackageNamesContainer');
+    const servicesContainer = document.getElementById('dynamicGoogleServicesContainer');
+
+    bundleContainer.innerHTML = '';
+    packageContainer.innerHTML = '';
+    servicesContainer.innerHTML = '';
 
     if (!flavors || flavors.length === 0) {
-        container.innerHTML = `
-            <div class="ui-form-group">
-                <label class="ui-label">Bundle ID (iOS)</label>
-                <input type="text" class="ui-input" id="cfgBundle_single" value="${escapeHtml(appCfg.bundle_id || appCfg.bundle_id_prod || '')}" placeholder="com.example.app">
-            </div>
-            <div class="ui-form-group">
-                <label class="ui-label">Android Package Name / Application ID</label>
-                <input type="text" class="ui-input" id="cfgAndroidPackage_single" value="${escapeHtml(appCfg.android_package || appCfg.android_package_prod || appCfg.android_id_prod || '')}" placeholder="com.example.app">
-            </div>
-            <div class="ui-form-group">
-                <label class="ui-label">google-services.json Path (Android)</label>
-                <input type="text" class="ui-input" id="cfgGoogleServices_single" value="${escapeHtml(appCfg.google_services_json || appCfg.google_services_json_prod || '')}" placeholder="android/app/google-services.json">
-            </div>
-            <div class="ui-form-group">
-                <label class="ui-label">GoogleService-Info.plist Path (iOS)</label>
-                <input type="text" class="ui-input" id="cfgGoogleServiceInfo_single" value="${escapeHtml(appCfg.google_service_info_plist || appCfg.google_service_info_plist_prod || '')}" placeholder="ios/Runner/GoogleService-Info.plist">
-            </div>
+        // ── Single App Mode (No Flavors) ──
+        // iOS Bundle ID Input
+        const bundleField = document.createElement('div');
+        bundleField.className = 'ui-field';
+        bundleField.style.marginBottom = '0';
+        bundleField.innerHTML = `
+            <label class="ui-label">iOS Bundle Identifier</label>
+            <input type="text" class="ui-input" id="cfgBundle_single" placeholder="e.g. com.example.app" value="${escapeHtml(cfg.bundle_id || cfg.bundle_id_prod || '')}">
+            <span class="ui-help-text">Used for TestFlight uploads and provisioning profile verification.</span>
         `;
+        bundleContainer.appendChild(bundleField);
+
+        // Android Package ID Input
+        const packageField = document.createElement('div');
+        packageField.className = 'ui-field';
+        packageField.style.marginBottom = '0';
+        packageField.innerHTML = `
+            <label class="ui-label">Android Package Name (Application ID)</label>
+            <input type="text" class="ui-input" id="cfgAndroidPackage_single" placeholder="e.g. com.example.app" value="${escapeHtml(cfg.android_package || cfg.android_package_prod || '')}">
+            <span class="ui-help-text">Matches applicationId in build.gradle(.kts) for Play Store deployment.</span>
+        `;
+        packageContainer.appendChild(packageField);
+
+        // Firebase Client Config (Android & iOS)
+        const notice = document.createElement('div');
+        notice.className = 'cert-status-box';
+        notice.dataset.status = 'info';
+        notice.style.marginBottom = '14px';
+        notice.style.fontSize = '0.82rem';
+        notice.style.lineHeight = '1.45';
+        notice.innerHTML = `
+            <strong>💡 Single-App Project (No Flavors):</strong> Standard Firebase files live directly in project folders:
+            <code>android/app/google-services.json</code> and <code>ios/Runner/GoogleService-Info.plist</code>.
+            If kept in <code>private_keys/</code> or a custom directory, provide paths below.
+        `;
+        servicesContainer.appendChild(notice);
+
+        const grid = document.createElement('div');
+        grid.className = 'dynamic-inputs-grid';
+
+        const gServicesField = document.createElement('div');
+        gServicesField.className = 'ui-field';
+        gServicesField.style.marginBottom = '0';
+        gServicesField.innerHTML = `
+            <label class="ui-label">Android (google-services.json) Path</label>
+            <input type="text" class="ui-input" id="cfgGoogleServices_single" placeholder="android/app/google-services.json" value="${escapeHtml(cfg.google_services_json || cfg.google_services_json_prod || '')}">
+        `;
+        grid.appendChild(gServicesField);
+
+        const gInfoField = document.createElement('div');
+        gInfoField.className = 'ui-field';
+        gInfoField.style.marginBottom = '0';
+        gInfoField.innerHTML = `
+            <label class="ui-label">iOS (GoogleService-Info.plist) Path</label>
+            <input type="text" class="ui-input" id="cfgGoogleServiceInfo_single" placeholder="ios/Runner/GoogleService-Info.plist" value="${escapeHtml(cfg.google_service_info_plist || cfg.google_service_info_plist_prod || '')}">
+        `;
+        grid.appendChild(gInfoField);
+
+        servicesContainer.appendChild(grid);
         return;
     }
 
-    container.innerHTML = flavors.map(flavor => `
-        <div class="flavor-field-card" style="padding: 12px; border: 1px solid var(--ui-border-color); border-radius: 6px; margin-bottom: 12px; background: rgba(255,255,255,0.02);">
-            <div style="font-weight: 700; font-size: 0.82rem; text-transform: uppercase; margin-bottom: 8px; color: var(--ui-primary, #6366f1);">${escapeHtml(flavor)}</div>
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
-                <div class="ui-form-group">
-                    <label class="ui-label" style="font-size:0.75rem;">Bundle ID</label>
-                    <input type="text" class="ui-input" id="cfgBundle_${escapeHtml(flavor)}" value="${escapeHtml(appCfg[`bundle_id_${flavor}`] || appCfg.bundle_id || '')}" placeholder="com.example.${escapeHtml(flavor)}">
-                </div>
-                <div class="ui-form-group">
-                    <label class="ui-label" style="font-size:0.75rem;">Android Package</label>
-                    <input type="text" class="ui-input" id="cfgAndroidPackage_${escapeHtml(flavor)}" value="${escapeHtml(appCfg[`android_package_${flavor}`] || appCfg[`android_id_${flavor}`] || appCfg.android_package || '')}" placeholder="com.example.${escapeHtml(flavor)}">
-                </div>
-                <div class="ui-form-group">
-                    <label class="ui-label" style="font-size:0.75rem;">google-services.json</label>
-                    <input type="text" class="ui-input" id="cfgGoogleServices_${escapeHtml(flavor)}" value="${escapeHtml(appCfg[`google_services_json_${flavor}`] || appCfg.google_services_json || '')}" placeholder="path/to/google-services.json">
-                </div>
-                <div class="ui-form-group">
-                    <label class="ui-label" style="font-size:0.75rem;">GoogleService-Info.plist</label>
-                    <input type="text" class="ui-input" id="cfgGoogleServiceInfo_${escapeHtml(flavor)}" value="${escapeHtml(appCfg[`google_service_info_plist_${flavor}`] || appCfg.google_service_info_plist || '')}" placeholder="path/to/GoogleService-Info.plist">
-                </div>
-            </div>
-        </div>
-    `).join('');
+    // ── Flavored App Mode ──
+    const notice = document.createElement('div');
+    notice.className = 'cert-status-box';
+    notice.dataset.status = 'info';
+    notice.style.marginBottom = '14px';
+    notice.style.fontSize = '0.82rem';
+    notice.style.lineHeight = '1.45';
+    notice.innerHTML = `
+        <strong>Flavor-Specific Firebase Config:</strong> Provide individual client files per environment flavor.
+    `;
+    servicesContainer.appendChild(notice);
+
+    const servicesGrid = document.createElement('div');
+    servicesGrid.className = 'dynamic-inputs-grid';
+
+    flavors.forEach(flavor => {
+        // iOS Bundle ID Input
+        const bundleField = document.createElement('div');
+        bundleField.className = 'ui-field';
+        bundleField.style.marginBottom = '0';
+        bundleField.innerHTML = `
+            <label class="ui-label">${flavor.toUpperCase()} Bundle ID</label>
+            <input type="text" class="ui-input" id="cfgBundle_${flavor}" placeholder="com.example.app.${flavor}" value="${escapeHtml(cfg[`bundle_id_${flavor}`] || '')}">
+        `;
+        bundleContainer.appendChild(bundleField);
+
+        // Android Package ID Input
+        const packageField = document.createElement('div');
+        packageField.className = 'ui-field';
+        packageField.style.marginBottom = '0';
+        packageField.innerHTML = `
+            <label class="ui-label">${flavor.toUpperCase()} Package Name</label>
+            <input type="text" class="ui-input" id="cfgAndroidPackage_${flavor}" placeholder="com.example.app.${flavor}" value="${escapeHtml(cfg[`android_package_${flavor}`] || '')}">
+        `;
+        packageContainer.appendChild(packageField);
+
+        // Android google-services.json
+        const androidField = document.createElement('div');
+        androidField.className = 'ui-field';
+        androidField.style.marginBottom = '0';
+        androidField.innerHTML = `
+            <label class="ui-label">${flavor.toUpperCase()} google-services.json (Android)</label>
+            <input type="text" class="ui-input" id="cfgGoogleServices_${flavor}" placeholder="private_keys/Firebase/${flavor}/google-services.json" value="${escapeHtml(cfg[`google_services_json_${flavor}`] || '')}">
+        `;
+        servicesGrid.appendChild(androidField);
+
+        // iOS GoogleService-Info.plist
+        const iosField = document.createElement('div');
+        iosField.className = 'ui-field';
+        iosField.style.marginBottom = '0';
+        iosField.innerHTML = `
+            <label class="ui-label">${flavor.toUpperCase()} GoogleService-Info.plist (iOS)</label>
+            <input type="text" class="ui-input" id="cfgGoogleServiceInfo_${flavor}" placeholder="private_keys/Firebase/${flavor}/GoogleService-Info.plist" value="${escapeHtml(cfg[`google_service_info_plist_${flavor}`] || '')}">
+        `;
+        servicesGrid.appendChild(iosField);
+    });
+
+    servicesContainer.appendChild(servicesGrid);
 }
 
 function selectSetupApp(appId) {
     setupState.selectedAppId = appId;
-    document.querySelectorAll('#setupAppList .setup-app-item').forEach(btn => {
-        btn.dataset.state = btn.dataset.appId === appId ? 'active' : '';
-    });
-    if (addAppForm) addAppForm.classList.add('hidden');
+    renderSetupAppNav();
+    addAppForm.classList.add('hidden');
 
-    if (!appId) {
-        if (setupEls.form) setupEls.form.classList.add('hidden');
-        if (setupEls.noApp) setupEls.noApp.classList.remove('hidden');
-        return;
+    const app = setupState.apps.find(a => a.id === appId);
+    const cfg = setupState.deployConfig.apps?.[appId] || {};
+
+    setupEls.appTitle.textContent = app ? app.name : appId;
+    
+    const activeFlavors = cfg.flavors !== undefined && Array.isArray(cfg.flavors)
+        ? cfg.flavors
+        : [];
+    setupEls.flavors.value = activeFlavors.join(', ');
+
+    renderDynamicFields(activeFlavors, cfg);
+
+    setupEls.appleId.value = cfg.apple_id || '';
+    setupEls.issuerId.value = cfg.apple_issuer_id || '';
+    setupEls.playService.value = cfg.play_service_account_path || '';
+
+    setupEls.autoReleaseEnabled.checked = !!cfg.auto_release_on_success;
+    setupEls.autoReleaseAction.value = cfg.auto_release_action || 'release_push';
+    setupEls.autoReleaseFlavors.value = (cfg.auto_release_flavors || ['prod']).join(', ');
+
+    // Populate notification settings (multi-channel, app & workspace fallback)
+    const depCfg = setupState.deployConfig || {};
+    setupState.currentWebhooks = Array.isArray(cfg.webhooks) ? JSON.parse(JSON.stringify(cfg.webhooks)) : [];
+    renderWebhookChannels();
+    updateIncomingWebhookSnippets();
+
+    if (setupEls.webhookUrl) {
+        setupEls.webhookUrl.value = cfg.webhook_url || '';
+        setupEls.webhookEnabled.checked = cfg.webhook_enabled !== false;
+        setupEls.webhookProvider.value = cfg.webhook_provider || 'auto';
+        setupEls.notifyOnSuccess.checked = cfg.notify_on_success !== false;
+        setupEls.notifyOnFailure.checked = cfg.notify_on_failure !== false;
+        setupEls.playConsoleTrack.value = cfg.play_console_track || '';
+    }
+    if (setupEls.wsWebhookUrl) {
+        setupEls.wsWebhookUrl.value = depCfg.workspace_webhook_url || '';
+        setupEls.wsWebhookEnabled.checked = depCfg.workspace_webhook_enabled !== false;
+        setupEls.wsWebhookProvider.value = depCfg.workspace_webhook_provider || 'auto';
+        setupEls.wsNotifyOnSuccess.checked = depCfg.workspace_notify_on_success !== false;
+        setupEls.wsNotifyOnFailure.checked = depCfg.workspace_notify_on_failure !== false;
+    }
+    if (setupEls.testWebhookResult) {
+        setupEls.testWebhookResult.style.display = 'none';
     }
 
-    if (setupEls.form) setupEls.form.classList.remove('hidden');
-    if (setupEls.noApp) setupEls.noApp.classList.add('hidden');
+    renderP8KeyInfo(null);
+    credEls.scanResults.innerHTML = '';
+    loadCredentialStatus(appId);
+    renderSetupPipelines(appId);
 
-    renderSetupAppNav();
+    fetchAndRenderCertStatus(appId);
 
-    const app = setupState.apps.find(a => a.id === appId) || {};
-    const appCfg = (setupState.deployConfig.apps || {})[appId] || {};
-
-    if (setupEls.appTitle) setupEls.appTitle.textContent = `${app.name || appId} Configuration`;
-    if (setupEls.appleId) setupEls.appleId.value = appCfg.apple_id || '';
-    if (setupEls.issuerId) setupEls.issuerId.value = appCfg.apple_issuer_id || '';
-    if (setupEls.playService) setupEls.playService.value = appCfg.play_service_account_path || '';
-
-    const flavorsList = Array.isArray(appCfg.flavors) ? appCfg.flavors : [];
-    if (setupEls.flavors) setupEls.flavors.value = flavorsList.join(', ');
-
-    renderDynamicFields(flavorsList, appCfg);
-
-    // Auto-release configuration
-    if (setupEls.autoReleaseEnabled) setupEls.autoReleaseEnabled.checked = !!appCfg.auto_release_on_success;
-    renderReleaseActionOptions(setupEls.autoReleaseAction, appCfg.auto_release_action || 'build_aab');
-    const autoFlavorsList = Array.isArray(appCfg.auto_release_flavors) ? appCfg.auto_release_flavors : [];
-    if (setupEls.autoReleaseFlavors) setupEls.autoReleaseFlavors.value = autoFlavorsList.join(', ');
-
-    // Webhooks
-    if (setupEls.webhookUrl) setupEls.webhookUrl.value = appCfg.webhook_url || '';
-    if (setupEls.webhookEnabled) setupEls.webhookEnabled.checked = appCfg.webhook_enabled !== false;
-    if (setupEls.webhookProvider) setupEls.webhookProvider.value = appCfg.webhook_provider || 'auto';
-    if (setupEls.notifyOnSuccess) setupEls.notifyOnSuccess.checked = appCfg.notify_on_success !== false;
-    if (setupEls.notifyOnFailure) setupEls.notifyOnFailure.checked = appCfg.notify_on_failure !== false;
-    if (setupEls.playConsoleTrack) setupEls.playConsoleTrack.value = appCfg.play_console_track || 'internal';
-
-    // Workspace-level webhooks
-    if (setupEls.wsWebhookUrl) setupEls.wsWebhookUrl.value = setupState.deployConfig.workspace_webhook_url || '';
-    if (setupEls.wsWebhookEnabled) setupEls.wsWebhookEnabled.checked = setupState.deployConfig.workspace_webhook_enabled !== false;
-    if (setupEls.wsWebhookProvider) setupEls.wsWebhookProvider.value = setupState.deployConfig.workspace_webhook_provider || 'auto';
-    if (setupEls.wsNotifyOnSuccess) setupEls.wsNotifyOnSuccess.checked = setupState.deployConfig.workspace_notify_success !== false;
-    if (setupEls.wsNotifyOnFailure) setupEls.wsNotifyOnFailure.checked = setupState.deployConfig.workspace_notify_failure !== false;
-
-    setupState.currentWebhooks = Array.isArray(appCfg.webhooks) ? JSON.parse(JSON.stringify(appCfg.webhooks)) : [];
-    if (typeof renderWebhookChannels === 'function') renderWebhookChannels();
-    if (typeof updateIncomingWebhookSnippets === 'function') updateIncomingWebhookSnippets();
-
-    // P8 info
-    renderP8KeyInfo(appCfg);
-
-    // Credentials status & Pipelines
-    if (typeof loadCredentialStatus === 'function') loadCredentialStatus(appId);
-    if (typeof renderSetupPipelines === 'function') renderSetupPipelines(appId);
-
-    // iOS cert status check
-    const cached = getCachedCertCheck(appId);
-    if (cached) {
-        renderCertStatusBox(cached, setupEls.iosCertStatus);
-    } else {
-        fetchAndRenderCertStatus(appId, setupEls.iosCertStatus);
+    setupEls.noApp.classList.add('hidden');
+    setupEls.form.classList.remove('hidden');
+    if (window.lucide && typeof lucide.createIcons === 'function') {
+        lucide.createIcons();
     }
 }
 
-function renderP8KeyInfo(appCfg) {
-    if (!setupEls.p8CurrentKeyInfo) return;
-    const keyId = appCfg?.apple_key_id;
-    const keyPath = appCfg?.apple_key_path;
-    if (keyId || keyPath) {
+/** Render the configured .p8 key (from /api/deployment/credentials) beneath the dropzone. */
+function renderP8KeyInfo(apple) {
+    const hasKey = !!(apple && apple.exists);
+
+    setupEls.p8DropzoneTitle.textContent = hasKey
+        ? `✅ Key ${apple.key_id} configured (${scopeLabel(apple.source)}) — drop a new file to replace`
+        : apple
+            ? `⚠️ Key ${apple.key_id} is configured but its file is missing — drop it again`
+            : 'Drag & drop AuthKey_XXXXXXXXXX.p8 or click to browse';
+
+    if (apple) {
         setupEls.p8CurrentKeyInfo.style.display = 'block';
-        if (setupEls.p8CurrentKeyId) setupEls.p8CurrentKeyId.textContent = keyId || 'Unknown';
-        if (setupEls.p8CurrentKeyPath) setupEls.p8CurrentKeyPath.textContent = keyPath || 'AuthKey stored in standard path';
+        setupEls.p8CurrentKeyId.textContent = apple.key_id;
+        setupEls.p8CurrentKeyPath.textContent = apple.path;
+        if (apple.issuer_id && !setupEls.issuerId.value) {
+            setupEls.issuerId.value = apple.issuer_id;
+        }
     } else {
         setupEls.p8CurrentKeyInfo.style.display = 'none';
     }
+
+    // Hide the upload status from any previous operation
+    setupEls.p8UploadStatus.style.display = 'none';
 }
 
+// Listen to flavor inputs changes to dynamically redraw fields
+setupEls.flavors.addEventListener('input', () => {
+    const cfg = setupState.deployConfig.apps?.[setupState.selectedAppId] || {};
+    renderDynamicFields(getActiveFlavors(), cfg);
+});
+
 function readFormValues() {
-    const appId = setupState.selectedAppId;
-    if (!appId) return null;
-
-    const existingAppCfg = (setupState.deployConfig.apps || {})[appId] || {};
     const flavors = getActiveFlavors();
-
-    const appCfg = {
-        ...existingAppCfg,
-        apple_id: setupEls.appleId ? setupEls.appleId.value.trim() : '',
-        apple_issuer_id: setupEls.issuerId ? setupEls.issuerId.value.trim() : '',
-        play_service_account_path: setupEls.playService ? setupEls.playService.value.trim() : '',
-        flavors,
-        auto_release_on_success: setupEls.autoReleaseEnabled ? setupEls.autoReleaseEnabled.checked : false,
-        auto_release_action: setupEls.autoReleaseAction ? setupEls.autoReleaseAction.value : 'build_aab',
-        auto_release_flavors: setupEls.autoReleaseFlavors ? setupEls.autoReleaseFlavors.value.split(',').map(s => s.trim().toLowerCase()).filter(Boolean) : [],
-        webhook_url: setupEls.webhookUrl ? setupEls.webhookUrl.value.trim() : '',
-        webhook_enabled: setupEls.webhookEnabled ? setupEls.webhookEnabled.checked : true,
-        webhook_provider: setupEls.webhookProvider ? setupEls.webhookProvider.value : 'auto',
-        notify_on_success: setupEls.notifyOnSuccess ? setupEls.notifyOnSuccess.checked : true,
-        notify_on_failure: setupEls.notifyOnFailure ? setupEls.notifyOnFailure.checked : true,
-        play_console_track: setupEls.playConsoleTrack ? setupEls.playConsoleTrack.value : 'internal',
+    // Preserve any already-uploaded p8 fields
+    const existingCfg = setupState.deployConfig.apps?.[setupState.selectedAppId] || {};
+    const values = {
+        flavors: flavors,
+        apple_id: setupEls.appleId.value.trim(),
+        apple_issuer_id: setupEls.issuerId.value.trim(),
+        apple_key_id: existingCfg.apple_key_id || '',
+        play_service_account_path: setupEls.playService.value.trim(),
+        auto_release_on_success: setupEls.autoReleaseEnabled.checked,
+        auto_release_action: setupEls.autoReleaseAction.value || 'release_push',
+        auto_release_flavors: setupEls.autoReleaseFlavors.value.trim()
+            ? setupEls.autoReleaseFlavors.value.split(',').map(s => s.trim().toLowerCase()).filter(Boolean)
+            : ['prod'],
+        pipelines: existingCfg.pipelines || [],
         webhooks: setupState.currentWebhooks || [],
+        webhook_url: setupEls.webhookUrl ? setupEls.webhookUrl.value.trim() : (existingCfg.webhook_url || ''),
+        webhook_enabled: setupEls.webhookEnabled ? setupEls.webhookEnabled.checked : (existingCfg.webhook_enabled !== false),
+        webhook_provider: setupEls.webhookProvider ? setupEls.webhookProvider.value : (existingCfg.webhook_provider || 'auto'),
+        notify_on_success: setupEls.notifyOnSuccess ? setupEls.notifyOnSuccess.checked : (existingCfg.notify_on_success !== false),
+        notify_on_failure: setupEls.notifyOnFailure ? setupEls.notifyOnFailure.checked : (existingCfg.notify_on_failure !== false),
+        play_console_track: setupEls.playConsoleTrack ? setupEls.playConsoleTrack.value.trim() : (existingCfg.play_console_track || ''),
     };
 
     if (flavors.length === 0) {
-        const b = document.getElementById('cfgBundle_single');
-        const p = document.getElementById('cfgAndroidPackage_single');
-        const s = document.getElementById('cfgGoogleServices_single');
-        const i = document.getElementById('cfgGoogleServiceInfo_single');
-        if (b) appCfg.bundle_id = b.value.trim();
-        if (p) appCfg.android_package = p.value.trim();
-        if (s) appCfg.google_services_json = s.value.trim();
-        if (i) appCfg.google_service_info_plist = i.value.trim();
+        const bundleVal = document.getElementById('cfgBundle_single')?.value.trim() || '';
+        const packageVal = document.getElementById('cfgAndroidPackage_single')?.value.trim() || '';
+        const servicesVal = document.getElementById('cfgGoogleServices_single')?.value.trim() || '';
+        const infoVal = document.getElementById('cfgGoogleServiceInfo_single')?.value.trim() || '';
+
+        values.bundle_id = bundleVal;
+        values.bundle_id_prod = bundleVal;
+        values.android_package = packageVal;
+        values.android_package_prod = packageVal;
+        values.google_services_json = servicesVal;
+        values.google_services_json_prod = servicesVal;
+        values.google_service_info_plist = infoVal;
+        values.google_service_info_plist_prod = infoVal;
     } else {
-        flavors.forEach(f => {
-            const b = document.getElementById(`cfgBundle_${f}`);
-            const p = document.getElementById(`cfgAndroidPackage_${f}`);
-            const s = document.getElementById(`cfgGoogleServices_${f}`);
-            const i = document.getElementById(`cfgGoogleServiceInfo_${f}`);
-            if (b) appCfg[`bundle_id_${f}`] = b.value.trim();
-            if (p) appCfg[`android_package_${f}`] = p.value.trim();
-            if (s) appCfg[`google_services_json_${f}`] = s.value.trim();
-            if (i) appCfg[`google_service_info_plist_${f}`] = i.value.trim();
+        flavors.forEach(flavor => {
+            const bundleVal = document.getElementById(`cfgBundle_${flavor}`)?.value.trim() || '';
+            const packageVal = document.getElementById(`cfgAndroidPackage_${flavor}`)?.value.trim() || '';
+            const servicesVal = document.getElementById(`cfgGoogleServices_${flavor}`)?.value.trim() || '';
+            const infoVal = document.getElementById(`cfgGoogleServiceInfo_${flavor}`)?.value.trim() || '';
+
+            values[`bundle_id_${flavor}`] = bundleVal;
+            values[`android_package_${flavor}`] = packageVal;
+            values[`google_services_json_${flavor}`] = servicesVal;
+            values[`google_service_info_plist_${flavor}`] = infoVal;
         });
+
+        const primary = flavors.includes('prod') ? 'prod' : flavors[0];
+        values.bundle_id = values[`bundle_id_${primary}`] || '';
+        values.bundle_id_prod = values[`bundle_id_${primary}`] || '';
+        values.android_package = values[`android_package_${primary}`] || '';
+        values.android_package_prod = values[`android_package_${primary}`] || '';
+        values.google_services_json = values[`google_services_json_${primary}`] || '';
+        values.google_services_json_prod = values[`google_services_json_${primary}`] || '';
+        values.google_service_info_plist = values[`google_service_info_plist_${primary}`] || '';
+        values.google_service_info_plist_prod = values[`google_service_info_plist_${primary}`] || '';
     }
 
-    return appCfg;
+    return values;
 }
 
 async function saveDeployConfig() {
-    const appId = setupState.selectedAppId;
-    if (!appId) return;
+    if (!setupState.selectedAppId) { return; }
+    if (!setupState.deployConfig.apps) { setupState.deployConfig.apps = {}; }
 
-    const appCfg = readFormValues();
-    if (!appCfg) return;
+    const values = readFormValues();
 
-    const dataToSave = {
-        ...setupState.deployConfig,
-        workspace_webhook_url: setupEls.wsWebhookUrl ? setupEls.wsWebhookUrl.value.trim() : '',
-        workspace_webhook_enabled: setupEls.wsWebhookEnabled ? setupEls.wsWebhookEnabled.checked : true,
-        workspace_webhook_provider: setupEls.wsWebhookProvider ? setupEls.wsWebhookProvider.value : 'auto',
-        workspace_notify_success: setupEls.wsNotifyOnSuccess ? setupEls.wsNotifyOnSuccess.checked : true,
-        workspace_notify_failure: setupEls.wsNotifyOnFailure ? setupEls.wsNotifyOnFailure.checked : true,
-        apps: {
-            ...(setupState.deployConfig.apps || {}),
-            [appId]: appCfg,
-        },
-    };
-
-    setupEls.saveBtn.disabled = true;
-    setupEls.saveBtn.querySelector('span').textContent = 'Saving...';
-
-    try {
-        const res = await fetch('/api/deployment/config/save', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(dataToSave),
-        }).then(r => r.json());
-
-        if (res.success) {
-            setupState.deployConfig = dataToSave;
-            showToast('Configuration saved successfully!');
-            await loadSetupData();
-            selectSetupApp(appId);
-        } else {
-            showToast('Save failed: ' + (res.error || 'Unknown error'));
+    // A2 fix: warn when user has typed flavors but the project scan found none.
+    // This prevents silent build failures from invalid --flavor flags.
+    const typedFlavors = values.flavors || [];
+    if (typedFlavors.length > 0) {
+        const app = setupState.apps.find(a => a.id === setupState.selectedAppId);
+        const savedCfg = setupState.deployConfig.apps[setupState.selectedAppId] || {};
+        const hasScannedData = savedCfg.bundle_id || savedCfg.android_package;
+        const scanFoundNoFlavors = Array.isArray(savedCfg.flavors) && savedCfg.flavors.length === 0;
+        if (hasScannedData && scanFoundNoFlavors) {
+            const appName = app ? app.name : setupState.selectedAppId;
+            showToast(`⚠️ Warning: Autoscan found NO flavors for "${appName}". Typed flavors may cause build failures with --flavor flag. Leave Flavors empty for a single app.`, 'warning');
         }
-    } catch (err) {
-        showToast('Error saving: ' + err.message);
-    } finally {
-        setupEls.saveBtn.disabled = false;
-        setupEls.saveBtn.querySelector('span').textContent = 'Save Configuration';
+    }
+
+    setupState.deployConfig.apps[setupState.selectedAppId] = values;
+
+    if (setupEls.wsWebhookUrl) {
+        setupState.deployConfig.workspace_webhook_url = setupEls.wsWebhookUrl.value.trim();
+        setupState.deployConfig.workspace_webhook_enabled = setupEls.wsWebhookEnabled.checked;
+        setupState.deployConfig.workspace_webhook_provider = setupEls.wsWebhookProvider.value;
+        setupState.deployConfig.workspace_notify_on_success = setupEls.wsNotifyOnSuccess.checked;
+        setupState.deployConfig.workspace_notify_on_failure = setupEls.wsNotifyOnFailure.checked;
+    }
+
+    const res = await fetch('/api/deployment/deploy-config/save', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(setupState.deployConfig),
+    }).then(r => r.json());
+
+    if (res.success) {
+        showToast('Config saved!');
+    } else {
+        showToast('Error saving config: ' + (res.error || 'unknown'));
     }
 }
 
@@ -509,20 +555,6 @@ if (setupEls.saveBtn) setupEls.saveBtn.addEventListener('click', saveDeployConfi
 if (setupEls.regenerateBtn) setupEls.regenerateBtn.addEventListener('click', regenerateAllCommands);
 if (setupEls.scanBtn) setupEls.scanBtn.addEventListener('click', () => { if (typeof autoScanConfig === 'function') autoScanConfig(); });
 if (setupEls.scanAllBtn) setupEls.scanAllBtn.addEventListener('click', () => { if (typeof autoScanAllConfig === 'function') autoScanAllConfig({ force: false }); });
-if (setupEls.iosCertRecheckBtn) {
-    setupEls.iosCertRecheckBtn.addEventListener('click', () => {
-        if (setupState.selectedAppId) fetchAndRenderCertStatus(setupState.selectedAppId, setupEls.iosCertStatus);
-    });
-}
-
-if (setupEls.flavors) {
-    setupEls.flavors.addEventListener('input', () => {
-        const flavors = getActiveFlavors();
-        const appCfg = readFormValues() || {};
-        renderDynamicFields(flavors, appCfg);
-    });
-}
-
 // Add App Dialog Events
 if (addCustomAppBtn) {
     addCustomAppBtn.addEventListener('click', () => {
