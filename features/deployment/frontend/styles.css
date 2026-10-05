@@ -664,3 +664,14 @@ body {
     height: auto;
 }
 
+
+/* Setup sidebar: <button> tiles drop browser chrome (until the CDN kit ships this rule). */
+button.ui-sidebar-item {
+    width: 100%;
+    border: 0;
+    background: transparent;
+    font-family: inherit;
+    text-align: left;
+    justify-content: flex-start;
+    gap: 8px;
+}

@@ -109,7 +109,8 @@ async function loadSetupData() {
             fetch('/api/deployment/config').then(r => r.json()),
         ]);
 
-        setupState.apps = appsRes.apps || [];
+        // Packages are not deployable, so they have no per-app settings.
+        setupState.apps = (appsRes.apps || []).filter(a => !a.is_package);
         setupState.deployConfig = configRes || { apps: {} };
 
         renderSetupAppNav();
@@ -191,15 +192,16 @@ async function fetchAndRenderCertStatus(appId, container) {
 }
 
 function renderSetupAppNav() {
-    if (!setupEls.appNav) return;
-    setupEls.appNav.innerHTML = setupState.apps.map(app => `
-        <button type="button" class="setup-app-item ${app.id === setupState.selectedAppId ? 'active' : ''}" data-app-id="${escapeHtml(app.id)}">
-            <span class="setup-app-dot" style="background: ${escapeHtml(app.color || '#6366f1')}"></span>
-            <span class="setup-app-name">${escapeHtml(app.name)}</span>
+    const list = document.getElementById('setupAppList');
+    if (!list) return;
+    list.innerHTML = setupState.apps.map(app => `
+        <button type="button" class="ui-sidebar-item setup-app-item" data-state="${app.id === setupState.selectedAppId ? 'active' : ''}" data-app-id="${escapeHtml(app.id)}">
+            <span class="app-dot" style="background: ${escapeHtml(app.color || '#6366f1')}"></span>
+            <span>${escapeHtml(app.name)}</span>
         </button>
     `).join('');
 
-    setupEls.appNav.querySelectorAll('.setup-app-item').forEach(btn => {
+    list.querySelectorAll('.setup-app-item').forEach(btn => {
         btn.addEventListener('click', () => {
             selectSetupApp(btn.dataset.appId);
         });
@@ -264,6 +266,9 @@ function renderDynamicFields(flavors, appCfg = {}) {
 
 function selectSetupApp(appId) {
     setupState.selectedAppId = appId;
+    document.querySelectorAll('#setupAppList .setup-app-item').forEach(btn => {
+        btn.dataset.state = btn.dataset.appId === appId ? 'active' : '';
+    });
     if (addAppForm) addAppForm.classList.add('hidden');
 
     if (!appId) {
