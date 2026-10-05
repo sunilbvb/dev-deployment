@@ -683,3 +683,19 @@ button.ui-sidebar-item {
 .cred-pick-row:has(input:checked) {
     background: rgba(99, 102, 241, 0.1);
 }
+
+/* Store keys an upload will use (execution panel) */
+.upload-key-info {
+    margin: 8px 0 10px;
+    padding: 10px 12px;
+    border-radius: 8px;
+    border: 1px solid var(--ui-border-color);
+    font-size: 0.78rem;
+    line-height: 1.5;
+}
+.upload-key-info[data-status="ok"] { border-color: rgba(52, 211, 153, 0.4); background: rgba(52, 211, 153, 0.06); }
+.upload-key-info[data-status="warning"],
+.upload-key-info[data-status="error"] { border-color: rgba(245, 158, 11, 0.5); background: rgba(245, 158, 11, 0.08); }
+.upload-key-title { font-weight: 700; margin-bottom: 2px; }
+.upload-key-row { overflow-wrap: anywhere; }
+.upload-key-hint { margin-top: 4px; color: var(--ui-text-muted); font-size: 0.72rem; }
