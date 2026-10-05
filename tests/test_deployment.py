@@ -1417,6 +1417,27 @@ class TestApkHostingAndQr(unittest.TestCase):
         config.WORKSPACE_ROOT = self.orig_ws
         self.tmp_dir.cleanup()
 
+    def test_qr_format_and_version_info_at_spec_positions(self):
+        # Read format info back from ISO 18004 positions ([row][col]); a transposed
+        # placement made every generated QR unreadable.
+        from qr import matrix as M
+        for text, ec in (("HELLO", "L"), ("x" * 160, "L"), ("x" * 150, "M")):
+            g = M.generate_qr_matrix(text, ec)
+            q = [row[4:-4] for row in g[4:-4]]  # strip quiet zone
+            n = len(q)
+            a = [q[i][8] for i in range(6)] + [q[7][8], q[8][8], q[8][7]] + [q[8][14 - i] for i in range(9, 15)]
+            b = [q[8][n - 1 - i] for i in range(8)] + [q[n - 15 + i][8] for i in range(8, 15)]
+            fa = sum(int(v) << i for i, v in enumerate(a))
+            fb = sum(int(v) << i for i, v in enumerate(b))
+            self.assertEqual(fa, fb)
+            ec_bits = 1 if ec == "L" else 0
+            self.assertIn(fa, [M._format_info_bits(ec_bits, m) for m in range(8)])
+            self.assertTrue(q[n - 8][8], "dark module")
+            version = (n - 17) // 4
+            if version >= 7:
+                bits = sum(int(q[i // 3][n - 11 + i % 3]) << i for i in range(18))
+                self.assertEqual(bits, M._version_info_bits(version))
+
     def test_no_qr_for_aab_job(self):
         import artifacts
         import jobs
