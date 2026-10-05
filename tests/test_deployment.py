@@ -1417,6 +1417,22 @@ class TestApkHostingAndQr(unittest.TestCase):
         config.WORKSPACE_ROOT = self.orig_ws
         self.tmp_dir.cleanup()
 
+    def test_no_qr_for_aab_job(self):
+        import artifacts
+        import jobs
+        aab = self.app_dir / "app-qa-release.aab"
+        aab.write_bytes(b"PK\x03\x04aab")
+        with jobs._JOBS_LOCK:
+            jobs._JOBS["job_aab_1"] = {"id": "job_aab_1", "app": "test_apk_app", "flavor": "qa",
+                                      "status": "success", "artifact": {"path": str(aab), "type": "AAB"}}
+        try:
+            info = artifacts.get_apk_download_info(job_id="job_aab_1")
+            self.assertFalse(info["hasApk"])
+            self.assertNotIn("downloadUrl", info)
+        finally:
+            with jobs._JOBS_LOCK:
+                jobs._JOBS.pop("job_aab_1", None)
+
     def test_qr_generation(self):
         import qr
         url = "http://192.168.1.100:18112/api/deployment/download/job_12345?token=abcdef"

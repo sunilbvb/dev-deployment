@@ -28,6 +28,11 @@ def get_apk_download_info(
 
     # Check if job already recorded an artifact
     artifact = job_info.get("artifact") if job_info else None
+    # Only an .apk can be side-loaded. A job that built an .aab (Play upload) or .ipa
+    # must not get an "APK ready" QR: its download link would 404.
+    if artifact and not str(artifact.get("path", "")).lower().endswith(".apk"):
+        return {"success": True, "hasApk": False, "jobId": job_id, "app": effective_app,
+                "reason": f"{artifact.get('type') or 'This build'} cannot be installed from a QR code; only APK builds can."}
     if not artifact:
         artifact = find_apk_artifact(
             app_id=effective_app,
