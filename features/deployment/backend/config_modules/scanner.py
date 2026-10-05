@@ -114,6 +114,28 @@ def _scan_xcconfig_bundle_ids(app_dir: Path) -> dict[str, str]:
     return result
 
 
+def _product_flavor_blocks(content: str) -> dict[str, str]:
+    """Map flavor name -> body of its block inside productFlavors { ... }."""
+    m = re.search(r'productFlavors\s*\{', content)
+    if not m:
+        return {}
+    i, depth, start = m.end(), 1, m.end()
+    while i < len(content) and depth:
+        depth += {"{": 1, "}": -1}.get(content[i], 0)
+        i += 1
+    section = content[start:i - 1]
+    blocks: dict[str, str] = {}
+    for fm in re.finditer(r'(?:create\(\s*"(\w+)"\s*\)|\b(\w+))\s*\{', section):
+        name = fm.group(1) or fm.group(2)
+        j, d = fm.end(), 1
+        while j < len(section) and d:
+            d += {"{": 1, "}": -1}.get(section[j], 0)
+            j += 1
+        if name not in ("getByName", "named", "all", "configureEach"):
+            blocks.setdefault(name, section[fm.end():j - 1])
+    return blocks
+
+
 def _scan_android_app_ids(app_dir: Path) -> dict[str, str]:
     result: dict[str, str] = {}
     prop_mappings = [
@@ -180,6 +202,18 @@ def _scan_android_app_ids(app_dir: Path) -> dict[str, str]:
                         result["android_package"] = app_id_val
                         result["android_package_prod"] = app_id_val
                         result["android_id_prod"] = app_id_val
+
+                # Per-flavor IDs from productFlavors { qa { applicationIdSuffix ".test" } }
+                # (Groovy) or create("qa") { applicationIdSuffix = ".test" } (KTS). These are
+                # exact, so they override the keyword guesses above.
+                base_id = result.get("android_package") or result.get("android_id_prod")
+                for flavor_name, block in _product_flavor_blocks(content).items():
+                    own = re.search(r'applicationId\s*=?\s*["\']([^"\']+)["\']', block)
+                    suffix = re.search(r'applicationIdSuffix\s*=?\s*["\']([^"\']+)["\']', block)
+                    flavor_id = own.group(1).strip() if own else (base_id + suffix.group(1).strip() if base_id and suffix else base_id)
+                    if flavor_id:
+                        result[f"android_id_{flavor_name}"] = flavor_id
+                        result[f"android_package_{flavor_name}"] = flavor_id
 
                 if not result.get("android_package") and not result.get("android_id_prod"):
                     ns_match = re.search(r'namespace\s*=?\s*["\']([^"\'\']+)["\']', content)

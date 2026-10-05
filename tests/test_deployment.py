@@ -1453,6 +1453,26 @@ class TestApkHostingAndQr(unittest.TestCase):
                 bits = sum(int(q[i // 3][n - 11 + i % 3]) << i for i in range(18))
                 self.assertEqual(bits, M._version_info_bits(version))
 
+    def test_android_flavor_ids_from_application_id_suffix(self):
+        import config
+        app = self.ws_dir / "apps" / "suffix_app"
+        (app / "android" / "app").mkdir(parents=True)
+        (app / "android" / "app" / "build.gradle").write_text("""
+android {
+    defaultConfig { applicationId = "com.acme.shop" }
+    productFlavors {
+        dev { dimension "env"; applicationIdSuffix ".dev" }
+        qa { dimension "env"
+             applicationIdSuffix ".test" }
+        prod { dimension "env" }
+    }
+}
+""", encoding="utf-8")
+        ids = config._scan_android_app_ids(app)
+        self.assertEqual(ids["android_id_qa"], "com.acme.shop.test")
+        self.assertEqual(ids["android_id_dev"], "com.acme.shop.dev")
+        self.assertEqual(ids["android_id_prod"], "com.acme.shop")
+
     def test_download_tokens_are_scoped_to_target_and_purpose(self):
         from artifacts import download_tokens as dt
         tok = dt.issue("job_1", {"apk"})
