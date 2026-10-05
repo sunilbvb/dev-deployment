@@ -91,12 +91,54 @@ async function uploadP8File(file) {
     }
 }
 
+async function importP8Path(path) {
+    if (!path.toLowerCase().endsWith('.p8')) { showToast('Please select a valid .p8 file.'); return; }
+    const name = path.split('/').pop();
+    setupEls.p8DropzoneTitle.textContent = `⏳ Importing ${name}…`;
+    setupEls.p8UploadStatus.style.display = 'none';
+    let res;
+    try {
+        res = await postJson('/api/deployment/credentials/import', {
+            path, app: setupState.selectedAppId, issuerId: setupEls.issuerId.value.trim(),
+        });
+    } catch (err) {
+        res = { success: false, error: err.message };
+    }
+    showP8Result(res);
+}
+
+/** Shared result display for drag/drop upload and native-picker import. */
+async function showP8Result(res) {
+    if (res.success) {
+        await loadCredentialStatus(setupState.selectedAppId);
+        setupEls.p8DropzoneTitle.textContent = 'Drag & drop AuthKey_XXXXXXXXXX.p8 or click to browse';
+        setupEls.p8UploadStatus.dataset.status = 'valid';
+        setupEls.p8UploadStatus.textContent = `✅ Key ID: ${res.key_id || '?'}  •  Stored at: ${res.stored_path || res.path || '~/.appstoreconnect'}`;
+        showToast(`✅ Key ID ${res.key_id || ''} imported.`);
+    } else {
+        setupEls.p8DropzoneTitle.textContent = '❌ Import failed — try again';
+        setupEls.p8UploadStatus.dataset.status = 'error';
+        setupEls.p8UploadStatus.textContent = `❌ ${res.error || 'Unknown error'}`;
+        showToast('Import error: ' + (res.error || 'Unknown'));
+    }
+    setupEls.p8UploadStatus.style.display = 'block';
+}
+
 // Click-to-browse & Drag-and-drop for p8
 if (setupEls.p8Dropzone) {
-    setupEls.p8Dropzone.addEventListener('click', () => {
-        if (setupEls.p8FileInput) {
+    // Use the server's native Finder/zenity dialog: embedded browsers (e.g. desktop
+    // app panes) often never open a dialog for <input type=file>. Fall back to the
+    // browser picker only where no native dialog exists.
+    setupEls.p8Dropzone.addEventListener('click', async () => {
+        if (!setupState.selectedAppId) { showToast('Please select an app first.'); return; }
+        const picked = await pickNativePath({ kind: 'file', prompt: 'Choose an App Store Connect API key (.p8)', extensions: ['p8'] });
+        if (picked.path) {
+            importP8Path(picked.path);
+        } else if (picked.unsupported && setupEls.p8FileInput) {
             setupEls.p8FileInput.value = '';
             setupEls.p8FileInput.click();
+        } else if (picked.error) {
+            showToast(picked.error);
         }
     });
 
