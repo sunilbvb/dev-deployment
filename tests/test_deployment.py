@@ -1487,13 +1487,12 @@ android {
         finally:
             dt.DOWNLOAD_TOKEN_TTL = saved
 
-    def test_clean_build_default_is_on_for_prod_only(self):
+    def test_clean_build_defaults_to_on_for_every_flavor(self):
         import jobs
-        self.assertEqual(jobs.clean_build_env_value(None, "prod"), "true")
-        self.assertEqual(jobs.clean_build_env_value(None, ""), "true")
-        self.assertEqual(jobs.clean_build_env_value(None, "qa"), "false")
+        for flavor in ("prod", "", "qa", "dev"):
+            self.assertEqual(jobs.clean_build_env_value(None, flavor), "true", flavor)
         self.assertEqual(jobs.clean_build_env_value(True, "qa"), "true")
-        self.assertEqual(jobs.clean_build_env_value(False, "prod"), "false")
+        self.assertEqual(jobs.clean_build_env_value(False, "qa"), "false")  # explicit opt-out only
 
     def test_no_qr_for_aab_job(self):
         import artifacts

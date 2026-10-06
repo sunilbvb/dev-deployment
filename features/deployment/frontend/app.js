@@ -634,8 +634,8 @@ function updateExecutionPanel() {
     renderCleanBuildToggle(state.selectedCommand, isCloudRunner);
 }
 
-// Android builds wipe build/ only when asked (CLEAN_BUILD). Default: on for prod,
-// off for other flavors; reset whenever the selected command changes.
+// Android builds wipe build/ unless the user turns this off (stale output would hide new
+// changes). On by default for every flavor; reset whenever the selected command changes.
 const CLEAN_BUILD_TEMPLATES = new Set(['build_aab', 'build_apk', 'deploy_aab', 'deploy_both']);
 let cleanBuildCommandId = null;
 
@@ -644,8 +644,7 @@ function renderCleanBuildToggle(cmd, isCloudRunner) {
     const show = !!cmd && !isCloudRunner && CLEAN_BUILD_TEMPLATES.has(cmd.templateId);
     els.cleanBuildRow.classList.toggle('hidden', !show);
     if (show && cleanBuildCommandId !== cmd.id) {
-        const flavor = cmd.flavor && cmd.flavor !== 'any' ? cmd.flavor : selectedEnvForExecution();
-        els.cleanBuildToggle.checked = !flavor || flavor === 'prod';
+        els.cleanBuildToggle.checked = true;
         cleanBuildCommandId = cmd.id;
     }
 }

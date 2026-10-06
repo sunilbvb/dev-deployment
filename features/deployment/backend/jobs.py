@@ -177,12 +177,11 @@ def _trigger_chained_release(app: str, env: str, action_id: str, parent_job_id: 
 def clean_build_env_value(clean_build: Optional[bool], flavor: str = "", env: str = "") -> str:
     """CLEAN_BUILD for build scripts: wipe build/ before compiling?
 
-    Default: always for prod (or a flavor-less app, which IS prod), never for other
-    flavors. Scripts run outside the console keep their own default (wipe).
+    Default for every flavor is to wipe, so a build never reuses stale output and
+    always contains the latest code. Only an explicit clean_build=False (the
+    "Clean build" checkbox turned off in the console) keeps build/ for speed.
     """
-    if clean_build is None:
-        clean_build = (flavor or env or "prod") == "prod"
-    return "true" if clean_build else "false"
+    return "false" if clean_build is False else "true"
 
 
 def execute_command(
