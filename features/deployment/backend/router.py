@@ -1,6 +1,7 @@
 import artifacts
 import automation
 import build_size
+import config
 import credentials
 import docs_provider
 import doctor

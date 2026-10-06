@@ -142,13 +142,35 @@ const wsModalEls = {
     packages: document.getElementById('inspectPackageBadges'),
 };
 
-let importCandidate = null;
+async function pickNativeFolder(prompt = 'Choose your project folder') {
+    if (typeof window.pickNativePath === 'function') {
+        try {
+            return await window.pickNativePath({ kind: 'folder', prompt });
+        } catch (_) {}
+    }
+    try {
+        const pickUrl = typeof api === 'function' ? api('/api/deployment/pick') : '/api/deployment/pick';
+        const res = await fetch(pickUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ kind: 'folder', prompt }),
+        }).then(r => r.json());
+        if (res && res.success) return { path: res.path };
+        return {
+            path: null,
+            unsupported: res ? res.supported === false : true,
+            error: res && res.cancelled ? '' : ((res && res.error) || ''),
+        };
+    } catch (err) {
+        return { path: null, unsupported: true, error: err.message || 'Picker service error' };
+    }
+}
 
 function resetImportDialog() {
     importCandidate = null;
     if (wsModalEls.result) wsModalEls.result.classList.add('hidden');
     if (wsModalEls.error) wsModalEls.error.classList.add('hidden');
-    if (wsModalEls.manual) wsModalEls.manual.hidden = true;
+    if (wsModalEls.manual) wsModalEls.manual.hidden = false;
     if (wsModalEls.pathInput) wsModalEls.pathInput.value = '';
     if (wsModalEls.confirmBtn) wsModalEls.confirmBtn.disabled = true;
 }
@@ -229,18 +251,32 @@ if (wsModalEls.overlay) {
 
 if (wsModalEls.browseBtn) {
     wsModalEls.browseBtn.addEventListener('click', async () => {
+        const originalText = wsModalEls.browseBtn.innerHTML;
         wsModalEls.browseBtn.disabled = true;
-        const picked = typeof window.pickNativePath === 'function'
-            ? await window.pickNativePath({ kind: 'folder', prompt: 'Choose your project folder' })
-            : { unsupported: true };
-        wsModalEls.browseBtn.disabled = false;
-        if (picked.path) {
-            inspectImportFolder(picked.path);
-        } else if (picked.unsupported) {
+        wsModalEls.browseBtn.innerHTML = '<span class="loading-spinner-inline" style="width:14px;height:14px;border:2px solid #fff;border-top-color:transparent;border-radius:50%;display:inline-block;animation:spin 1s linear infinite;"></span><span>Opening folder dialog…</span>';
+        try {
+            if (wsModalEls.error) wsModalEls.error.classList.add('hidden');
+            const picked = await pickNativeFolder('Choose your project folder');
+            if (picked.path) {
+                if (wsModalEls.pathInput) wsModalEls.pathInput.value = picked.path;
+                inspectImportFolder(picked.path);
+            } else if (picked.unsupported) {
+                if (wsModalEls.manual) wsModalEls.manual.hidden = false;
+                if (wsModalEls.pathInput) wsModalEls.pathInput.focus();
+                showImportError('No native desktop folder dialog detected. Enter folder path manually below.');
+            } else if (picked.error) {
+                showImportError(picked.error);
+                if (wsModalEls.manual) wsModalEls.manual.hidden = false;
+            } else {
+                if (wsModalEls.manual) wsModalEls.manual.hidden = false;
+            }
+        } catch (err) {
+            showImportError(err.message || 'Could not open folder picker.');
             if (wsModalEls.manual) wsModalEls.manual.hidden = false;
-            if (wsModalEls.pathInput) wsModalEls.pathInput.focus();
-        } else if (picked.error) {
-            showImportError(picked.error);
+        } finally {
+            wsModalEls.browseBtn.disabled = false;
+            wsModalEls.browseBtn.innerHTML = originalText;
+            if (typeof refreshIcons === 'function') refreshIcons();
         }
     });
 }

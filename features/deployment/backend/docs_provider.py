@@ -28,6 +28,13 @@ DOC_REGISTRY: dict[str, dict[str, Any]] = {
         "category": "Getting Started",
         "file": None,  # Dynamically generated
     },
+    "examples": {
+        "id": "examples",
+        "title": "End-to-End Workflow Examples",
+        "description": "Visual architecture diagrams and step-by-step walkthroughs of deployment flows.",
+        "category": "Getting Started",
+        "file": "docs/EXAMPLES.md",
+    },
     "readme": {
         "id": "readme",
         "title": "README — Dev Deployment",
@@ -51,9 +58,51 @@ DOC_REGISTRY: dict[str, dict[str, Any]] = {
     },
     "api": {
         "id": "api",
-        "title": "REST API Documentation",
+        "title": "REST API Documentation (Complete)",
         "description": "Complete specification of all backend REST endpoints and schemas.",
         "category": "API & Technical",
+        "file": "docs/API.md",
+    },
+    "api-workspaces": {
+        "id": "api-workspaces",
+        "title": "Workspaces & App Discovery APIs",
+        "description": "Folder inspection, workspace switching, app registration, and auto-scanning endpoints.",
+        "category": "API Endpoints",
+        "file": "docs/API.md",
+    },
+    "api-execution": {
+        "id": "api-execution",
+        "title": "Builds, Jobs & Server APIs",
+        "description": "Async build runner, live logs, process termination, pipelines, and server lifecycle.",
+        "category": "API Endpoints",
+        "file": "docs/API.md",
+    },
+    "api-artifacts": {
+        "id": "api-artifacts",
+        "title": "Artifacts, OTA & QR APIs",
+        "description": "Local APK/IPA download streaming, dynamic Apple OTA manifest plists, and QR generation.",
+        "category": "API Endpoints",
+        "file": "docs/API.md",
+    },
+    "api-diagnostics": {
+        "id": "api-diagnostics",
+        "title": "Doctor, Sentinel & Size APIs",
+        "description": "Pre-flight checks, certificate & keystore expiration monitoring, and archive size diffs.",
+        "category": "API Endpoints",
+        "file": "docs/API.md",
+    },
+    "api-webhooks": {
+        "id": "api-webhooks",
+        "title": "Webhooks & CI/CD Ingestion APIs",
+        "description": "Multi-provider outgoing webhook alerts and universal CI/CD ingestion gateway.",
+        "category": "API Endpoints",
+        "file": "docs/API.md",
+    },
+    "api-innovations": {
+        "id": "api-innovations",
+        "title": "Wireless ADB, Profiler & Warmer APIs",
+        "description": "Wireless Android device push, compilation phase profiler, and dependency cache warmer.",
+        "category": "API Endpoints",
         "file": "docs/API.md",
     },
     "pipelines": {
@@ -62,6 +111,62 @@ DOC_REGISTRY: dict[str, dict[str, Any]] = {
         "description": "Saved pipelines architecture, step execution engine, and JSON schema.",
         "category": "Proposals & ADRs",
         "file": "docs/proposals/0001-pipelines.md",
+    },
+    "installing": {
+        "id": "installing",
+        "title": "Installation & Setup Guide",
+        "description": "Quickstart launch, desktop shortcut, and systemd service setup.",
+        "category": "Getting Started",
+        "file": "docs/INSTALLING.md",
+    },
+    "requirements": {
+        "id": "requirements",
+        "title": "System Requirements & Prerequisites",
+        "description": "Hardware, OS, Python version, and SDK tool requirements.",
+        "category": "Getting Started",
+        "file": "docs/REQUIREMENTS.md",
+    },
+    "use-cases": {
+        "id": "use-cases",
+        "title": "Real-World Use Cases & Workflows",
+        "description": "Scenarios for solo developers, QA testers, agencies, and CI/CD.",
+        "category": "Getting Started",
+        "file": "docs/USE_CASES.md",
+    },
+    "features": {
+        "id": "features",
+        "title": "Complete Features Catalog",
+        "description": "Comprehensive index of all 20+ console features and capabilities.",
+        "category": "Platform & Tools",
+        "file": "docs/FEATURES.md",
+    },
+    "platforms": {
+        "id": "platforms",
+        "title": "Supported Platforms & Ecosystems",
+        "description": "Android, iOS, Melos monorepos, Dart workspaces, and host operating systems.",
+        "category": "Platform & Tools",
+        "file": "docs/PLATFORMS.md",
+    },
+    "dependencies": {
+        "id": "dependencies",
+        "title": "Dependencies & Runtime Architecture",
+        "description": "Zero external pip dependencies guarantee and host CLI tool matrix.",
+        "category": "Platform & Tools",
+        "file": "docs/DEPENDENCIES.md",
+    },
+    "versions": {
+        "id": "versions",
+        "title": "Versions & Compatibility Matrix",
+        "description": "Release milestones, SemVer policy, and runtime compatibility matrix.",
+        "category": "Platform & Tools",
+        "file": "docs/VERSIONS.md",
+    },
+    "docs-index": {
+        "id": "docs-index",
+        "title": "Documentation Directory & Knowledge Hub",
+        "description": "Complete sitemap and guide index for all console documentation.",
+        "category": "Repository Docs",
+        "file": "docs/DOCUMENTATION.md",
     },
     "changelog": {
         "id": "changelog",
@@ -83,6 +188,20 @@ DOC_REGISTRY: dict[str, dict[str, Any]] = {
         "description": "Security considerations, authentication tokens, and vulnerability reporting.",
         "category": "Guidelines",
         "file": "SECURITY.md",
+    },
+    "license": {
+        "id": "license",
+        "title": "Open Source License (MIT)",
+        "description": "MIT License permissions, warranty disclaimer, and legal terms.",
+        "category": "Repository Docs",
+        "file": "LICENSE",
+    },
+    "owner": {
+        "id": "owner",
+        "title": "Project Owner, Maintainers & Governance",
+        "description": "Lead architect, maintainers, contributors, and project governance.",
+        "category": "Repository Docs",
+        "file": "docs/OWNER.md",
     },
 }
 
@@ -267,7 +386,7 @@ def get_doc_content(doc_id: str, ws_root: Optional[Path] = None) -> dict[str, An
         except ValueError:
             pass
 
-    if not is_safe or target_path.suffix.lower() != ".md":
+    if not is_safe or (target_path.suffix.lower() != ".md" and target_path.name.upper() != "LICENSE"):
         return {
             "success": False,
             "error": "Access to requested file path is restricted.",
@@ -285,6 +404,29 @@ def get_doc_content(doc_id: str, ws_root: Optional[Path] = None) -> dict[str, An
 
     try:
         content = target_path.read_text(encoding="utf-8", errors="replace")
+
+        # Dynamic slicing for targeted API topics
+        api_slices = {
+            "api-workspaces": ["Workspaces & Projects", "Apps & Configuration"],
+            "api-execution": ["Job Execution & History", "Saved Pipelines", "Server Management & Lifecycle Controls"],
+            "api-artifacts": ["Local APK Hosting & QR Code", "iOS OTA Installation & Direct IPA Hosting"],
+            "api-diagnostics": ["Pre-flight Diagnostics (App Doctor)", "Certificate & Keystore Expiry Sentinel", "Build Size Inspector & Diff"],
+            "api-webhooks": ["Universal Webhooks & CI/CD Ingestion", "Credentials & Keys"],
+            "api-innovations": [
+                "Wireless ADB Device Management & Parallel Push",
+                "Build Time Profiler & Bottleneck Heatmap",
+                "Smart Silent Cache Warmer",
+                "Hybrid Distributed Builds (GitHub Actions + Local Parallel Matrix)",
+            ],
+        }
+        if doc_id.startswith("api-") and doc_id in api_slices:
+            target_headers = api_slices[doc_id]
+            raw_sections = content.split("\n## ")
+            intro_sec = raw_sections[0]
+            matched = [f"## {sec.strip()}" for sec in raw_sections[1:] if any(sec.strip().startswith(h) for h in target_headers)]
+            if matched:
+                content = f"# {doc_meta['title']} 🔌\n\n{intro_sec}\n\n---\n\n" + "\n\n---\n\n".join(matched)
+
         return {
             "success": True,
             "doc": doc_id,

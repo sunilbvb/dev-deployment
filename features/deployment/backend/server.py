@@ -124,8 +124,13 @@ class DeploymentHandler(http.server.SimpleHTTPRequestHandler):
     def _is_allowed_origin(self, origin: str) -> bool:
         if not origin:
             return True
+        origin_clean = origin.strip().lower()
+        if origin_clean == "null" or origin_clean.startswith("file://"):
+            return True
         parsed = urlparse(origin)
         hostname = (parsed.hostname or "").lower()
+        if not hostname:
+            return False
         allowed_hosts = {"localhost", "127.0.0.1"}
         bind_host = getattr(self.server, "server_name", None) or getattr(self.server, "server_address", [None])[0]
         if bind_host and isinstance(bind_host, str):
@@ -138,11 +143,14 @@ class DeploymentHandler(http.server.SimpleHTTPRequestHandler):
             self.send_header("Access-Control-Allow-Origin", origin)
             self.send_header("Access-Control-Allow-Credentials", "true")
             self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-            self.send_header("Access-Control-Allow-Headers", "Content-Type, X-API-Token, X-Webhook-Secret, X-Hub-Signature-256")
+            self.send_header(
+                "Access-Control-Allow-Headers",
+                "Content-Type, X-API-Token, X-Webhook-Secret, X-Hub-Signature-256, X-Workspace, Cache-Control, Authorization"
+            )
         self.send_header("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
         self.send_header(
             "Content-Security-Policy",
-            "default-src 'self'; script-src 'self' 'unsafe-inline' https://unpkg.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.jsdelivr.net; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https:; connect-src 'self';"
+            "default-src 'self' data:; script-src 'self' 'unsafe-inline' https://unpkg.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.jsdelivr.net; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: https:; connect-src 'self' http://localhost:* http://127.0.0.1:* ws: wss:;"
         )
         super().end_headers()
 
@@ -287,15 +295,18 @@ class DeploymentHandler(http.server.SimpleHTTPRequestHandler):
         super().do_HEAD()
 
     def _extract_request_workspace(self, parsed_query: Optional[dict[str, list[str]]] = None) -> Any:
-        ws_val = self.headers.get("X-Workspace", "").strip()
-        if not ws_val and parsed_query:
-            ws_val = parsed_query.get("ws", parsed_query.get("workspace", [""]))[0].strip()
-        if ws_val:
-            cand = Path(ws_val).resolve()
-            if cand.is_dir():
-                allowed_roots = router.config._get_allowed_workspace_roots()
-                if any(cand == a or a in cand.parents for a in allowed_roots):
-                    return router.config.set_request_workspace(cand)
+        try:
+            ws_val = self.headers.get("X-Workspace", "").strip()
+            if not ws_val and parsed_query:
+                ws_val = parsed_query.get("ws", parsed_query.get("workspace", [""]))[0].strip()
+            if ws_val:
+                cand = Path(ws_val).resolve()
+                if cand.is_dir():
+                    allowed_roots = router.config._get_allowed_workspace_roots()
+                    if any(cand == a or a in cand.parents for a in allowed_roots):
+                        return router.config.set_request_workspace(cand)
+        except Exception:
+            logging.exception("Failed to extract request workspace")
         return None
 
     def do_GET(self) -> None:
@@ -378,7 +389,11 @@ class DeploymentHandler(http.server.SimpleHTTPRequestHandler):
                 return
             if parsed.path in ("/api/deployment/server-status", "/api/deployment/server/status"):
                 port = self.server.server_address[1] if self.server else 18112
-                self.write_json(router.get_server_status_info(port=port))
+                status_info = router.get_server_status_info(port=port)
+                client_ip = self.client_address[0] if hasattr(self, "client_address") else ""
+                if client_ip in ("127.0.0.1", "::1", "localhost"):
+                    status_info["authToken"] = _get_auth_token()
+                self.write_json(status_info)
                 return
             if parsed.path == "/api/deployment/server/service-status":
                 self.write_json(router.get_service_status())
@@ -507,7 +522,10 @@ class DeploymentHandler(http.server.SimpleHTTPRequestHandler):
                 return
         finally:
             if ws_token is not None:
-                router.config.reset_request_workspace(ws_token)
+                try:
+                    router.config.reset_request_workspace(ws_token)
+                except Exception:
+                    logging.exception("Failed to reset request workspace")
         if parsed.path == "/dashboard.html":
             self.send_response(302)
             self.send_header("Location", "/")
@@ -913,7 +931,9 @@ class DeploymentHandler(http.server.SimpleHTTPRequestHandler):
                             _ACTIVE_SERVER.server_close()
                         except Exception:
                             pass
-                    os.execv(sys.executable, [sys.executable] + sys.argv)
+                    script_path = str(Path(sys.argv[0]).resolve())
+                    args = [sys.executable, script_path] + sys.argv[1:]
+                    os.execv(sys.executable, args)
                 threading.Thread(target=_do_restart, daemon=True).start()
                 return
 
@@ -1022,7 +1042,10 @@ class DeploymentHandler(http.server.SimpleHTTPRequestHandler):
             self.write_json({"success": False, "error": "Unknown endpoint"}, status=404)
         finally:
             if ws_token is not None:
-                router.config.reset_request_workspace(ws_token)
+                try:
+                    router.config.reset_request_workspace(ws_token)
+                except Exception:
+                    logging.exception("Failed to reset request workspace")
 
     def translate_path(self, path: str) -> str:
         parsed = urlparse(path)

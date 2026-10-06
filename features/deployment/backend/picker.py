@@ -3,6 +3,7 @@
 Browsers never reveal absolute paths, but the console server runs on the same
 machine, so it can show the OS picker and return the real path.
 """
+import os
 import platform
 import shutil
 import subprocess
@@ -56,6 +57,12 @@ def pick_path(kind: str = "folder", prompt: str = "", start: str = "", extension
     if system == "Darwin" and shutil.which("osascript"):
         cmd = _mac_command(kind, prompt, start, exts)
     elif system == "Linux" and shutil.which("zenity"):
+        if not os.environ.get("DISPLAY") and not os.environ.get("WAYLAND_DISPLAY"):
+            return {
+                "success": False,
+                "supported": False,
+                "error": "No GUI display detected on Linux server; type the folder path instead.",
+            }
         cmd = _linux_command(kind, prompt, start, exts)
     else:
         return {"success": False, "supported": False,
@@ -65,8 +72,14 @@ def pick_path(kind: str = "folder", prompt: str = "", start: str = "", extension
         proc = subprocess.run(cmd, capture_output=True, text=True, timeout=PICK_TIMEOUT_SECONDS)
     except subprocess.TimeoutExpired:
         return {"success": False, "cancelled": True, "error": "The dialog was left open too long"}
+    except Exception as e:
+        return {"success": False, "supported": False, "error": f"Failed to run dialog: {e}"}
+
     if proc.returncode != 0:
         # osascript exits 1 with "User canceled" (-128); zenity exits 1 on cancel.
+        err = (proc.stderr or "").strip()
+        if err and "cancel" not in err.lower():
+            return {"success": False, "cancelled": True, "error": err}
         return {"success": False, "cancelled": True}
     chosen = proc.stdout.strip()
     if not chosen:

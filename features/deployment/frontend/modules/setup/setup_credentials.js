@@ -313,31 +313,53 @@ async function runCredentialScan(folder) {
 }
 
 async function pickNativePath({ kind = 'folder', prompt = '', extensions = [] } = {}) {
-    const res = await postJson('/api/deployment/pick', { kind, prompt, extensions });
-    if (res.success) return { path: res.path };
-    return { path: null, unsupported: res.supported === false, error: res.cancelled ? '' : res.error };
+    try {
+        let res;
+        if (typeof postJson === 'function') {
+            res = await postJson('/api/deployment/pick', { kind, prompt, extensions });
+        } else {
+            const pickUrl = typeof api === 'function' ? api('/api/deployment/pick') : '/api/deployment/pick';
+            const fetchRes = await fetch(pickUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ kind, prompt, extensions }),
+            });
+            res = await fetchRes.json();
+        }
+        if (res && res.success) return { path: res.path };
+        return {
+            path: null,
+            unsupported: res ? res.supported === false : true,
+            error: res && res.cancelled ? '' : ((res && res.error) || ''),
+        };
+    } catch (err) {
+        return { path: null, unsupported: true, error: err.message || 'Picker service error' };
+    }
 }
 
 if (credEls.pickFolderBtn) {
     credEls.pickFolderBtn.addEventListener('click', async () => {
         credEls.pickFolderBtn.disabled = true;
-        if (credEls.scanResults) {
-            credEls.scanResults.innerHTML = '<div class="cert-status-box" data-status="unknown">Waiting for you to choose a folder in the dialog…</div>';
-        }
-        const picked = await pickNativePath({ kind: 'folder', prompt: 'Choose a folder to scan for signing keys' });
-        credEls.pickFolderBtn.disabled = false;
-        if (picked.path) {
-            if (credEls.scanFolder) credEls.scanFolder.value = picked.path;
-            runCredentialScan(picked.path);
-        } else if (picked.unsupported) {
-            if (credEls.scanManual) credEls.scanManual.hidden = false;
+        try {
             if (credEls.scanResults) {
-                credEls.scanResults.innerHTML = '<div class="cert-status-box" data-status="warning">No folder dialog is available on this system. Type the folder path below.</div>';
+                credEls.scanResults.innerHTML = '<div class="cert-status-box" data-status="unknown">Waiting for you to choose a folder in the dialog…</div>';
             }
-            if (credEls.scanFolder) credEls.scanFolder.focus();
-        } else if (credEls.scanResults) {
-            credEls.scanResults.innerHTML = picked.error
-                ? `<div class="cert-status-box" data-status="error">${escapeHtml(picked.error)}</div>` : '';
+            const picked = await pickNativePath({ kind: 'folder', prompt: 'Choose a folder to scan for signing keys' });
+            if (picked.path) {
+                if (credEls.scanFolder) credEls.scanFolder.value = picked.path;
+                runCredentialScan(picked.path);
+            } else if (picked.unsupported) {
+                if (credEls.scanManual) credEls.scanManual.hidden = false;
+                if (credEls.scanResults) {
+                    credEls.scanResults.innerHTML = '<div class="cert-status-box" data-status="warning">No folder dialog is available on this system. Type the folder path below.</div>';
+                }
+                if (credEls.scanFolder) credEls.scanFolder.focus();
+            } else if (credEls.scanResults) {
+                credEls.scanResults.innerHTML = picked.error
+                    ? `<div class="cert-status-box" data-status="error">${escapeHtml(picked.error)}</div>` : '';
+            }
+        } finally {
+            credEls.pickFolderBtn.disabled = false;
         }
     });
 }

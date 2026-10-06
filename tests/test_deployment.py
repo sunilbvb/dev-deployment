@@ -338,6 +338,7 @@ class TestDeploymentSecurityAndLogic(unittest.TestCase):
             res = config.allow_workspace(td)
             self.assertTrue(res["success"])
             self.assertEqual(res["path"], str(pathlib.Path(td).resolve()))
+            config.remove_workspace(td)
 
         # Non-existent path fails
         res_bad = config.allow_workspace("/path/that/definitely/does/not/exist_12345")

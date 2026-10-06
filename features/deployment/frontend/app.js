@@ -196,6 +196,7 @@ const els = window.els = {
     docsCurrentCategory: document.getElementById('docsCurrentCategory'),
     docsCurrentTitle: document.getElementById('docsCurrentTitle'),
     docsCurrentFilename: document.getElementById('docsCurrentFilename'),
+    docsFilterInput: document.getElementById('docsFilterInput'),
     docsContentArea: document.getElementById('docsContentArea'),
     docsFooterPath: document.getElementById('docsFooterPath'),
     serverConsoleModalOverlay: document.getElementById('serverConsoleModalOverlay'),
@@ -237,8 +238,11 @@ const _nativeFetch = window.fetch;
 window.fetch = function(input, init) {
     const opts = init || {};
     opts.headers = new Headers(opts.headers || {});
-    if (window.__DEPLOYMENT_TOKEN__ && !opts.headers.has('X-API-Token')) {
-        opts.headers.set('X-API-Token', window.__DEPLOYMENT_TOKEN__);
+    const token = window.__DEPLOYMENT_TOKEN__ || (() => {
+        try { return localStorage.getItem('deployment_auth_token') || ''; } catch (_) { return ''; }
+    })();
+    if (token && !opts.headers.has('X-API-Token')) {
+        opts.headers.set('X-API-Token', token);
     }
     let curWs = state.activeWorkspace || '';
     if (!curWs) {
@@ -386,7 +390,7 @@ function renderApps() {
                 ${sentinelAlertBadge}
                 <div class="app-card-badge"><i data-lucide="check"></i></div>
                 <div class="compact-app-card-icon" style="width:32px !important;height:32px !important;margin:0 !important;background:transparent !important;border:none !important;">${icon}</div>
-                <h3 style="font-size: 12px; font-weight: 600;" title="${escapeHtml(app.name || app.id)}">${escapeHtml(app.name || app.id)}</h3>
+                <h3 style="font-size: 12px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin: 0; min-width: 0;" title="${escapeHtml(app.name || app.id)}">${escapeHtml(app.name || app.id)}</h3>
             </div>
         `;
     }).join('');
