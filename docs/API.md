@@ -318,3 +318,49 @@ Incoming requests are accepted if ANY of the following match:
 | `GET` | `/api/deployment/cache-warmer/status` | – | Returns daemon status (`idle`, `warming`, `ready`), watched branch, and last warm time. |
 | `POST` | `/api/deployment/cache-warmer/warm` | – | Triggers background dependency resolution (`flutter pub get`) when no jobs are active. |
 
+---
+
+## Pre-Release Deep Link & Universal Link Validator
+
+| Method | Endpoint | Query / Body | Returns / Purpose |
+|:---|:---|:---|:---|
+| `GET` | `/api/deployment/deep-links` | `?app=<app_id>&domain=<override>` | Scans manifests/entitlements and tests live `assetlinks.json` and `apple-app-site-association` endpoints. |
+| `POST` | `/api/deployment/deep-links/verify` | `{"domain": "...", "packageName": "...", "fingerprint": "...", "teamId": "...", "bundleId": "..."}` | Verifies target domain web fingerprints against expected production mobile credentials. |
+
+---
+
+## Store Metadata & Localized Release Notes
+
+| Method | Endpoint | Query / Body | Returns / Purpose |
+|:---|:---|:---|:---|
+| `GET` | `/api/deployment/metadata` | `?app=<app_id>` | Reads multi-locale Fastlane metadata and release notes with character counts and store policy limits. |
+| `POST` | `/api/deployment/metadata/save` | `{"app": "...", "platform": "android|ios", "locale": "...", "releaseNotes": "...", "title": "..."}` | Atomically saves localized release notes and metadata back to project Fastlane structure. |
+| `GET` | `/api/deployment/metadata/preview` | `?app=<app>&platform=<android|ios>&locale=<loc>` | Returns mockup preview data for mobile store update card. |
+
+---
+
+## Zero-Friction Crash Symbol Vault
+
+| Method | Endpoint | Query / Body | Returns / Purpose |
+|:---|:---|:---|:---|
+| `GET` | `/api/deployment/symbols` | `?app=<app_id>&flavor=<flavor>` | Discovers ProGuard/R8 `mapping.txt` and Apple `.dSYM` archives with file sizes, line counts, and SHA-256 digests. |
+| `GET` | `/api/deployment/symbols/download` | `?app=<app_id>&flavor=<flavor>&token=<token>` | Downloads compiled crash symbols as an assembled `.zip` archive for Firebase Crashlytics or Sentry. |
+
+---
+
+## Semantic Version Bumper & Git Conventional Changelog
+
+| Method | Endpoint | Query / Body | Returns / Purpose |
+|:---|:---|:---|:---|
+| `GET` | `/api/deployment/version` | `?app=<app_id>` | Returns current `pubspec.yaml` semantic version and previews next patch, minor, major, and build bumps. |
+| `POST` | `/api/deployment/version/bump` | `{"app": "...", "bumpType": "patch|minor|major|build|custom", "customVersion": "...", "customBuild": 12}` | Safely updates `pubspec.yaml` version while preserving all YAML comments and structure. |
+| `GET` | `/api/deployment/version/changelog` | `?app=<app_id>&since=<tag>&max=50` | Formats git commits into Conventional Commit Markdown changelog and concise Play Store bullet notes (&le; 500 chars). |
+
+---
+
+## APK / IPA Security & Dangerous Permissions Inspector
+
+| Method | Endpoint | Query / Body | Returns / Purpose |
+|:---|:---|:---|:---|
+| `GET` | `/api/deployment/security/permissions` | `?app=<app_id>` | Audits Android permissions, cleartext HTTP, exported components, and Apple privacy manifest strings. |
+

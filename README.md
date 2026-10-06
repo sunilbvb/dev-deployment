@@ -45,6 +45,11 @@ Open `http://localhost:18112`, pick a project tab, select an app, choose an envi
 - **Zero-Terminal Startup:** 1-click desktop shortcut creation (`.desktop`) and systemd user login daemon to run in background automatically.
 - **Interactive Offline Demo Mode:** Explore, test simulated builds, diagnostics, and size diffs without running the backend server.
 - **Pre-flight "App Doctor":** 12+ diagnostic checks (Flutter SDK, Android SDK, CocoaPods, keystores, provisioning profiles, Git cleanliness, Firebase configs) catching issues before long builds.
+- **Pre-Release Deep Link & Universal Link Validator:** Live `assetlinks.json` & `apple-app-site-association` verification, intent-filter inspection, and universal domain health audits.
+- **Store Metadata & Localized Release Notes Previewer:** Fastlane metadata manager with character limit checks and live Google Play & App Store update card mockups.
+- **Crash Symbol Vault (dSYM & ProGuard Mappings):** Discovers ProGuard/R8 `mapping.txt` and Apple `.dSYM` archives with SHA-256 integrity digests and 1-click in-memory ZIP export.
+- **Git Auto-Changelog & Semantic Version Bumper:** 1-click semantic version bump (+1 Patch, Minor, Major, Build) preserving `pubspec.yaml` comments and grouped changelog preview.
+- **APK / IPA Security & Dangerous Permissions Inspector:** Audits `AndroidManifest.xml` and `Info.plist` for dangerous runtime permissions, cleartext HTTP traffic, and missing Apple privacy strings.
 - **Certificate & Keystore Expiry Sentinel:** Proactive alerts when Apple `.p8` keys, distribution certificates, or Android keystores expire within 30 days, or when Firebase project IDs mismatch.
 - **Build Size Inspector & Diff:** Analyzes AAB/APK ZIP central directories without disk extraction. Displays deltas (`AAB: 24.2 MB (+3.8 MB, +18%) ⚠️`) and warns if raw uncompressed assets (`ZIP_STORED` ≥ 500 KB) are packaged.
 - **Instant iOS OTA QR Install:** Serve native Apple `itms-services://?action=download-manifest` and `manifest.plist` over HTTPS to install development/ad-hoc IPAs on iPhones via QR code in 10s (bypassing the 25-minute TestFlight processing delay).

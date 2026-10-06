@@ -19,6 +19,18 @@ from .project_checks import (
     _check_ios_env,
 )
 from .runner import diagnose_app
+from .deep_links import (
+    extract_android_domains,
+    extract_ios_domains,
+    validate_app_deep_links,
+    verify_android_assetlinks,
+    verify_apple_aasa,
+)
+from .permissions import (
+    inspect_app_security,
+    scan_android_security,
+    scan_ios_security,
+)
 
 # Aliases for API compatibility
 run_doctor_checks = diagnose_app
@@ -36,4 +48,12 @@ __all__ = [
     "_check_android_env",
     "_check_ios_env",
     "_check_credentials",
+    "extract_android_domains",
+    "extract_ios_domains",
+    "validate_app_deep_links",
+    "verify_android_assetlinks",
+    "verify_apple_aasa",
+    "inspect_app_security",
+    "scan_android_security",
+    "scan_ios_security",
 ]

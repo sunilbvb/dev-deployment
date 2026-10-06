@@ -43,3 +43,13 @@ An exhaustive guide to all capabilities available in the Dev Deployment Console.
 - **Outgoing Team Alerts**: Sends rich notification cards to Slack, Discord, Microsoft Teams, Google Chat, and WhatsApp.
 - **Universal Inbound Webhooks**: Headless CI/CD ingestion verified via SHA-256 HMAC (`X-Hub-Signature-256`) and Slack signatures.
 - **In-App Documentation Hub**: Built-in markdown documentation viewer with offline fallback and real-time endpoint search.
+
+---
+
+## 🚀 Advanced Deployment Automations
+- **Pre-Release Deep Link & Universal Link Validator**: Automatically scans Android manifests and iOS associated domains, querying live `/.well-known/assetlinks.json` and `/.well-known/apple-app-site-association` to verify domain fingerprints before store submission.
+- **Store Metadata & Localized Release Notes Previewer**: Full multi-locale Fastlane metadata editor with automated character count validation (enforcing Google Play's 500-char release notes ceiling) and mobile phone update card mockup.
+- **Zero-Friction Crash Symbol Vault**: Discovers and indexes ProGuard/R8 `mapping.txt` and Apple `.dSYM` archives, providing 1-click zip export for Firebase Crashlytics and Sentry symbolication.
+- **Semantic Version Bumper & Git Conventional Changelog**: 1-click pubspec.yaml version bumping (`+1 Patch`, `+1 Minor`, `+1 Major`, `+1 Build`) with automatic Git conventional commit classification into Markdown changelogs and concise store notes.
+- **APK / IPA Security & Dangerous Permissions Inspector**: Pre-submission audit inspecting Android manifests for dangerous/restricted permissions (Background Location, SMS, Contacts), cleartext HTTP, exported components, and Apple privacy manifest disclosures (`Info.plist`).
+

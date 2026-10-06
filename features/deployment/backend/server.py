@@ -292,6 +292,28 @@ class DeploymentHandler(http.server.SimpleHTTPRequestHandler):
         if not is_head:
             self.wfile.write(body)
 
+    def serve_symbols_download(self, query: dict[str, list[str]], is_head: bool = False) -> None:
+        app_id = query.get("app", [""])[0]
+        flavor = query.get("flavor", ["prod"])[0]
+        sym_type = query.get("type", ["all"])[0]
+        target = app_id or "symbols"
+        if not self._verify_auth_with_query(query, scope="symbols", target=target):
+            self.write_json({"success": False, "error": "Unauthorized: valid token required"}, status=401)
+            return
+
+        try:
+            zip_bytes = router.package_symbols_zip(app_id=app_id, symbol_type=sym_type, flavor=flavor)
+            self.send_response(200)
+            self.send_header("Content-Type", "application/zip")
+            self.send_header("Content-Disposition", f'attachment; filename="symbols-{app_id or "app"}-{flavor}.zip"')
+            self.send_header("Content-Length", str(len(zip_bytes)))
+            self.send_header("Cache-Control", "no-cache, must-revalidate")
+            self.end_headers()
+            if not is_head:
+                self.wfile.write(zip_bytes)
+        except Exception:
+            logging.exception("Failed to stream symbols download for app %s", app_id)
+
     def do_HEAD(self) -> None:
         if not self._is_allowed_host():
             self.send_error(403, "Invalid Host header: DNS rebinding rejected")
@@ -310,6 +332,10 @@ class DeploymentHandler(http.server.SimpleHTTPRequestHandler):
         if parsed.path == "/api/deployment/ota/manifest.plist":
             query = parse_qs(parsed.query)
             self.serve_ota_manifest(query, is_head=True)
+            return
+        if parsed.path == "/api/deployment/symbols/download":
+            query = parse_qs(parsed.query)
+            self.serve_symbols_download(query, is_head=True)
             return
         super().do_HEAD()
 
@@ -349,6 +375,11 @@ class DeploymentHandler(http.server.SimpleHTTPRequestHandler):
                     is_ipa = parsed.path.startswith("/api/deployment/download-ipa/")
                     dl_target = parsed.path.rsplit("/", 1)[1].strip()
                     if not self._verify_auth_with_query(query, scope="ipa" if is_ipa else "apk", target=dl_target):
+                        self.write_json({"success": False, "error": "Unauthorized: valid token required"}, status=401)
+                        return
+                elif parsed.path == "/api/deployment/symbols/download":
+                    sym_app = query.get("app", [""])[0] or "symbols"
+                    if not self._verify_auth_with_query(query, scope="symbols", target=sym_app):
                         self.write_json({"success": False, "error": "Unauthorized: valid token required"}, status=401)
                         return
                 elif parsed.path == "/api/deployment/ota/manifest.plist":
@@ -480,6 +511,46 @@ class DeploymentHandler(http.server.SimpleHTTPRequestHandler):
                     query.get("app", [""])[0],
                     query.get("flavor", ["prod"])[0],
                 ))
+                return
+            if parsed.path == "/api/deployment/symbols/download":
+                self.serve_symbols_download(query)
+                return
+            if parsed.path == "/api/deployment/symbols":
+                app_id = query.get("app", [""])[0]
+                flavor = query.get("flavor", ["prod"])[0]
+                sym_res = router.scan_symbols(app_id=app_id, flavor=flavor)
+                sym_res["downloadToken"] = download_tokens.issue(app_id or "symbols", {"symbols"})
+                sym_res["downloadUrl"] = f"/api/deployment/symbols/download?app={app_id}&flavor={flavor}&token={sym_res['downloadToken']}"
+                self.write_json(sym_res)
+                return
+            if parsed.path == "/api/deployment/deep-links":
+                app_id = query.get("app", [""])[0]
+                domain = query.get("domain", [""])[0]
+                self.write_json(router.validate_app_deep_links(app_id=app_id, domain_override=domain))
+                return
+            if parsed.path == "/api/deployment/metadata":
+                app_id = query.get("app", [""])[0]
+                self.write_json(router.get_store_metadata(app_id=app_id))
+                return
+            if parsed.path == "/api/deployment/metadata/preview":
+                app_id = query.get("app", [""])[0]
+                platform = query.get("platform", ["android"])[0]
+                locale = query.get("locale", ["en-US"])[0]
+                self.write_json(router.preview_store_card(app_id=app_id, platform=platform, locale=locale))
+                return
+            if parsed.path == "/api/deployment/version":
+                app_id = query.get("app", [""])[0]
+                self.write_json(router.get_version_info(app_id=app_id))
+                return
+            if parsed.path == "/api/deployment/version/changelog":
+                app_id = query.get("app", [""])[0]
+                since = query.get("since", [""])[0]
+                max_c = int(query.get("max", [50])[0]) if query.get("max", ["50"])[0].isdigit() else 50
+                self.write_json(router.generate_changelog(app_id=app_id, since_ref=since, max_commits=max_c))
+                return
+            if parsed.path in ("/api/deployment/security/permissions", "/api/deployment/security"):
+                app_id = query.get("app", [""])[0]
+                self.write_json(router.inspect_app_security(app_id=app_id))
                 return
             if parsed.path.startswith("/api/deployment/download/"):
                 target = parsed.path.split("/api/deployment/download/", 1)[1].strip()
@@ -931,6 +1002,49 @@ class DeploymentHandler(http.server.SimpleHTTPRequestHandler):
             if parsed.path in ("/api/deployment/cache-warmer/warm", "/api/deployment/cache-warmer/trigger"):
                 force = bool(data.get("force") or False)
                 self.write_json(router.trigger_cache_warm(force=force))
+                return
+
+            if parsed.path == "/api/deployment/deep-links/verify":
+                domain = str(data.get("domain") or "").strip()
+                pkg = str(data.get("packageName") or data.get("package") or "").strip()
+                fp = str(data.get("fingerprint") or "").strip()
+                team_id = str(data.get("teamId") or "").strip()
+                bundle_id = str(data.get("bundleId") or "").strip()
+                a_rep = router.verify_android_assetlinks(domain, package_name=pkg, expected_fingerprint=fp)
+                i_rep = router.verify_apple_aasa(domain, team_id=team_id, bundle_id=bundle_id)
+                self.write_json({"success": True, "domain": domain, "android": a_rep, "ios": i_rep})
+                return
+
+            if parsed.path == "/api/deployment/metadata/save":
+                app_id = str(data.get("app") or "").strip()
+                platform = str(data.get("platform") or "android").strip()
+                locale = str(data.get("locale") or "en-US").strip()
+                notes = str(data.get("releaseNotes") or data.get("changelog") or "")
+                res = router.save_store_metadata(
+                    app_id=app_id,
+                    platform=platform,
+                    locale=locale,
+                    release_notes=notes,
+                    title=str(data.get("title") or ""),
+                    short_description=str(data.get("shortDescription") or ""),
+                    description=str(data.get("description") or ""),
+                    subtitle=str(data.get("subtitle") or ""),
+                    keywords=str(data.get("keywords") or ""),
+                )
+                self.write_json(res)
+                return
+
+            if parsed.path == "/api/deployment/version/bump":
+                app_id = str(data.get("app") or "").strip()
+                bump_type = str(data.get("bumpType") or "patch").strip()
+                custom_ver = str(data.get("customVersion") or "").strip()
+                custom_bld = int(data.get("customBuild")) if (data.get("customBuild") is not None and str(data.get("customBuild")).isdigit()) else None
+                self.write_json(router.bump_version(
+                    app_id=app_id,
+                    bump_type=bump_type,
+                    custom_version=custom_ver,
+                    custom_build=custom_bld,
+                ))
                 return
 
             if parsed.path in ("/api/deployment/server/stop", "/api/deployment/server/end"):

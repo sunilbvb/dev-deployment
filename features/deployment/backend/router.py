@@ -5,6 +5,7 @@ import config
 import credentials
 import docs_provider
 import doctor
+import metadata
 import notifications
 import picker
 import pipelines
@@ -126,6 +127,28 @@ get_server_status_info = docs_provider.get_server_status_info
 install_desktop_launcher = server_manager.install_desktop_launcher
 install_systemd_service = server_manager.install_systemd_service
 get_service_status = server_manager.get_service_status
+
+# Feature 1: Deep Link & Universal Link Validator
+validate_app_deep_links = doctor.validate_app_deep_links
+verify_android_assetlinks = doctor.verify_android_assetlinks
+verify_apple_aasa = doctor.verify_apple_aasa
+
+# Feature 2: Store Metadata & Release Notes Previewer
+get_store_metadata = metadata.get_store_metadata
+save_store_metadata = metadata.save_store_metadata
+preview_store_card = metadata.preview_store_card
+
+# Feature 3: Crash Symbol Vault
+scan_symbols = artifacts.scan_symbols
+package_symbols_zip = artifacts.package_symbols_zip
+
+# Feature 4: Git Auto-Changelog & Semantic Version Bumper
+get_version_info = automation.get_version_info
+bump_version = automation.bump_version
+generate_changelog = automation.generate_changelog
+
+# Feature 5: Security & Dangerous Permissions Inspector
+inspect_app_security = doctor.inspect_app_security
 
 
 def get_github_status(app_id: str = "") -> dict:

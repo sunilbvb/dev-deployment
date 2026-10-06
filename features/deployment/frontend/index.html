@@ -117,6 +117,33 @@
                 <!-- Dynamically rendered project segments -->
             </div>
         </div>
+
+        <!-- Advanced Automation & Diagnostics Quick Tools Toolbar -->
+        <div class="advanced-tools-bar" style="margin-top: 10px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+            <span style="font-size: 0.72rem; font-weight: 700; text-transform: uppercase; color: var(--ui-text-muted, #94a3b8); letter-spacing: 0.05em; display: inline-flex; align-items: center; gap: 4px;">
+                <i data-lucide="wrench" style="width: 13px; height: 13px;"></i> Tools:
+            </span>
+            <button id="openDeepLinksBtn" class="ui-button" data-variant="ghost" data-size="xs" type="button" title="Pre-Release Deep Link & Universal Link Validator">
+                <i data-lucide="link"></i>
+                <span>Deep Links</span>
+            </button>
+            <button id="openMetadataBtn" class="ui-button" data-variant="ghost" data-size="xs" type="button" title="Store Metadata & Release Notes Previewer">
+                <i data-lucide="file-text"></i>
+                <span>Store Notes</span>
+            </button>
+            <button id="openSymbolsBtn" class="ui-button" data-variant="ghost" data-size="xs" type="button" title="Crash Symbol Vault (dSYM & ProGuard Mappings)">
+                <i data-lucide="shield"></i>
+                <span>Symbol Vault</span>
+            </button>
+            <button id="openVersionBtn" class="ui-button" data-variant="ghost" data-size="xs" type="button" title="Semantic Version Bumper & Git Changelog">
+                <i data-lucide="tag"></i>
+                <span>Version &amp; Changelog</span>
+            </button>
+            <button id="openSecurityBtn" class="ui-button" data-variant="ghost" data-size="xs" type="button" title="APK / IPA Security & Dangerous Permissions Inspector">
+                <i data-lucide="shield-check"></i>
+                <span>Security Inspector</span>
+            </button>
+        </div>
     </header>
 
     <!-- Server Offline / Getting Started Welcome Banner -->
@@ -863,6 +890,211 @@
                 <i data-lucide="plus"></i>
                 <span>Add project</span>
             </button>
+        </div>
+    </div>
+</div>
+
+<!-- ═══════════════════════════ DEEP LINK & UNIVERSAL LINK VALIDATOR MODAL ═══════════════════════════ -->
+<div id="deepLinksOverlay" class="ui-modal-backdrop" role="dialog" aria-modal="true" aria-label="Deep Link & Universal Link Validator">
+    <div class="ui-modal" data-size="lg" style="max-height: 85vh; display: flex; flex-direction: column;">
+        <div class="ui-modal-header">
+            <div>
+                <h3 class="ui-modal-title">🔗 Pre-Release Deep Link Validator</h3>
+                <p class="modal-subtitle" id="deepLinksSubtitle" style="font-size: 0.8rem; color: var(--ui-text-muted); margin: 0;">Validate Android AssetLinks and Apple AASA files against keystore &amp; Team ID</p>
+            </div>
+            <button id="closeDeepLinksBtn" class="ui-modal-close" type="button">&times;</button>
+        </div>
+        <div class="ui-modal-body" style="overflow-y: auto; flex: 1; padding: 16px;">
+            <div style="display: flex; gap: 8px; margin-bottom: 14px;">
+                <input type="text" id="deepLinksDomainInput" class="ui-input" placeholder="Test specific domain (e.g. app.example.com)..." style="flex: 1;">
+                <button id="recheckDeepLinksBtn" class="ui-button" data-variant="primary" data-size="sm" type="button">
+                    <i data-lucide="refresh-cw"></i>
+                    <span>Verify Domains</span>
+                </button>
+            </div>
+            <div id="deepLinksResults"></div>
+        </div>
+    </div>
+</div>
+
+<!-- ═══════════════════════════ STORE METADATA & RELEASE NOTES PREVIEWER MODAL ═══════════════════════════ -->
+<div id="storeMetadataOverlay" class="ui-modal-backdrop" role="dialog" aria-modal="true" aria-label="Store Metadata & Release Notes">
+    <div class="ui-modal" data-size="lg" style="max-height: 85vh; display: flex; flex-direction: column;">
+        <div class="ui-modal-header">
+            <div>
+                <h3 class="ui-modal-title">📝 Store Metadata &amp; Release Notes</h3>
+                <p class="modal-subtitle" id="storeMetadataSubtitle" style="font-size: 0.8rem; color: var(--ui-text-muted); margin: 0;">Multi-locale Fastlane metadata editor with 500-char Play Store limit enforcement</p>
+            </div>
+            <button id="closeMetadataBtn" class="ui-modal-close" type="button">&times;</button>
+        </div>
+        <div class="ui-modal-body" style="overflow-y: auto; flex: 1; padding: 16px;">
+            <div style="display: flex; gap: 10px; margin-bottom: 12px; align-items: center; flex-wrap: wrap;">
+                <div>
+                    <label style="font-size: 0.75rem; font-weight: 600; display: block; margin-bottom: 2px;">Platform:</label>
+                    <select id="metaPlatformSelect" class="ui-select" style="width: 140px;">
+                        <option value="android">Google Play</option>
+                        <option value="ios">Apple App Store</option>
+                    </select>
+                </div>
+                <div>
+                    <label style="font-size: 0.75rem; font-weight: 600; display: block; margin-bottom: 2px;">Locale:</label>
+                    <select id="metaLocaleSelect" class="ui-select" style="width: 140px;">
+                        <option value="en-US">en-US (Default)</option>
+                        <option value="es-ES">es-ES (Spanish)</option>
+                        <option value="fr-FR">fr-FR (French)</option>
+                        <option value="de-DE">de-DE (German)</option>
+                        <option value="ja-JP">ja-JP (Japanese)</option>
+                        <option value="pt-BR">pt-BR (Portuguese)</option>
+                    </select>
+                </div>
+                <div style="margin-left: auto; text-align: right;">
+                    <span id="metaCharCounter" style="font-size: 0.78rem; font-family: monospace;">0 / 500 characters</span>
+                </div>
+            </div>
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px;">
+                <div>
+                    <label style="font-size: 0.75rem; font-weight: 600; display: block; margin-bottom: 4px;">App Title / Name:</label>
+                    <input type="text" id="metaTitleInput" class="ui-input" placeholder="App Title" style="width: 100%; margin-bottom: 10px;">
+
+                    <label style="font-size: 0.75rem; font-weight: 600; display: block; margin-bottom: 4px;">What's New / Release Notes:</label>
+                    <textarea id="metaNotesTextarea" class="ui-input" rows="8" placeholder="Enter release notes or changelog..." style="width: 100%; font-family: sans-serif; resize: vertical;"></textarea>
+
+                    <button id="saveMetadataBtn" class="ui-button" data-variant="primary" data-size="sm" type="button" style="margin-top: 10px;">
+                        <i data-lucide="save"></i>
+                        <span>Save Metadata to Fastlane</span>
+                    </button>
+                </div>
+
+                <!-- Phone Mockup Card -->
+                <div style="border: 1px solid var(--ui-border-color); border-radius: 12px; padding: 14px; background: rgba(0,0,0,0.02); display: flex; flex-direction: column;">
+                    <div style="font-size: 0.72rem; font-weight: 700; text-transform: uppercase; color: var(--ui-text-muted); margin-bottom: 8px;">Store Update Preview:</div>
+                    <div style="background: white; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px; flex: 1; box-shadow: 0 1px 3px rgba(0,0,0,0.05); color: #0f172a;">
+                        <div style="font-weight: 700; font-size: 0.95rem; margin-bottom: 2px;" id="metaPreviewTitle">My App</div>
+                        <div style="font-size: 0.72rem; color: #64748b; margin-bottom: 10px;">What's New in this update</div>
+                        <div style="font-size: 0.8rem; line-height: 1.4; white-space: pre-wrap;" id="metaPreviewWhatsNew">Bug fixes and performance improvements.</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ═══════════════════════════ CRASH SYMBOL VAULT MODAL ═══════════════════════════ -->
+<div id="symbolsVaultOverlay" class="ui-modal-backdrop" role="dialog" aria-modal="true" aria-label="Crash Symbol Vault">
+    <div class="ui-modal" data-size="lg" style="max-height: 85vh; display: flex; flex-direction: column;">
+        <div class="ui-modal-header">
+            <div>
+                <h3 class="ui-modal-title">🛡️ Crash Symbol Vault</h3>
+                <p class="modal-subtitle" id="symbolsVaultSubtitle" style="font-size: 0.8rem; color: var(--ui-text-muted); margin: 0;">Obfuscation mapping.txt and Apple .dSYM archives for Firebase Crashlytics &amp; Sentry</p>
+            </div>
+            <button id="closeSymbolsBtn" class="ui-modal-close" type="button">&times;</button>
+        </div>
+        <div class="ui-modal-body" style="overflow-y: auto; flex: 1; padding: 16px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                <button id="rescanSymbolsBtn" class="ui-button" data-variant="secondary" data-size="sm" type="button">
+                    <i data-lucide="refresh-cw"></i>
+                    <span>Rescan Outputs</span>
+                </button>
+                <button id="downloadSymbolsZipBtn" class="ui-button" data-variant="primary" data-size="sm" type="button">
+                    <i data-lucide="download"></i>
+                    <span>Download All Symbols (.zip)</span>
+                </button>
+            </div>
+            <table class="ui-table" style="width: 100%;">
+                <thead>
+                    <tr>
+                        <th style="width: 120px;">Type</th>
+                        <th>Artifact / Path</th>
+                        <th style="width: 90px;">Size</th>
+                        <th style="width: 120px;">Details</th>
+                        <th style="width: 110px;">SHA-256</th>
+                    </tr>
+                </thead>
+                <tbody id="symbolsTableBody">
+                    <tr><td colspan="5" style="text-align: center; padding: 20px;">Loading symbols...</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- ═══════════════════════════ SEMANTIC VERSION BUMPER & CHANGELOG MODAL ═══════════════════════════ -->
+<div id="versionBumperOverlay" class="ui-modal-backdrop" role="dialog" aria-modal="true" aria-label="Version & Changelog">
+    <div class="ui-modal" data-size="lg" style="max-height: 85vh; display: flex; flex-direction: column;">
+        <div class="ui-modal-header">
+            <div>
+                <h3 class="ui-modal-title">🏷️ Version Bumper &amp; Git Changelog</h3>
+                <p class="modal-subtitle" id="versionBumperSubtitle" style="font-size: 0.8rem; color: var(--ui-text-muted); margin: 0;">Safely bump pubspec.yaml version numbers and auto-generate release notes from git commits</p>
+            </div>
+            <button id="closeVersionBtn" class="ui-modal-close" type="button">&times;</button>
+        </div>
+        <div class="ui-modal-body" style="overflow-y: auto; flex: 1; padding: 16px;">
+            <div class="ui-card" style="padding: 14px; margin-bottom: 14px; border: 1px solid var(--ui-border-color); border-radius: 8px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                    <div>
+                        <span style="font-size: 0.75rem; color: var(--ui-text-muted);">Current pubspec.yaml version:</span>
+                        <div id="versionCurrentBadge" style="font-size: 1.1rem; font-weight: 700; font-family: monospace;">v1.0.0+1</div>
+                    </div>
+                </div>
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 8px;">
+                    <button id="bumpPatchBtn" class="ui-button" data-variant="secondary" data-size="sm" type="button" style="display: flex; flex-direction: column; align-items: center; padding: 8px;">
+                        <strong>+1 Patch</strong>
+                        <span id="versionPreviewPatch" style="font-size: 0.72rem; color: var(--ui-text-muted); font-family: monospace;">→ 1.0.1+2</span>
+                    </button>
+                    <button id="bumpMinorBtn" class="ui-button" data-variant="secondary" data-size="sm" type="button" style="display: flex; flex-direction: column; align-items: center; padding: 8px;">
+                        <strong>+1 Minor</strong>
+                        <span id="versionPreviewMinor" style="font-size: 0.72rem; color: var(--ui-text-muted); font-family: monospace;">→ 1.1.0+2</span>
+                    </button>
+                    <button id="bumpMajorBtn" class="ui-button" data-variant="secondary" data-size="sm" type="button" style="display: flex; flex-direction: column; align-items: center; padding: 8px;">
+                        <strong>+1 Major</strong>
+                        <span id="versionPreviewMajor" style="font-size: 0.72rem; color: var(--ui-text-muted); font-family: monospace;">→ 2.0.0+2</span>
+                    </button>
+                    <button id="bumpBuildBtn" class="ui-button" data-variant="secondary" data-size="sm" type="button" style="display: flex; flex-direction: column; align-items: center; padding: 8px;">
+                        <strong>+1 Build Only</strong>
+                        <span id="versionPreviewBuild" style="font-size: 0.72rem; color: var(--ui-text-muted); font-family: monospace;">→ 1.0.0+2</span>
+                    </button>
+                </div>
+            </div>
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px;">
+                <div>
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                        <label style="font-size: 0.75rem; font-weight: 600;">Full Markdown Changelog:</label>
+                        <button id="copyMarkdownChangelogBtn" class="ui-button" data-variant="ghost" data-size="xs" type="button">Copy MD</button>
+                    </div>
+                    <pre id="versionChangelogContent" style="background: rgba(0,0,0,0.03); border: 1px solid var(--ui-border-color); border-radius: 6px; padding: 10px; font-size: 0.75rem; max-height: 220px; overflow-y: auto; white-space: pre-wrap; font-family: monospace;"></pre>
+                </div>
+                <div>
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                        <label style="font-size: 0.75rem; font-weight: 600;">Play Store &amp; TestFlight Notes (&le; 500 chars):</label>
+                        <button id="copyStoreNotesBtn" class="ui-button" data-variant="ghost" data-size="xs" type="button">Copy Notes</button>
+                    </div>
+                    <pre id="versionStoreNotesPreview" style="background: rgba(0,0,0,0.03); border: 1px solid var(--ui-border-color); border-radius: 6px; padding: 10px; font-size: 0.75rem; max-height: 220px; overflow-y: auto; white-space: pre-wrap; font-family: sans-serif;"></pre>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ═══════════════════════════ SECURITY & DANGEROUS PERMISSIONS MODAL ═══════════════════════════ -->
+<div id="securityInspectorOverlay" class="ui-modal-backdrop" role="dialog" aria-modal="true" aria-label="Security & Permissions Inspector">
+    <div class="ui-modal" data-size="lg" style="max-height: 85vh; display: flex; flex-direction: column;">
+        <div class="ui-modal-header">
+            <div>
+                <h3 class="ui-modal-title">🔍 Mobile Security &amp; Permissions Inspector</h3>
+                <p class="modal-subtitle" id="securityInspectorSubtitle" style="font-size: 0.8rem; color: var(--ui-text-muted); margin: 0;">Audits Android permissions, cleartext HTTP, exported components, and Apple privacy strings</p>
+            </div>
+            <button id="closeSecurityBtn" class="ui-modal-close" type="button">&times;</button>
+        </div>
+        <div class="ui-modal-body" style="overflow-y: auto; flex: 1; padding: 16px;">
+            <div style="display: flex; justify-content: flex-end; margin-bottom: 12px;">
+                <button id="recheckSecurityBtn" class="ui-button" data-variant="secondary" data-size="sm" type="button">
+                    <i data-lucide="refresh-cw"></i>
+                    <span>Re-audit Security</span>
+                </button>
+            </div>
+            <div id="securityReportContainer"></div>
         </div>
     </div>
 </div>
@@ -2597,6 +2829,11 @@ cd dev-deployment
 <script src="modules/dashboard/app_docs.js"></script>
 <script src="modules/dashboard/app_server.js"></script>
 <script src="modules/dashboard/app_demo.js"></script>
+<script src="modules/dashboard/app_deep_links.js"></script>
+<script src="modules/dashboard/app_metadata.js"></script>
+<script src="modules/dashboard/app_symbols.js"></script>
+<script src="modules/dashboard/app_version_bump.js"></script>
+<script src="modules/dashboard/app_security.js"></script>
 <script src="modules/setup/setup_state.js"></script>
 <script src="modules/setup/setup_scanner.js"></script>
 <script src="modules/setup/setup_webhooks.js"></script>
