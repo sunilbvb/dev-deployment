@@ -18,6 +18,7 @@ from typing import Any, Optional
 from urllib.parse import parse_qs, urlparse
 
 import router
+from artifacts import download_tokens
 
 FRONTEND_DIR = Path(__file__).resolve().parents[1] / "frontend"
 SHARED_FRONTEND_DIR = Path(__file__).resolve().parents[3] / "frontend"
@@ -124,8 +125,13 @@ class DeploymentHandler(http.server.SimpleHTTPRequestHandler):
     def _is_allowed_origin(self, origin: str) -> bool:
         if not origin:
             return True
+        origin_clean = origin.strip().lower()
+        if origin_clean == "null" or origin_clean.startswith("file://"):
+            return True
         parsed = urlparse(origin)
         hostname = (parsed.hostname or "").lower()
+        if not hostname:
+            return False
         allowed_hosts = {"localhost", "127.0.0.1"}
         bind_host = getattr(self.server, "server_name", None) or getattr(self.server, "server_address", [None])[0]
         if bind_host and isinstance(bind_host, str):
@@ -138,11 +144,14 @@ class DeploymentHandler(http.server.SimpleHTTPRequestHandler):
             self.send_header("Access-Control-Allow-Origin", origin)
             self.send_header("Access-Control-Allow-Credentials", "true")
             self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-            self.send_header("Access-Control-Allow-Headers", "Content-Type, X-API-Token, X-Webhook-Secret, X-Hub-Signature-256")
+            self.send_header(
+                "Access-Control-Allow-Headers",
+                "Content-Type, X-API-Token, X-Webhook-Secret, X-Hub-Signature-256, X-Workspace, Cache-Control, Authorization"
+            )
         self.send_header("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
         self.send_header(
             "Content-Security-Policy",
-            "default-src 'self'; script-src 'self' 'unsafe-inline' https://unpkg.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.jsdelivr.net; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https:; connect-src 'self';"
+            "default-src 'self' data:; script-src 'self' 'unsafe-inline' https://unpkg.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.jsdelivr.net; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: https:; connect-src 'self' http://localhost:* http://127.0.0.1:* ws: wss:;"
         )
         super().end_headers()
 
@@ -167,7 +176,14 @@ class DeploymentHandler(http.server.SimpleHTTPRequestHandler):
             return False
         return hmac.compare_digest(token, expected_token)
 
-    def _verify_auth_with_query(self, parsed_query: Optional[dict[str, list[str]]] = None) -> bool:
+    def _verify_auth_with_query(
+        self,
+        parsed_query: Optional[dict[str, list[str]]] = None,
+        scope: str = "",
+        target: str = "",
+    ) -> bool:
+        """Master token (header or ?token=), or — when scope is given — a download token
+        issued for exactly this target and scope (see artifacts/download_tokens.py)."""
         expected_token = _get_auth_token()
         if not expected_token:
             return False
@@ -176,10 +192,18 @@ class DeploymentHandler(http.server.SimpleHTTPRequestHandler):
             token = parsed_query.get("token", parsed_query.get("auth", [""]))[0].strip()
         if not token:
             return False
-        return hmac.compare_digest(token, expected_token)
+        if hmac.compare_digest(token, expected_token):
+            return True
+        return bool(scope) and download_tokens.check(token, target, scope)
+
+    def _is_loopback_client(self) -> bool:
+        try:
+            return ipaddress.ip_address(self.client_address[0]).is_loopback
+        except (ValueError, IndexError, TypeError):
+            return False
 
     def serve_apk_download(self, target: str, query: dict[str, list[str]], is_head: bool = False) -> None:
-        if not self._verify_auth_with_query(query):
+        if not self._verify_auth_with_query(query, scope="apk", target=target):
             self.write_json({"success": False, "error": "Unauthorized: valid token required"}, status=401)
             return
 
@@ -204,7 +228,7 @@ class DeploymentHandler(http.server.SimpleHTTPRequestHandler):
             logging.exception("Failed to stream APK download: %s", cand_path)
 
     def serve_ipa_download(self, target: str, query: dict[str, list[str]], is_head: bool = False) -> None:
-        if not self._verify_auth_with_query(query):
+        if not self._verify_auth_with_query(query, scope="ipa", target=target):
             self.write_json({"success": False, "error": "Unauthorized: valid token required"}, status=401)
             return
 
@@ -229,12 +253,15 @@ class DeploymentHandler(http.server.SimpleHTTPRequestHandler):
             logging.exception("Failed to stream IPA download: %s", cand_path)
 
     def serve_ota_manifest(self, query: dict[str, list[str]], is_head: bool = False) -> None:
-        if not self._verify_auth_with_query(query):
+        target = query.get("target", ["latest"])[0]
+        if not self._verify_auth_with_query(query, scope="manifest", target=target):
             self.write_json({"success": False, "error": "Unauthorized: valid token required"}, status=401)
             return
 
-        target = query.get("target", ["latest"])[0]
-        token = query.get("token", [""])[0] or _get_auth_token()
+        # The manifest points the device at the IPA: give it a scoped token, never the master one.
+        token = query.get("token", [""])[0]
+        if not download_tokens.check(token, target, "ipa"):
+            token = download_tokens.issue(target, {"ipa", "manifest"})
         port = getattr(self.server, "server_port", 18112) or 18112
         host_override = query.get("host", [""])[0]
 
@@ -287,15 +314,18 @@ class DeploymentHandler(http.server.SimpleHTTPRequestHandler):
         super().do_HEAD()
 
     def _extract_request_workspace(self, parsed_query: Optional[dict[str, list[str]]] = None) -> Any:
-        ws_val = self.headers.get("X-Workspace", "").strip()
-        if not ws_val and parsed_query:
-            ws_val = parsed_query.get("ws", parsed_query.get("workspace", [""]))[0].strip()
-        if ws_val:
-            cand = Path(ws_val).resolve()
-            if cand.is_dir():
-                allowed_roots = router.config._get_allowed_workspace_roots()
-                if any(cand == a or a in cand.parents for a in allowed_roots):
-                    return router.config.set_request_workspace(cand)
+        try:
+            ws_val = self.headers.get("X-Workspace", "").strip()
+            if not ws_val and parsed_query:
+                ws_val = parsed_query.get("ws", parsed_query.get("workspace", [""]))[0].strip()
+            if ws_val:
+                cand = Path(ws_val).resolve()
+                if cand.is_dir():
+                    allowed_roots = router.config._get_allowed_workspace_roots()
+                    if any(cand == a or a in cand.parents for a in allowed_roots):
+                        return router.config.set_request_workspace(cand)
+        except Exception:
+            logging.exception("Failed to extract request workspace")
         return None
 
     def do_GET(self) -> None:
@@ -316,11 +346,13 @@ class DeploymentHandler(http.server.SimpleHTTPRequestHandler):
             # Enforce API authentication on all GET endpoints
             if parsed.path.startswith("/api/"):
                 if parsed.path.startswith(("/api/deployment/download/", "/api/deployment/download-ipa/")):
-                    if not self._verify_auth_with_query(query):
+                    is_ipa = parsed.path.startswith("/api/deployment/download-ipa/")
+                    dl_target = parsed.path.rsplit("/", 1)[1].strip()
+                    if not self._verify_auth_with_query(query, scope="ipa" if is_ipa else "apk", target=dl_target):
                         self.write_json({"success": False, "error": "Unauthorized: valid token required"}, status=401)
                         return
                 elif parsed.path == "/api/deployment/ota/manifest.plist":
-                    if not self._verify_auth_with_query(query):
+                    if not self._verify_auth_with_query(query, scope="manifest", target=query.get("target", ["latest"])[0]):
                         self.write_json({"success": False, "error": "Unauthorized: valid token required"}, status=401)
                         return
                 elif parsed.path == "/api/deployment/qr" and (query.get("token") or query.get("auth")):
@@ -378,7 +410,11 @@ class DeploymentHandler(http.server.SimpleHTTPRequestHandler):
                 return
             if parsed.path in ("/api/deployment/server-status", "/api/deployment/server/status"):
                 port = self.server.server_address[1] if self.server else 18112
-                self.write_json(router.get_server_status_info(port=port))
+                status_info = router.get_server_status_info(port=port)
+                client_ip = self.client_address[0] if hasattr(self, "client_address") else ""
+                if client_ip in ("127.0.0.1", "::1", "localhost"):
+                    status_info["authToken"] = _get_auth_token()
+                self.write_json(status_info)
                 return
             if parsed.path == "/api/deployment/server/service-status":
                 self.write_json(router.get_service_status())
@@ -412,7 +448,8 @@ class DeploymentHandler(http.server.SimpleHTTPRequestHandler):
                 self.write_json(router.get_github_workflow_template())
                 return
             if parsed.path == "/api/deployment/credentials":
-                self.write_json(router.get_credentials_status(query.get("app", [""])[0]))
+                self.write_json(router.get_credentials_status(
+                    query.get("app", [""])[0], query.get("flavor", [""])[0]))
                 return
             if parsed.path == "/api/deployment/templates":
                 self.write_json({"success": True, "templates": router.load_templates()})
@@ -459,7 +496,7 @@ class DeploymentHandler(http.server.SimpleHTTPRequestHandler):
                     app_id=app_id,
                     flavor=flavor,
                     port=port,
-                    token=_get_auth_token(),
+                    token=download_tokens.issue(job_id or app_id or "latest", {"apk"}),
                     host_override=host_override,
                 ))
                 return
@@ -481,7 +518,7 @@ class DeploymentHandler(http.server.SimpleHTTPRequestHandler):
                     app_id=app_id,
                     flavor=flavor,
                     port=port,
-                    token=_get_auth_token(),
+                    token=download_tokens.issue(job_id or app_id or "latest", {"ipa", "manifest"}),
                     host_override=host_override,
                 ))
                 return
@@ -507,7 +544,10 @@ class DeploymentHandler(http.server.SimpleHTTPRequestHandler):
                 return
         finally:
             if ws_token is not None:
-                router.config.reset_request_workspace(ws_token)
+                try:
+                    router.config.reset_request_workspace(ws_token)
+                except Exception:
+                    logging.exception("Failed to reset request workspace")
         if parsed.path == "/dashboard.html":
             self.send_response(302)
             self.send_header("Location", "/")
@@ -519,7 +559,9 @@ class DeploymentHandler(http.server.SimpleHTTPRequestHandler):
             index_path = FRONTEND_DIR / "index.html"
             if index_path.exists():
                 html = index_path.read_text(encoding="utf-8")
-                token = _get_auth_token()
+                # The server listens on the LAN (for install links); only a page opened
+                # on this machine gets the master token that can run deploys.
+                token = _get_auth_token() if self._is_loopback_client() else ""
                 injected = f'<script>window.__DEPLOYMENT_TOKEN__ = "{token}";</script>'
                 if "<head>" in html:
                     html = html.replace("<head>", f"<head>\n    {injected}", 1)
@@ -913,7 +955,9 @@ class DeploymentHandler(http.server.SimpleHTTPRequestHandler):
                             _ACTIVE_SERVER.server_close()
                         except Exception:
                             pass
-                    os.execv(sys.executable, [sys.executable] + sys.argv)
+                    script_path = str(Path(sys.argv[0]).resolve())
+                    args = [sys.executable, script_path] + sys.argv[1:]
+                    os.execv(sys.executable, args)
                 threading.Thread(target=_do_restart, daemon=True).start()
                 return
 
@@ -963,6 +1007,7 @@ class DeploymentHandler(http.server.SimpleHTTPRequestHandler):
                     template_id=target_cmd.get("templateId", req_template_id),
                     flavor=target_cmd.get("flavor", req_flavor),
                     confirmed=bool(data.get("confirmed") or False),
+                    clean_build=data["cleanBuild"] if isinstance(data.get("cleanBuild"), bool) else None,
                 )
                 self.write_json(res)
                 return
@@ -1022,7 +1067,10 @@ class DeploymentHandler(http.server.SimpleHTTPRequestHandler):
             self.write_json({"success": False, "error": "Unknown endpoint"}, status=404)
         finally:
             if ws_token is not None:
-                router.config.reset_request_workspace(ws_token)
+                try:
+                    router.config.reset_request_workspace(ws_token)
+                except Exception:
+                    logging.exception("Failed to reset request workspace")
 
     def translate_path(self, path: str) -> str:
         parsed = urlparse(path)

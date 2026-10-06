@@ -18,6 +18,16 @@ import commands
 import server
 import jobs
 
+from _isolation import isolate_dashboard_config, restore_dashboard_config
+
+
+def setUpModule():
+    isolate_dashboard_config()
+
+
+def tearDownModule():
+    restore_dashboard_config()
+
 
 class TestSecurityGuards(unittest.TestCase):
     @classmethod
@@ -72,6 +82,37 @@ class TestSecurityGuards(unittest.TestCase):
         })
         resp = conn.getresponse()
         self.assertEqual(resp.status, 403)
+        conn.close()
+
+    def test_origin_null_allowed_for_file_pages(self):
+        """Origin: null (browser file:// pages) must be allowed and reflected in Access-Control-Allow-Origin."""
+        conn = http.client.HTTPConnection("127.0.0.1", self.port)
+        conn.request("GET", "/api/deployment/server-status", headers={
+            "Host": f"localhost:{self.port}",
+            "Origin": "null",
+        })
+        resp = conn.getresponse()
+        self.assertEqual(resp.status, 200)
+        self.assertEqual(resp.getheader("Access-Control-Allow-Origin"), "null")
+        data = json.loads(resp.read().decode("utf-8"))
+        self.assertEqual(data.get("status"), "online")
+        self.assertEqual(data.get("authToken"), self.test_token)
+        conn.close()
+
+    def test_cors_options_preflight_for_file_pages(self):
+        """OPTIONS preflight with Origin: null and Cache-Control header must succeed with 204."""
+        conn = http.client.HTTPConnection("127.0.0.1", self.port)
+        conn.request("OPTIONS", "/api/deployment/server-status", headers={
+            "Host": f"localhost:{self.port}",
+            "Origin": "null",
+            "Access-Control-Request-Method": "GET",
+            "Access-Control-Request-Headers": "cache-control",
+        })
+        resp = conn.getresponse()
+        self.assertEqual(resp.status, 204)
+        self.assertEqual(resp.getheader("Access-Control-Allow-Origin"), "null")
+        allowed_headers = resp.getheader("Access-Control-Allow-Headers", "")
+        self.assertIn("Cache-Control", allowed_headers)
         conn.close()
 
     def _post_json(self, path, body):

@@ -15,6 +15,16 @@ import notifications
 import p8
 import pipelines
 
+from _isolation import isolate_dashboard_config, restore_dashboard_config
+
+
+def setUpModule():
+    isolate_dashboard_config()
+
+
+def tearDownModule():
+    restore_dashboard_config()
+
 
 class TestDeploymentSecurityAndLogic(unittest.TestCase):
 
@@ -338,6 +348,7 @@ class TestDeploymentSecurityAndLogic(unittest.TestCase):
             res = config.allow_workspace(td)
             self.assertTrue(res["success"])
             self.assertEqual(res["path"], str(pathlib.Path(td).resolve()))
+            config.remove_workspace(td)
 
         # Non-existent path fails
         res_bad = config.allow_workspace("/path/that/definitely/does/not/exist_12345")
@@ -776,12 +787,37 @@ class TestCredentials(unittest.TestCase):
         self.assertNotIn("apple_p8_base64", cfg_file.read_text(encoding="utf-8"))
         self.assertEqual(self.cred.job_env("shop")["APPLE_API_KEY"], "ABCDE12345")
 
-    def test_other_p8_keys_are_listed_but_not_importable(self):
+    def test_other_p8_keys_are_hidden_and_not_importable(self):
         (self.downloads / "SubscriptionKey_VSN447PHNL.p8").write_bytes(P8_PEM)
-        kinds = [f["kind"] for f in self.cred.scan_credentials(str(self.downloads))["found"]]
-        self.assertIn("apple_other_p8", kinds)
+        res = self.cred.scan_credentials(str(self.downloads))
+        self.assertNotIn("apple_other_p8", [f["kind"] for f in res["found"]])
+        self.assertEqual(res["hidden_other_p8"], 1)
         res = self.cred.import_credential_path(str(self.downloads / "SubscriptionKey_VSN447PHNL.p8"))
         self.assertFalse(res["success"])
+
+    def test_scan_dedupes_identical_copies_and_reports_usage(self):
+        (self.downloads / "copy").mkdir()
+        (self.downloads / "copy" / "AuthKey_ABCDE12345.p8").write_bytes(P8_PEM)
+        self.cred.import_credential_path(str(self.downloads / "AuthKey_ABCDE12345.p8"), app_id="shop")
+        p8s = [f for f in self.cred.scan_credentials(str(self.downloads))["found"] if f["kind"] == "apple_p8"]
+        self.assertEqual(len(p8s), 1)
+        self.assertEqual(len(p8s[0]["paths"]), 2)
+        self.assertEqual(p8s[0]["in_use_by"], ["shop"])
+
+    def test_env_file_apple_key_is_flavor_specific_and_unlocks_ios_upload(self):
+        import commands
+        app = self.ws / "apps" / "shop"
+        (app / "env").mkdir()
+        (app / "env" / "dev.json").write_text('{"APPLE_API_KEY": "DEVKEY1234", "APPLE_API_ISSUER": "i"}', encoding="utf-8")
+        (app / "env" / "qa.json").write_text('{"APPLE_API_KEY": "QAKEY12345", "APPLE_API_ISSUER": "i"}', encoding="utf-8")
+        self.cred.APPLE_KEYS_DIR.mkdir(parents=True)
+        (self.cred.APPLE_KEYS_DIR / "AuthKey_QAKEY12345.p8").write_bytes(P8_PEM)
+        self.assertEqual(self.cred.get_credentials_status("shop", "qa")["apple"]["source"], "env file (qa.json)")
+        self.assertEqual(self.cred.get_credentials_status("shop", "dev")["apple"]["key_id"], "DEVKEY1234")
+        cfg = {"apps": {"shop": {"bundle_id": "com.acme.shop"}}}
+        self.assertTrue(commands._is_flavor_configured("shop", "qa", "deploy_ipa", deploy_cfg=cfg))
+        # dev's key file is missing, so dev iOS uploads stay locked
+        self.assertFalse(commands._is_flavor_configured("shop", "dev", "deploy_ipa", deploy_cfg=cfg))
 
     def test_conventional_play_key_is_auto_detected(self):
         (self.ws / "private_keys").mkdir()
@@ -1397,6 +1433,84 @@ class TestApkHostingAndQr(unittest.TestCase):
         config.WORKSPACE_ROOT = self.orig_ws
         self.tmp_dir.cleanup()
 
+    def test_qr_format_and_version_info_at_spec_positions(self):
+        # Read format info back from ISO 18004 positions ([row][col]); a transposed
+        # placement made every generated QR unreadable.
+        from qr import matrix as M
+        for text, ec in (("HELLO", "L"), ("x" * 160, "L"), ("x" * 150, "M")):
+            g = M.generate_qr_matrix(text, ec)
+            q = [row[4:-4] for row in g[4:-4]]  # strip quiet zone
+            n = len(q)
+            a = [q[i][8] for i in range(6)] + [q[7][8], q[8][8], q[8][7]] + [q[8][14 - i] for i in range(9, 15)]
+            b = [q[8][n - 1 - i] for i in range(8)] + [q[n - 15 + i][8] for i in range(8, 15)]
+            fa = sum(int(v) << i for i, v in enumerate(a))
+            fb = sum(int(v) << i for i, v in enumerate(b))
+            self.assertEqual(fa, fb)
+            ec_bits = 1 if ec == "L" else 0
+            self.assertIn(fa, [M._format_info_bits(ec_bits, m) for m in range(8)])
+            self.assertTrue(q[n - 8][8], "dark module")
+            version = (n - 17) // 4
+            if version >= 7:
+                bits = sum(int(q[i // 3][n - 11 + i % 3]) << i for i in range(18))
+                self.assertEqual(bits, M._version_info_bits(version))
+
+    def test_android_flavor_ids_from_application_id_suffix(self):
+        import config
+        app = self.ws_dir / "apps" / "suffix_app"
+        (app / "android" / "app").mkdir(parents=True)
+        (app / "android" / "app" / "build.gradle").write_text("""
+android {
+    defaultConfig { applicationId = "com.acme.shop" }
+    productFlavors {
+        dev { dimension "env"; applicationIdSuffix ".dev" }
+        qa { dimension "env"
+             applicationIdSuffix ".test" }
+        prod { dimension "env" }
+    }
+}
+""", encoding="utf-8")
+        ids = config._scan_android_app_ids(app)
+        self.assertEqual(ids["android_id_qa"], "com.acme.shop.test")
+        self.assertEqual(ids["android_id_dev"], "com.acme.shop.dev")
+        self.assertEqual(ids["android_id_prod"], "com.acme.shop")
+
+    def test_download_tokens_are_scoped_to_target_and_purpose(self):
+        from artifacts import download_tokens as dt
+        tok = dt.issue("job_1", {"apk"})
+        self.assertTrue(dt.check(tok, "job_1", "apk"))
+        self.assertFalse(dt.check(tok, "job_2", "apk"))
+        self.assertFalse(dt.check(tok, "job_1", "ipa"))
+        self.assertFalse(dt.check("not-a-token", "job_1", "apk"))
+        saved = dt.DOWNLOAD_TOKEN_TTL
+        dt.DOWNLOAD_TOKEN_TTL = -1
+        try:
+            self.assertFalse(dt.check(dt.issue("job_1", {"apk"}), "job_1", "apk"))
+        finally:
+            dt.DOWNLOAD_TOKEN_TTL = saved
+
+    def test_clean_build_defaults_to_on_for_every_flavor(self):
+        import jobs
+        for flavor in ("prod", "", "qa", "dev"):
+            self.assertEqual(jobs.clean_build_env_value(None, flavor), "true", flavor)
+        self.assertEqual(jobs.clean_build_env_value(True, "qa"), "true")
+        self.assertEqual(jobs.clean_build_env_value(False, "qa"), "false")  # explicit opt-out only
+
+    def test_no_qr_for_aab_job(self):
+        import artifacts
+        import jobs
+        aab = self.app_dir / "app-qa-release.aab"
+        aab.write_bytes(b"PK\x03\x04aab")
+        with jobs._JOBS_LOCK:
+            jobs._JOBS["job_aab_1"] = {"id": "job_aab_1", "app": "test_apk_app", "flavor": "qa",
+                                      "status": "success", "artifact": {"path": str(aab), "type": "AAB"}}
+        try:
+            info = artifacts.get_apk_download_info(job_id="job_aab_1")
+            self.assertFalse(info["hasApk"])
+            self.assertNotIn("downloadUrl", info)
+        finally:
+            with jobs._JOBS_LOCK:
+                jobs._JOBS.pop("job_aab_1", None)
+
     def test_qr_generation(self):
         import qr
         url = "http://192.168.1.100:18112/api/deployment/download/job_12345?token=abcdef"
@@ -1486,6 +1600,19 @@ class TestApkHostingAndQr(unittest.TestCase):
             self.assertIn("downloadUrl", data)
             self.assertIn("qrSvg", data)
             self.assertIn("qrAscii", data)
+            # The phone link carries a scoped download token, never the master token
+            self.assertNotIn(token, data["downloadUrl"])
+            dl_path = data["downloadUrl"].split(f":{port}", 1)[1] if f":{port}" in data["downloadUrl"] else \
+                "/api/deployment/download/" + data["downloadUrl"].split("/api/deployment/download/", 1)[1]
+            conn_dl = http.client.HTTPConnection("127.0.0.1", port)
+            conn_dl.request("GET", dl_path)
+            res_dl = conn_dl.getresponse()
+            self.assertEqual(res_dl.status, 200)
+            self.assertEqual(res_dl.read(), self.apk_content)
+            scoped = dl_path.split("token=", 1)[1]
+            conn_other = http.client.HTTPConnection("127.0.0.1", port)
+            conn_other.request("GET", f"/api/deployment/download/other_app?token={scoped}")
+            self.assertEqual(conn_other.getresponse().status, 401)
 
             # 2. Test /api/deployment/download/<target>?token=<token> (Phone camera flow)
             conn2 = http.client.HTTPConnection("127.0.0.1", port)

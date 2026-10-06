@@ -92,7 +92,12 @@ function updateServerStatusUI(isOnline, info = {}) {
     const updateButtons = (startBtn, restartBtn, stopBtn, endBtn) => {
         if (startBtn) {
             startBtn.disabled = isOnline;
-            startBtn.innerHTML = isOnline ? '<i data-lucide="check"></i><span>Running</span>' : '<i data-lucide="play"></i><span>Start</span>';
+            startBtn.innerHTML = isOnline
+                ? '<i data-lucide="check"></i><span>Running</span>'
+                : '<i data-lucide="play"></i><span>Connect / Start</span>';
+            startBtn.title = isOnline
+                ? 'Server is running and healthy'
+                : 'Connect to server or copy launch command';
         }
         if (restartBtn) restartBtn.disabled = !isOnline;
         if (stopBtn) stopBtn.disabled = !isOnline;
@@ -112,9 +117,25 @@ async function handleServerStart() {
     const ok = await checkServerStatus();
     if (ok) {
         showToast('Connected to local deployment server!');
-    } else {
-        showToast('Server is offline. Click "Create Desktop Shortcut" below or launch via terminal.', 'warning');
+        return;
     }
+
+    try {
+        await navigator.clipboard.writeText('./start.sh');
+        showToast("Copied './start.sh' to clipboard! Run in terminal — waiting to connect...", 'info');
+    } catch (_) {
+        showToast("Server offline. Run './start.sh' in terminal or use desktop launcher.", 'warning');
+    }
+
+    // Auto-poll for 15 seconds to connect as soon as the server is started
+    let attempts = 0;
+    const pollInterval = setInterval(async () => {
+        attempts++;
+        const connected = await checkServerStatus(true);
+        if (connected || attempts >= 12) {
+            clearInterval(pollInterval);
+        }
+    }, 1200);
 }
 
 async function handleServerRestart() {
@@ -247,17 +268,21 @@ async function checkServerStatus(silent = false) {
     try {
         const res = await fetch(api('/api/deployment/server-status'), {
             headers: { 'Cache-Control': 'no-cache' },
-            signal: AbortSignal.timeout(2200),
+            signal: AbortSignal.timeout(4000),
         });
         const data = await res.json();
         if (data && data.status === 'online') {
+            if (data.authToken && !window.__DEPLOYMENT_TOKEN__) {
+                window.__DEPLOYMENT_TOKEN__ = data.authToken;
+                try { localStorage.setItem('deployment_auth_token', data.authToken); } catch (_) {}
+            }
             const wasOffline = state.isServerOnline === false;
             updateServerStatusUI(true, data);
             if (wasOffline && !state.isDemoMode) {
                 showToast('Connected to local deployment server!');
-                await loadWorkspaceInfo();
-                await loadApps();
-                await loadWorkspaceSentinel();
+                if (typeof loadWorkspaceInfo === 'function') await loadWorkspaceInfo();
+                if (typeof loadApps === 'function') await loadApps();
+                if (typeof loadWorkspaceSentinel === 'function') await loadWorkspaceSentinel();
             }
             return true;
         }

@@ -180,10 +180,17 @@ import config
 app_id, flavor = sys.argv[2], sys.argv[3] or "default"
 saved = config.load_deploy_config().get("apps", {}).get(app_id, {})
 scanned = config._scan_android_app_ids(config._resolve_app_dir(app_id))
-for src in (saved, scanned):
-    for key in (f"android_id_{flavor}", "android_id_default", "android_id", "android_package"):
-        if src.get(key):
-            print(src[key]); sys.exit(0)
+# Flavor-specific IDs from any source first: a missing saved QA id must not fall
+# back to the generic (prod) package while Gradle knows the real QA id.
+for keys in ((f"android_id_{flavor}", f"android_package_{flavor}"),
+             ("android_id_default", "android_id", "android_package")):
+    if flavor not in ("default", "prod") and keys[0] == "android_id_default" and \
+            any(k.startswith("android_") and k.endswith(("_dev", "_qa", "_staging", "_uat")) for k in {**saved, **scanned}):
+        sys.exit(0)  # app has flavor IDs but none for this flavor: refuse to guess prod's
+    for src in (saved, scanned):
+        for key in keys:
+            if src.get(key):
+                print(src[key]); sys.exit(0)
 PY
 }
 

@@ -41,6 +41,7 @@ platform :ios do
   lane :testflight_build do
     ipa_path = ENV['IOS_IPA_PATH']
     key_id = ENV['APPLE_API_KEY']
+    issuer_id = ENV['APPLE_API_ISSUER']
     key_base64 = ENV['APPLE_API_KEY_BASE64']
 
     UI.user_error!('IOS_IPA_PATH is missing') if ipa_path.to_s.empty?

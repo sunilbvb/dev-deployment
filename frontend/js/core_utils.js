@@ -1,22 +1,30 @@
 // API base handling:
 // - `file://` pages can't call relative `/api/...`
-// - the Control Server runs on 18081 and serves UI assets, but APIs live on 18082
+// - The deployment backend server runs on port 18112
 // Use a configurable API origin (persisted) with sensible defaults.
-const DEFAULT_API_ORIGIN = 'http://localhost:18082';
-const _storedApiOrigin = localStorage.getItem('deployment_api_origin') || '';
+const DEFAULT_API_ORIGIN = 'http://localhost:18112';
+let _storedApiOrigin = '';
+try {
+    _storedApiOrigin = localStorage.getItem('deployment_api_origin') || '';
+    if (_storedApiOrigin === 'http://localhost:18082' || _storedApiOrigin === 'http://127.0.0.1:18082') {
+        _storedApiOrigin = DEFAULT_API_ORIGIN;
+        localStorage.setItem('deployment_api_origin', DEFAULT_API_ORIGIN);
+    }
+} catch (_) {}
+
 const _isFile = (window.location && window.location.protocol === 'file:');
 const _isControlServer = (() => {
     try {
         const host = String(window.location.hostname || '');
         const port = String(window.location.port || '');
-        return (host === 'localhost' || host === '127.0.0.1' || host === '::1') && port === '18081';
+        return (host === 'localhost' || host === '127.0.0.1' || host === '::1') && (port === '18081' || port === '18082');
     } catch (_) {
         return false;
     }
 })();
 
 // Only honor stored API origin when running from `file://` or the Control Server (18081).
-// When running on the dashboard server itself (e.g. http://localhost:18082), use same-origin APIs.
+// When running on the dashboard server itself (e.g. http://localhost:18112), use same-origin APIs.
 const API_ORIGIN = (_isFile || _isControlServer)
     ? (_storedApiOrigin || DEFAULT_API_ORIGIN)
     : '';
@@ -29,6 +37,9 @@ function apiUrl(path) {
         return API_ORIGIN + '/' + p;
     }
     return p.startsWith('/') ? p : ('/' + p);
+}
+if (typeof window !== 'undefined') {
+    window.apiUrl = apiUrl;
 }
 
 function setApiOrigin(origin) {

@@ -150,8 +150,14 @@ buildAABRaw() {
     # Reverted back to full build/ wipe before every Android build to guarantee build correctness.
     # Gradle's up-to-date checks can incorrectly treat native compile steps as unchanged
     # and reuse stale binaries when only deleting the output folder.
-    echo "Cleaning build directory (wiping build/ to ensure clean compilation)..."
-    rm -rf build/
+    # CLEAN_BUILD=false (console default for non-prod flavors) keeps build/ so Gradle
+    # can reuse its incremental output; anything else wipes it.
+    if [ "${CLEAN_BUILD:-true}" = "false" ]; then
+        echo "Incremental build: keeping build/ (enable 'Clean build' in the console to wipe it)."
+    else
+        echo "Cleaning build directory (wiping build/ to ensure clean compilation)..."
+        rm -rf build/
+    fi
     echo "Running flutter pub get..."
     flutter pub get
     

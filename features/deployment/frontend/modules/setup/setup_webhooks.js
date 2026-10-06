@@ -5,12 +5,17 @@
  */
 
 async function postJson(url, body) {
-    const res = await fetch(url, {
+    const targetUrl = typeof api === 'function' ? api(url) : url;
+    const res = await fetch(targetUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
     });
-    return res.json();
+    try {
+        return await res.json();
+    } catch (_) {
+        return { success: false, error: `HTTP ${res.status} ${res.statusText}` };
+    }
 }
 window.postJson = postJson;
 

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 from typing import Any, Optional
+from urllib.parse import quote
 
 import qr
 from .network import get_lan_ip
@@ -28,6 +29,11 @@ def get_apk_download_info(
 
     # Check if job already recorded an artifact
     artifact = job_info.get("artifact") if job_info else None
+    # Only an .apk can be side-loaded. A job that built an .aab (Play upload) or .ipa
+    # must not get an "APK ready" QR: its download link would 404.
+    if artifact and not str(artifact.get("path", "")).lower().endswith(".apk"):
+        return {"success": True, "hasApk": False, "jobId": job_id, "app": effective_app,
+                "reason": f"{artifact.get('type') or 'This build'} cannot be installed from a QR code; only APK builds can."}
     if not artifact:
         artifact = find_apk_artifact(
             app_id=effective_app,
@@ -73,6 +79,12 @@ def get_apk_download_info(
         "port": port,
         "qrSvg": qr_svg_markup,
         "qrAscii": qr_ascii_art,
+        # iOS only installs over the air from an HTTPS manifest with a certificate the
+        # device trusts, and only ad-hoc / development-signed IPAs. This server speaks
+        # plain HTTP, so the OTA link cannot work yet.
+        "otaReady": False,
+        "otaWarning": ("iPhone install needs HTTPS with a trusted certificate (not supported yet) "
+                       "and an ad-hoc or development-signed IPA. Use TestFlight for QA on iPhone."),
     }
 
 
@@ -167,7 +179,9 @@ def get_ipa_download_info(
     ipa_download_url = f"{scheme}://{lan_ip}:{port}/api/deployment/download-ipa/{target_param}{token_query}"
     token_param = f"&token={token}" if token else ""
     manifest_url = f"{scheme}://{lan_ip}:{port}/api/deployment/ota/manifest.plist?target={target_param}{token_param}"
-    itms_url = f"itms-services://?action=download-manifest&url={manifest_url}"
+    # The manifest URL has its own query (&token=...), so it must be percent-encoded
+    # or iOS treats its parameters as itms-services parameters.
+    itms_url = f"itms-services://?action=download-manifest&url={quote(manifest_url, safe='')}"
 
     qr_svg_markup = qr.qr_svg(itms_url, box_size=6)
     qr_ascii_art = qr.qr_ascii(itms_url)

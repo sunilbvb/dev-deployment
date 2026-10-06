@@ -234,7 +234,7 @@ curl -s -H "X-API-Token: $TOKEN" \
 
 | Method | Endpoint | Query / Body | Returns / Purpose |
 |:---|:---|:---|:---|
-| `GET` | `/api/deployment/server-status` | – | Lightweight heartbeat ping returning online status and port. |
+| `GET` | `/api/deployment/server-status` | – | Lightweight heartbeat ping returning online status, port, and auth token for local/file:// clients. |
 | `GET` | `/api/deployment/server/status` | – | Detailed server telemetry: uptime seconds, PID, memory, active workspace root. |
 | `GET` | `/api/deployment/server/service-status` | – | Detects if desktop shortcut or systemd user service is installed on host. |
 | `POST` | `/api/deployment/server/start` | `{"port": 18112}` | Spawns background server process. |

@@ -107,7 +107,9 @@ def get_workspaces_list() -> dict[str, Any]:
 
     if ws_file.exists():
         try:
-            workspaces = json.loads(ws_file.read_text(encoding="utf-8"))
+            raw_workspaces = json.loads(ws_file.read_text(encoding="utf-8"))
+            if isinstance(raw_workspaces, list):
+                workspaces = [w for w in raw_workspaces if isinstance(w, dict) and Path(w.get("path", "")).is_dir()]
         except Exception:
             logging.exception("Failed to load workspaces list from %s", ws_file)
 

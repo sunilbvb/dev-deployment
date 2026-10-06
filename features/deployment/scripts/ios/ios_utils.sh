@@ -48,15 +48,38 @@ fi
 # flutterIosFlavor - Map env names to Flutter iOS scheme/flavor names.
 #------------------------------------------------------------------------------
 flutterIosFlavor() {
+    # Flutter's --flavor X needs an Xcode scheme X and a "Release-X" build configuration
+    # (case-insensitive). Android and iOS often name the same flavor differently
+    # (e.g. Android "qa", Xcode "Test"), so pick the name the Xcode project defines.
     local env_name="${1:-}"
     local app_name="${2:-}"
-    # Fallback to default mapping
-    case "$env_name" in
-        dev) echo "dev" ;;
-        qa) echo "qa" ;;
-        prod) echo "prod" ;;
-        *) echo "$env_name" ;;
+    local ios_dir="ios"
+    if [ ! -d "$ios_dir/Runner.xcodeproj" ] && [ -n "$app_name" ] && command -v resolveAppDir >/dev/null 2>&1; then
+        ios_dir="$(resolveAppDir "$app_name" 2>/dev/null)/ios"
+    fi
+    local pbx="$ios_dir/Runner.xcodeproj/project.pbxproj"
+    local schemes="$ios_dir/Runner.xcodeproj/xcshareddata/xcschemes"
+    if [ ! -f "$pbx" ]; then
+        echo "$env_name"
+        return 0
+    fi
+    local aliases
+    case "$(printf '%s' "$env_name" | tr '[:upper:]' '[:lower:]')" in
+        qa) aliases="qa test testing staging uat" ;;
+        dev) aliases="dev develop development debug" ;;
+        prod) aliases="prod production live" ;;
+        *) aliases="$env_name" ;;
     esac
+    local cand
+    for cand in $env_name $aliases; do
+        if grep -qiE "name = \"?Release-${cand}\"?;" "$pbx" && \
+           ls "$schemes" 2>/dev/null | grep -qix "${cand}\.xcscheme"; then
+            # use the scheme's exact spelling
+            ls "$schemes" | grep -ix "${cand}\.xcscheme" | head -1 | sed 's/\.xcscheme$//'
+            return 0
+        fi
+    done
+    echo "$env_name"
 }
 
 #------------------------------------------------------------------------------

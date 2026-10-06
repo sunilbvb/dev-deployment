@@ -1,6 +1,7 @@
 import shlex
 from typing import Any, Optional
 
+from credentials import _apple_from_env_files
 from credentials import job_env as credentials_job_env
 
 from config import (
@@ -183,9 +184,12 @@ def _is_flavor_configured(app_id: str, flavor: str, template_id: str = "", deplo
 
     # B8 fix: iOS store upload/deploy requires Apple credentials
     if template_id in ("upload_ipa", "deploy_ipa", "deploy_both"):
+        # Keys in env/<flavor>.json count too: the build scripts read APPLE_API_KEY from there.
+        env_key = _apple_from_env_files(app_id, flavor) or {}
         has_apple = bool(
             app_cfg.get("apple_id") or app_cfg.get("apple_key_id")
             or credentials_job_env(app_id).get("APPLE_API_KEY")
+            or (env_key.get("key_id") and env_key.get("exists"))
         )
         if not has_apple:
             return False

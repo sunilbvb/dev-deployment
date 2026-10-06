@@ -155,6 +155,14 @@ Or find and stop the existing process occupying the port:
 lsof -ti :18112 | xargs kill -9
 ```
 
+### Why does clicking "Start" in the UI modal not spawn the server if the backend is stopped?
+Because web browsers run JavaScript inside a secure sandbox, **client-side JavaScript cannot directly execute shell scripts (`./start.sh`) or spawn Python operating system processes (`python3 server.py`)** when the backend server is offline. 
+
+To make this seamless:
+1. **Actionable "Connect / Start" Button**: The button is labeled **"Connect / Start"**. When offline, clicking it automatically checks connection, copies `./start.sh` to your clipboard, displays a toast, and initiates a 15-second background auto-poll.
+2. **Instant Reconnection**: The moment you paste and run `./start.sh` in your terminal (or click the Desktop Shortcut or start the systemd service), the console detects the active server immediately, transitions to **🟢 Server: Online**, and loads your projects without requiring a page reload.
+3. **`file://` CORS Compatibility**: The backend has built-in CORS support for `Origin: null`, allowing pages opened directly from local disk (`file://.../index.html`) to query `http://localhost:18112` and auto-retrieve authentication tokens securely.
+
 ### How do I actually deploy the Dev Deployment Console onto a live production server (e.g. `https://devdeployment/index.html`)?
 To deploy the console onto an internal production server or cloud build runner:
 
@@ -728,8 +736,9 @@ Building your own internal build server is **often significantly more secure tha
 | **"Service account file not found"** | Google Play publishing JSON missing from lookup paths. | In **Configure → Keys**, click **Choose folder to scan…** and import your service account JSON. |
 | **"Invalid Host header: DNS rebinding rejected"** | Accessing server via custom domain or proxy without permission. | Always connect via `http://localhost:18112` or configure `ALLOWED_HOSTS`. |
 | **"No package name found for flavor"** | Android `applicationId` missing from Gradle config. | Run **Auto-Scan App** in Configure → General or manually enter the package ID. |
-| **"Command failed with exit code 128 (Git push)"** | SSH agent locked or permissions missing on remote. | Ensure `ssh-add` has your key loaded and verify `git push origin develop` manually. |
 | **"Asset larger than 500 KB stored uncompressed"** | Large raw files packed into AAB without compression. | Optimize asset sizes or enable compression in `android/app/build.gradle`. |
+| **"SERVER: OFFLINE" badge while server process is running** | Frontend sent `X-Workspace` header on fetch, and backend router lacked direct `config` attribute. | Fixed in v2.4.0 — `router.py` now exports `config` and `_extract_request_workspace()` is wrapped in guarded try/except. |
+| **"Choose project folder" button gets stuck / disabled** | Native dialog threw an unhandled error or headless server lacked GUI display, leaving button disabled. | Fixed in v2.4.0 — `browseBtn` now safely resets in `finally`, supports direct path paste/typing, and gracefully falls back to text input. |
 
 ---
 
@@ -944,6 +953,9 @@ Here are the high-impact mobile automation features built into the Dev Deploymen
 - **The Solution:** A visual Store Listing Preview modal that renders exactly how the Google Play / App Store update card will look on phones in each language.
 - **The Magic:** Flags character limits (e.g. 500 characters for Play Store release notes) and missing translations right inside the console before triggering store submission.
 
-
-
+### 11. Where are the REST API endpoints documented, and how does the in-app Documentation Hub work? 🔌📖
+- **Living API Reference in `docs/API.md`:** All 45+ backend REST APIs across 16 domains are rigorously documented with HTTP methods, query/body payloads, JSON return shapes, and bearer authentication rules.
+- **Embedded in `index.html`:** The [`index.html`](file:///home/sunil-bakale/IdeaProjects/dev-deployment/features/deployment/frontend/index.html) file contains dedicated sidebar categories and a pre-rendered `<div id="embeddedDocsCatalog">` containing semantic HTML tables and method badges for all endpoints. This guarantees instant, zero-latency viewing even if the backend is offline or opened via `file://`.
+- **In-App Dynamic Docs Provider:** When the Python backend is active, [`docs_provider.py`](file:///home/sunil-bakale/IdeaProjects/dev-deployment/features/deployment/backend/docs_provider.py) dynamically serves sliced markdown sections via `GET /api/deployment/docs?doc=<id>`.
+- **Live Search & Filter:** The top header inside the Documentation Hub provides a real-time `🔍 Filter endpoints...` search box powered by [`app_docs.js`](file:///home/sunil-bakale/IdeaProjects/dev-deployment/features/deployment/frontend/modules/dashboard/app_docs.js) that instantly filters table rows by endpoint path, method, or keyword.
 

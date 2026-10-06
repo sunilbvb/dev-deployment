@@ -174,6 +174,16 @@ def _trigger_chained_release(app: str, env: str, action_id: str, parent_job_id: 
     )
 
 
+def clean_build_env_value(clean_build: Optional[bool], flavor: str = "", env: str = "") -> str:
+    """CLEAN_BUILD for build scripts: wipe build/ before compiling?
+
+    Default for every flavor is to wipe, so a build never reuses stale output and
+    always contains the latest code. Only an explicit clean_build=False (the
+    "Clean build" checkbox turned off in the console) keeps build/ for speed.
+    """
+    return "false" if clean_build is False else "true"
+
+
 def execute_command(
     app: str,
     command: str,
@@ -185,6 +195,7 @@ def execute_command(
     _assume_app_lock_held: bool = False,
     chained_parent_id: Optional[str] = None,
     response_url: Optional[str] = None,
+    clean_build: Optional[bool] = None,
 ) -> dict[str, Any]:
     if not app or not command:
         return {"success": False, "error": "App and command are required"}
@@ -267,6 +278,7 @@ def execute_command(
     child_env["DEPLOYMENT_PYTHON"] = sys.executable
     child_env["WORKSPACE_ROOT"] = str(get_workspace_root())
     child_env.update(credentials_job_env(app))
+    child_env["CLEAN_BUILD"] = clean_build_env_value(clean_build, flavor, env)
 
     if runner == "custom":
         shell_bin = shutil.which("bash") or shutil.which("zsh") or os.environ.get("SHELL") or "/bin/sh"
