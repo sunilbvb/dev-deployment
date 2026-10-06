@@ -237,10 +237,70 @@ def scan_credentials(folder: str = "") -> dict[str, Any]:
                 info["matches"] = _matches_for(info, index)
                 found.append(info)
 
+    # Non-API .p8 keys (In-App Purchase / APNs) can never be imported: hide them.
+    hidden_other = sum(1 for f in found if f["kind"] == "apple_other_p8")
+    found = _dedupe_found([f for f in found if f["kind"] != "apple_other_p8"])
+    usage = _credential_usage()
+    for f in found:
+        f["in_use_by"] = sorted(usage.get(_usage_key(f), []))
+
     order = {"play_service_account": 0, "apple_p8": 1, "firebase_android": 2, "firebase_ios": 3, "apple_other_p8": 4}
     hint_rank = {"likely": 0, "unknown": 1, "unlikely": 2}
     found.sort(key=lambda f: (order.get(f["kind"], 9), hint_rank.get(f.get("play_hint", ""), 1), f["path"]))
-    return {"success": True, "folder": str(root), "found": found, "truncated": visited > SCAN_MAX_FILES}
+    return {"success": True, "folder": str(root), "found": found, "truncated": visited > SCAN_MAX_FILES,
+            "hidden_other_p8": hidden_other}
+
+
+def _file_digest(path: str) -> str:
+    try:
+        return hashlib.sha256(Path(path).read_bytes()).hexdigest()
+    except OSError:
+        return ""
+
+
+def _dedupe_found(found: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Collapse byte-identical copies of the same key into one entry listing every path."""
+    by_digest: dict[str, dict[str, Any]] = {}
+    out: list[dict[str, Any]] = []
+    for f in found:
+        digest = _file_digest(f["path"])
+        f["digest"] = digest
+        if digest and digest in by_digest:
+            by_digest[digest]["paths"].append(f["path"])
+            continue
+        f["paths"] = [f["path"]]
+        if digest:
+            by_digest[digest] = f
+        out.append(f)
+    return out
+
+
+def _usage_key(f: dict[str, Any]) -> str:
+    if f["kind"] == "apple_p8":
+        return f"p8:{f.get('key_id', '')}"
+    if f["kind"] == "play_service_account":
+        return f"play:{f.get('digest', '')}"
+    return ""
+
+
+def _credential_usage() -> dict[str, set[str]]:
+    """Which apps currently use which .p8 Key ID / Play key (by content digest)."""
+    usage: dict[str, set[str]] = {}
+    try:
+        apps, _, _ = _discover_apps_in_workspace(get_workspace_root())
+    except Exception:
+        return usage
+    for app in apps:
+        if app.get("is_package"):
+            continue
+        v = _effective(app["id"])["values"]
+        if v.get("apple_key_id"):
+            usage.setdefault(f"p8:{v['apple_key_id']}", set()).add(app["id"])
+        if v.get("play_service_account"):
+            digest = _file_digest(v["play_service_account"])
+            if digest:
+                usage.setdefault(f"play:{digest}", set()).add(app["id"])
+    return usage
 
 
 def _store_play_key(raw: bytes, info: dict[str, Any]) -> Path:
@@ -392,12 +452,18 @@ def _effective(app_id: str) -> dict[str, Any]:
     return {"values": merged, "sources": sources}
 
 
-def _apple_from_env_files(app_id: str) -> Optional[dict[str, Any]]:
-    """Apple key IDs that the app's env/<flavor>.json files already provide to builds."""
+def _apple_from_env_files(app_id: str, flavor: str = "") -> Optional[dict[str, Any]]:
+    """Apple key IDs that the app's env/<flavor>.json files already provide to builds.
+
+    With a flavor whose env/<flavor>.json exists, only that file counts: it is the one
+    the build reads, so another flavor's key must not be reported for it.
+    """
     env_dir = _resolve_app_dir(app_id) / "env"
     if not env_dir.is_dir():
         return None
-    for env_file in sorted(env_dir.glob("*.json")):
+    flavor_file = env_dir / f"{flavor}.json" if flavor and SAFE_ID_PATTERN.match(flavor) else None
+    files = [flavor_file] if flavor_file and flavor_file.is_file() else sorted(env_dir.glob("*.json"))
+    for env_file in files:
         try:
             data = json.loads(env_file.read_text(encoding="utf-8"))
         except (OSError, ValueError):
@@ -426,8 +492,8 @@ def _describe_play(path: str) -> dict[str, Any]:
     return out
 
 
-def get_credentials_status(app_id: str) -> dict[str, Any]:
-    err = _validate_scope(app_id, "")
+def get_credentials_status(app_id: str, flavor: str = "") -> dict[str, Any]:
+    err = _validate_scope(app_id, flavor)
     if err or not app_id:
         return {"success": False, "error": err or "app is required"}
     eff = _effective(app_id)
@@ -440,7 +506,7 @@ def get_credentials_status(app_id: str) -> dict[str, Any]:
         status["apple"] = {"key_id": v["apple_key_id"], "issuer_id": v.get("apple_issuer_id", ""),
                            "path": p8, "exists": Path(p8).is_file(), "source": src.get("apple_key_id")}
     else:
-        status["apple"] = _apple_from_env_files(app_id)
+        status["apple"] = _apple_from_env_files(app_id, flavor)
     return status
 
 

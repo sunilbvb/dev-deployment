@@ -46,6 +46,9 @@ const els = window.els = {
     clearTerminalBtn: document.getElementById('clearTerminalBtn'),
     toast: document.getElementById('toast'),
     iosCertBanner: document.getElementById('iosCertBanner'),
+    uploadKeyInfo: document.getElementById('uploadKeyInfo'),
+    cleanBuildRow: document.getElementById('cleanBuildRow'),
+    cleanBuildToggle: document.getElementById('cleanBuildToggle'),
     // History tab
     outputTabs: document.getElementById('outputTabs'),
     terminalView: document.getElementById('terminalView'),
@@ -574,6 +577,8 @@ function updateExecutionPanel() {
         els.executionPanel.classList.add('hidden');
         els.runButton.disabled = true;
         els.iosCertBanner.classList.add('hidden');
+        if (els.uploadKeyInfo) els.uploadKeyInfo.classList.add('hidden');
+        if (els.cleanBuildRow) els.cleanBuildRow.classList.add('hidden');
         return;
     }
 
@@ -593,6 +598,8 @@ function updateExecutionPanel() {
         els.runButton.disabled = false;
         els.runButton.querySelector('span').textContent = 'Run Pipeline';
         els.iosCertBanner.classList.add('hidden');
+        if (els.uploadKeyInfo) els.uploadKeyInfo.classList.add('hidden');
+        if (els.cleanBuildRow) els.cleanBuildRow.classList.add('hidden');
         return;
     }
 
@@ -627,6 +634,103 @@ function updateExecutionPanel() {
 
     const isProdIos = state.selectedCommand.platform === 'ios' && state.selectedCommand.flavor === 'prod';
     renderCertExpiryBanner(isProdIos ? state.selectedApp : null);
+    renderUploadKeyInfo(state.selectedApp, state.selectedCommand);
+    renderCleanBuildToggle(state.selectedCommand, isCloudRunner);
+}
+
+// Android builds wipe build/ unless the user turns this off (stale output would hide new
+// changes). On by default for every flavor; reset whenever the selected command changes.
+const CLEAN_BUILD_TEMPLATES = new Set(['build_aab', 'build_apk', 'deploy_aab', 'deploy_both']);
+let cleanBuildCommandId = null;
+
+function renderCleanBuildToggle(cmd, isCloudRunner) {
+    if (!els.cleanBuildRow) return;
+    const show = !!cmd && !isCloudRunner && CLEAN_BUILD_TEMPLATES.has(cmd.templateId);
+    els.cleanBuildRow.classList.toggle('hidden', !show);
+    if (show && cleanBuildCommandId !== cmd.id) {
+        els.cleanBuildToggle.checked = true;
+        cleanBuildCommandId = cmd.id;
+    }
+}
+
+function cleanBuildForRequest() {
+    if (!els.cleanBuildRow || els.cleanBuildRow.classList.contains('hidden')) return undefined;
+    return !!els.cleanBuildToggle.checked;
+}
+
+// Which store keys an upload will use, shown before Run so a key picked up silently
+// (deploy config, workspace default, auto-detected file, env file) is never a surprise.
+const UPLOAD_KEY_KINDS = {
+    upload_aab: ['play'], deploy_aab: ['play'],
+    upload_ipa: ['apple'], deploy_ipa: ['apple'],
+    deploy_both: ['apple', 'play'],
+};
+
+function describeKeySource(source) {
+    if (source === 'app') return 'imported for this app';
+    if (source === 'workspace') return 'imported for all apps';
+    if (source === 'deploy_config') return 'path saved in deploy_config.json';
+    if (source === 'auto') return 'auto-detected in private_keys/';
+    if (source && source.startsWith('env file')) return `from the app's ${source}`;
+    return source || 'unknown source';
+}
+
+async function renderUploadKeyInfo(appId, cmd) {
+    const box = els.uploadKeyInfo;
+    if (!box) return;
+    const kinds = (cmd && UPLOAD_KEY_KINDS[cmd.templateId]) || [];
+    if (!appId || !kinds.length) {
+        box.classList.add('hidden');
+        return;
+    }
+    box.classList.remove('hidden');
+    box.dataset.status = 'unknown';
+    box.textContent = 'Checking which store keys this upload will use…';
+    let status;
+    try {
+        const flavor = cmd.flavor && cmd.flavor !== 'any' ? cmd.flavor : selectedEnvForExecution();
+        status = await fetch(api(`/api/deployment/credentials?app=${encodeURIComponent(appId)}&flavor=${encodeURIComponent(flavor || '')}`)).then(r => r.json());
+    } catch (err) {
+        status = { success: false, error: err.message };
+    }
+    if (state.selectedApp !== appId || state.selectedCommand !== cmd) return; // selection changed meanwhile
+    if (!status.success) {
+        box.dataset.status = 'error';
+        box.textContent = `Could not check store keys: ${status.error || 'unknown error'}`;
+        return;
+    }
+    const rows = kinds.map(kind => {
+        if (kind === 'play') {
+            const p = status.play;
+            if (!p || !p.exists || p.valid === false) {
+                return { ok: false, text: 'Google Play key: none found — this upload will fail. Add one in Configure → Keys.' };
+            }
+            return { ok: true, text: `Google Play key: ${p.client_email || p.path} (${describeKeySource(p.source)})`, path: p.path };
+        }
+        const a = status.apple;
+        if (!a || !a.key_id) {
+            return { ok: false, text: 'App Store Connect key: none found — this upload will fail. Add one in Configure → iOS.' };
+        }
+        const issuer = a.issuer_id ? '' : ' — no Issuer ID set';
+        return { ok: !!a.issuer_id && a.exists !== false, text: `App Store Connect key: ${a.key_id}${issuer} (${describeKeySource(a.source)})`, path: a.path };
+    });
+    box.dataset.status = rows.every(r => r.ok) ? 'ok' : 'warning';
+    box.innerHTML = '';
+    const title = document.createElement('div');
+    title.className = 'upload-key-title';
+    title.textContent = 'This upload will use:';
+    box.appendChild(title);
+    rows.forEach(r => {
+        const line = document.createElement('div');
+        line.className = 'upload-key-row';
+        line.textContent = `${r.ok ? '✓' : '⚠'} ${r.text}`;
+        if (r.path) line.title = r.path;
+        box.appendChild(line);
+    });
+    const hint = document.createElement('div');
+    hint.className = 'upload-key-hint';
+    hint.textContent = 'Wrong key? Change it in Configure → Keys before you click Run.';
+    box.appendChild(hint);
 }
 
 const SEVERITY_RANK = { expired: 3, warning: 2, unknown: 1, ok: 0, not_ios_app: -1 };
@@ -780,6 +884,7 @@ async function executeSelected(confirmed = false) {
                 templateId: state.selectedCommand.templateId || '',
                 flavor: state.selectedCommand.flavor || '',
                 confirmed: !!confirmed,
+                cleanBuild: cleanBuildForRequest(),
             }),
         });
         const data = await res.json();

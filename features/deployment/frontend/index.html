@@ -217,6 +217,7 @@
                     <div class="timer" id="executionTimer">00:00</div>
                 </div>
                 <div id="iosCertBanner" class="cert-expiry-banner hidden"></div>
+                <div id="uploadKeyInfo" class="upload-key-info hidden" aria-live="polite"></div>
                 <!-- Runner Target Selector for Hybrid Parallel Builds -->
                 <div id="runnerSelectRow" class="runner-select-row" style="margin: 8px 0 10px 0; display: none;">
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
@@ -229,6 +230,10 @@
                     </div>
                 </div>
                 <pre id="selectedCommandPreview"></pre>
+                <label id="cleanBuildRow" class="clean-build-row hidden">
+                    <input type="checkbox" id="cleanBuildToggle">
+                    <span><strong>Clean build</strong> — wipe <code>build/</code> first so the build always has your latest code. Untick only for a faster rebuild when nothing changed.</span>
+                </label>
                 <div class="action-row">
                     <button id="runButton" class="ui-button" data-variant="primary" type="button" disabled>
                         <i data-lucide="play"></i>
@@ -2592,6 +2597,7 @@ cd dev-deployment
 <script src="modules/dashboard/app_docs.js"></script>
 <script src="modules/dashboard/app_server.js"></script>
 <script src="modules/dashboard/app_demo.js"></script>
+<script src="modules/setup/setup_state.js"></script>
 <script src="modules/setup/setup_scanner.js"></script>
 <script src="modules/setup/setup_webhooks.js"></script>
 <script src="modules/setup/setup_pipelines.js"></script>

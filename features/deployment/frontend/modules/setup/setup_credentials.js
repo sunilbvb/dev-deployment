@@ -91,12 +91,54 @@ async function uploadP8File(file) {
     }
 }
 
+async function importP8Path(path) {
+    if (!path.toLowerCase().endsWith('.p8')) { showToast('Please select a valid .p8 file.'); return; }
+    const name = path.split('/').pop();
+    setupEls.p8DropzoneTitle.textContent = `⏳ Importing ${name}…`;
+    setupEls.p8UploadStatus.style.display = 'none';
+    let res;
+    try {
+        res = await postJson('/api/deployment/credentials/import', {
+            path, app: setupState.selectedAppId, issuerId: setupEls.issuerId.value.trim(),
+        });
+    } catch (err) {
+        res = { success: false, error: err.message };
+    }
+    showP8Result(res);
+}
+
+/** Shared result display for drag/drop upload and native-picker import. */
+async function showP8Result(res) {
+    if (res.success) {
+        await loadCredentialStatus(setupState.selectedAppId);
+        setupEls.p8DropzoneTitle.textContent = 'Drag & drop AuthKey_XXXXXXXXXX.p8 or click to browse';
+        setupEls.p8UploadStatus.dataset.status = 'valid';
+        setupEls.p8UploadStatus.textContent = `✅ Key ID: ${res.key_id || '?'}  •  Stored at: ${res.stored_path || res.path || '~/.appstoreconnect'}`;
+        showToast(`✅ Key ID ${res.key_id || ''} imported.`);
+    } else {
+        setupEls.p8DropzoneTitle.textContent = '❌ Import failed — try again';
+        setupEls.p8UploadStatus.dataset.status = 'error';
+        setupEls.p8UploadStatus.textContent = `❌ ${res.error || 'Unknown error'}`;
+        showToast('Import error: ' + (res.error || 'Unknown'));
+    }
+    setupEls.p8UploadStatus.style.display = 'block';
+}
+
 // Click-to-browse & Drag-and-drop for p8
 if (setupEls.p8Dropzone) {
-    setupEls.p8Dropzone.addEventListener('click', () => {
-        if (setupEls.p8FileInput) {
+    // Use the server's native Finder/zenity dialog: embedded browsers (e.g. desktop
+    // app panes) often never open a dialog for <input type=file>. Fall back to the
+    // browser picker only where no native dialog exists.
+    setupEls.p8Dropzone.addEventListener('click', async () => {
+        if (!setupState.selectedAppId) { showToast('Please select an app first.'); return; }
+        const picked = await pickNativePath({ kind: 'file', prompt: 'Choose an App Store Connect API key (.p8)', extensions: ['p8'] });
+        if (picked.path) {
+            importP8Path(picked.path);
+        } else if (picked.unsupported && setupEls.p8FileInput) {
             setupEls.p8FileInput.value = '';
             setupEls.p8FileInput.click();
+        } else if (picked.error) {
+            showToast(picked.error);
         }
     });
 
@@ -217,6 +259,132 @@ function describeFound(item) {
     return item.note || '';
 }
 
+// Kinds that are chosen once and applied to apps (they hold no bundle ID, so the
+// developer picks); Firebase configs are matched to apps by their own IDs.
+const PICK_KINDS = ['apple_p8', 'play_service_account'];
+
+function pickDefaultIndex(items, appId) {
+    const score = it => ((it.in_use_by || []).includes(appId) ? 1000 : 0)
+        + (it.in_use_by || []).length * 10
+        + (it.play_hint === 'likely' ? 5 : it.play_hint === 'unlikely' ? -5 : 0);
+    let best = 0;
+    items.forEach((it, i) => { if (score(it) > score(items[best])) best = i; });
+    return best;
+}
+
+function renderFoundBadges(item) {
+    const used = item.in_use_by || [];
+    const badges = [];
+    if (used.length) {
+        badges.push(`<span class="ui-badge" data-variant="success" title="${escapeHtml(used.join(', '))}">in use · ${used.length === setupState.apps.length ? 'all apps' : escapeHtml(used.join(', '))}</span>`);
+    }
+    if (PLAY_HINT_BADGES[item.play_hint]) badges.push(PLAY_HINT_BADGES[item.play_hint]);
+    if ((item.paths || []).length > 1) badges.push(`<span class="ui-badge" data-variant="secondary">found in ${item.paths.length} places</span>`);
+    return badges.join(' ');
+}
+
+function renderPickGroup(kind, items, gi) {
+    const appId = setupState.selectedAppId;
+    const def = pickDefaultIndex(items, appId);
+    const rows = items.map((item, i) => `
+        <label class="cred-pick-row" style="display:flex; gap:10px; align-items:flex-start; padding:8px; border-radius:6px; cursor:pointer;">
+            <input type="radio" name="credPick_${gi}" value="${i}" ${i === def ? 'checked' : ''} style="margin-top:3px;">
+            <span style="flex:1; min-width:0;">
+                <span style="display:block; font-size:0.82rem; font-weight:600;">${escapeHtml(describeFound(item))} ${renderFoundBadges(item)}</span>
+                ${item.project_id ? `<span style="display:block; font-size:0.72rem; color:var(--ui-text-muted);">Project: ${escapeHtml(item.project_id)}</span>` : ''}
+                ${(item.paths || [item.path]).map(pth => `<span style="display:block; font-size:0.72rem; color:var(--ui-text-muted); overflow-wrap:anywhere;">${escapeHtml(pth)}</span>`).join('')}
+            </span>
+        </label>`).join('');
+    const appChecks = setupState.apps.map(app => `
+        <label style="display:inline-flex; gap:6px; align-items:center; font-size:0.78rem; margin:0 12px 6px 0; cursor:pointer;">
+            <input type="checkbox" data-pick-app="${gi}" value="${escapeHtml(app.id)}" ${app.id === appId ? 'checked' : ''}>
+            ${escapeHtml(app.name || app.id)}
+        </label>`).join('');
+    const issuer = kind === 'apple_p8' ? `
+        <div class="ui-form-group" style="margin-top:10px;">
+            <label class="ui-label" for="credPickIssuer_${gi}">Issuer ID</label>
+            <input type="text" class="ui-input" id="credPickIssuer_${gi}" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" value="${escapeHtml(setupEls.issuerId ? setupEls.issuerId.value.trim() : '')}">
+        </div>` : '';
+    return `
+        <div class="ui-card" data-pick-group="${gi}" style="margin-top:12px;">
+            <div class="ui-card-header" style="display:flex; justify-content:space-between; align-items:center;">
+                <h4 class="ui-card-title">${escapeHtml(CRED_KIND_LABELS[kind])}</h4>
+                <span class="ui-badge" data-variant="secondary">${items.length} found</span>
+            </div>
+            <div class="ui-card-body">
+                ${items.length > 1 ? '<div style="font-size:0.78rem; color:var(--ui-text-muted); margin-bottom:6px;">Several keys found. Choose the one to use:</div>' : ''}
+                ${rows}
+                ${issuer}
+                <div style="margin-top:12px;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+                        <span class="ui-label">Use for apps</span>
+                        <button type="button" class="ui-button" data-variant="ghost" data-size="sm" data-pick-all="${gi}">Select all</button>
+                    </div>
+                    ${appChecks}
+                </div>
+                <div style="display:flex; gap:10px; align-items:center; margin-top:8px;">
+                    <button type="button" class="ui-button" data-variant="primary" data-size="sm" data-pick-apply="${gi}">Use selected key</button>
+                    <span data-pick-status="${gi}" style="font-size:0.78rem; color:var(--ui-text-muted);"></span>
+                </div>
+            </div>
+        </div>`;
+}
+
+function renderFirebaseRow(item, idx) {
+    const appId = setupState.selectedAppId;
+    const forThisApp = (item.matches || []).filter(m => m.app === appId);
+    const matchText = (item.matches || []).length
+        ? item.matches.map(m => `${m.app}${m.flavor !== 'default' ? ` (${m.flavor})` : ''}`).join(', ')
+        : 'no matching app';
+    const flavorOptions = (forThisApp.length ? forThisApp.map(m => m.flavor) : ['default', ...getActiveFlavors()])
+        .filter((f, i, arr) => arr.indexOf(f) === i)
+        .map(f => `<option value="${escapeHtml(f)}">${escapeHtml(f)}</option>`).join('');
+    return `
+        <div style="display:flex; gap:10px; align-items:center; padding:8px 0; border-top:1px solid var(--ui-border-color);">
+            <div style="flex:1; min-width:0;">
+                <div style="font-size:0.82rem; font-weight:600;">${escapeHtml(CRED_KIND_LABELS[item.kind])} ${renderFoundBadges(item)}</div>
+                <div style="font-size:0.78rem;">${escapeHtml(describeFound(item))}</div>
+                <div style="font-size:0.72rem; color:var(--ui-text-muted); overflow-wrap:anywhere;">${escapeHtml(item.path)}</div>
+                <div style="font-size:0.72rem; color:var(--ui-text-muted);">Matches: ${escapeHtml(matchText)}</div>
+            </div>
+            <select class="ui-select" data-cred-flavor="${idx}" style="width:auto;">${flavorOptions}</select>
+            <button type="button" class="ui-button" data-variant="secondary" data-size="sm" data-cred-import="${idx}">Import</button>
+        </div>`;
+}
+
+async function applyPickedKey(group, items, gi) {
+    const box = credEls.scanResults.querySelector(`[data-pick-group="${gi}"]`);
+    const item = items[Number(box.querySelector(`input[name="credPick_${gi}"]:checked`)?.value ?? -1)];
+    const apps = [...box.querySelectorAll(`[data-pick-app="${gi}"]:checked`)].map(c => c.value);
+    const status = box.querySelector(`[data-pick-status="${gi}"]`);
+    if (!item) { showToast('Choose a key first.'); return; }
+    if (!apps.length) { showToast('Choose at least one app.'); return; }
+    const issuerId = group === 'apple_p8' ? (box.querySelector(`#credPickIssuer_${gi}`)?.value.trim() || '') : '';
+    const btn = box.querySelector(`[data-pick-apply="${gi}"]`);
+    btn.disabled = true;
+    const failed = [];
+    for (const app of apps) {
+        status.textContent = `Applying to ${app}…`;
+        let res;
+        try {
+            res = await postJson('/api/deployment/credentials/import', { path: item.path, app, issuerId });
+        } catch (err) {
+            res = { success: false, error: err.message };
+        }
+        if (!res.success) failed.push(`${app}: ${res.error || 'failed'}`);
+    }
+    btn.disabled = false;
+    if (failed.length) {
+        status.textContent = `❌ ${failed.join('; ')}`;
+        showToast('Some apps failed: ' + failed.join('; '));
+    } else {
+        status.textContent = `✅ Applied to ${apps.length} app${apps.length === 1 ? '' : 's'}`;
+        showToast(`✅ ${describeFound(item)} set for ${apps.length} app${apps.length === 1 ? '' : 's'}.`);
+        if (issuerId && setupEls.issuerId) setupEls.issuerId.value = issuerId;
+    }
+    loadCredentialStatus(setupState.selectedAppId);
+}
+
 function renderScanResults(res) {
     if (!credEls.scanResults) return;
     if (!res.success) {
@@ -227,44 +395,34 @@ function renderScanResults(res) {
         credEls.scanResults.innerHTML = `<div class="cert-status-box" data-status="unknown">No keys found in ${escapeHtml(res.folder)}.</div>`;
         return;
     }
-    const appId = setupState.selectedAppId;
-    const rows = res.found.map((item, idx) => {
-        const forThisApp = (item.matches || []).filter(m => m.app === appId);
-        const matchText = (item.matches || []).length
-            ? item.matches.map(m => `${m.app}${m.flavor !== 'default' ? ` (${m.flavor})` : ''}`).join(', ')
-            : 'no matching app';
-        const isFirebase = item.kind.startsWith('firebase');
-        const flavorOptions = isFirebase
-            ? (forThisApp.length ? forThisApp.map(m => m.flavor) : ['default', ...getActiveFlavors()])
-                .filter((f, i, arr) => arr.indexOf(f) === i)
-                .map(f => `<option value="${escapeHtml(f)}">${escapeHtml(f)}</option>`).join('')
-            : '';
-        const importable = item.kind !== 'apple_other_p8';
-        const scopeControl = !importable ? '' : isFirebase
-            ? `<select class="ui-input" data-cred-flavor="${idx}" style="width:auto;">${flavorOptions}</select>`
-            : `<select class="ui-input" data-cred-scope="${idx}" style="width:auto;">
-                   <option value="app">This app</option>
-                   <option value="workspace">All apps</option>
-               </select>`;
-        const importBtn = importable
-            ? `<button type="button" class="ui-button" data-variant="secondary" data-size="sm" data-cred-import="${idx}">Import</button>`
-            : '';
-        return `
-            <div style="display:flex; gap:10px; align-items:center; padding:8px 0; border-top:1px solid var(--ui-border-color);${importable ? '' : ' opacity:0.6;'}">
-                <div style="flex:1; min-width:0;">
-                    <div style="font-size:0.82rem; font-weight:600;">${escapeHtml(CRED_KIND_LABELS[item.kind] || item.kind)} ${PLAY_HINT_BADGES[item.play_hint] || ''}</div>
-                    <div style="font-size:0.78rem;">${escapeHtml(describeFound(item))}</div>
-                    <div style="font-size:0.72rem; color:var(--ui-text-muted); overflow-wrap:anywhere;" title="${escapeHtml(item.path)}">${escapeHtml(item.path)}</div>
-                    ${isFirebase ? `<div style="font-size:0.72rem; color:var(--ui-text-muted);">Matches: ${escapeHtml(matchText)}</div>` : ''}
-                </div>
-                ${scopeControl}
-                ${importBtn}
-            </div>`;
-    }).join('');
+    const groups = PICK_KINDS.map(kind => ({ kind, items: res.found.filter(f => f.kind === kind) })).filter(g => g.items.length);
+    const firebase = res.found.map((item, idx) => ({ item, idx })).filter(({ item }) => item.kind.startsWith('firebase'));
+    const hidden = res.hidden_other_p8
+        ? ` · ${res.hidden_other_p8} non-API .p8 key${res.hidden_other_p8 === 1 ? '' : 's'} (In-App Purchase / APNs) hidden`
+        : '';
     credEls.scanResults.innerHTML = `
-        <div style="font-size:0.78rem; color:var(--ui-text-muted); margin-bottom:4px;">
-            Found ${res.found.length} in ${escapeHtml(res.folder)}${res.truncated ? ' (scan stopped early — choose a narrower folder)' : ''}
-        </div>${rows}`;
+        <div style="font-size:0.78rem; color:var(--ui-text-muted);">
+            Found ${res.found.length} in ${escapeHtml(res.folder)}${hidden}${res.truncated ? ' (scan stopped early — choose a narrower folder)' : ''}
+        </div>
+        ${groups.map((g, gi) => renderPickGroup(g.kind, g.items, gi)).join('')}
+        ${firebase.length ? `
+            <div class="ui-card" style="margin-top:12px;">
+                <div class="ui-card-header"><h4 class="ui-card-title">Firebase configs</h4></div>
+                <div class="ui-card-body">
+                    <div style="font-size:0.78rem; color:var(--ui-text-muted);">Matched to apps by package / bundle ID.</div>
+                    ${firebase.map(({ item, idx }) => renderFirebaseRow(item, idx)).join('')}
+                </div>
+            </div>` : ''}`;
+
+    groups.forEach((g, gi) => {
+        credEls.scanResults.querySelector(`[data-pick-apply="${gi}"]`)
+            .addEventListener('click', () => applyPickedKey(g.kind, g.items, gi));
+        credEls.scanResults.querySelector(`[data-pick-all="${gi}"]`).addEventListener('click', () => {
+            const boxes = [...credEls.scanResults.querySelectorAll(`[data-pick-app="${gi}"]`)];
+            const all = boxes.every(b => b.checked);
+            boxes.forEach(b => { b.checked = !all; });
+        });
+    });
     credEls.scanResults.querySelectorAll('[data-cred-import]').forEach(btn => {
         btn.addEventListener('click', () => importScanned(res.found[Number(btn.dataset.credImport)], Number(btn.dataset.credImport), btn));
     });

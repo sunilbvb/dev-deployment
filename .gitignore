@@ -75,6 +75,19 @@ docflow_uploads/
 notes_uploads/
 profile_config.json
 ngrok_config.json
+# Credentials the console stores under ~/.config/dev-deployment — never in the repo
+credentials.json
+github_token.txt
+github_repo.txt
+key.properties
+**/key.properties
+*service-account*.json
+*service_account*.json
+*firebase-adminsdk*.json
+google-services.json
+GoogleService-Info.plist
+.env.*
+!.env.example
 
 # Fastlane & Tool Reports
 report.xml

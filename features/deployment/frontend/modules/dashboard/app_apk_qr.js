@@ -8,8 +8,13 @@
 let currentApkInfo = null;
 let currentIpaInfo = null;
 
-function writeTerminalBox(content, title = '') {
-    if (!els.terminalOutput) return;
+/**
+ * Show a scannable QR in the terminal. Uses the server's SVG as an image (black on
+ * white, with quiet zone): half-block text on the dark terminal is colour-inverted
+ * and has gaps between lines, which phone cameras (iOS especially) cannot read.
+ */
+function writeTerminalQr(svgMarkup, title = '') {
+    if (!els.terminalOutput || !svgMarkup) return;
     const box = document.createElement('div');
     box.className = 'qr-terminal-box';
     if (title) {
@@ -18,10 +23,11 @@ function writeTerminalBox(content, title = '') {
         header.textContent = title;
         box.appendChild(header);
     }
-    const pre = document.createElement('pre');
-    pre.style.cssText = 'margin:0; font-family:monospace; font-size:11px; line-height:1.15;';
-    pre.textContent = content;
-    box.appendChild(pre);
+    const img = document.createElement('img');
+    img.alt = 'QR code';
+    img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svgMarkup);
+    img.style.cssText = 'display:block; width:220px; height:220px; background:#fff; padding:8px; border-radius:8px; image-rendering:pixelated;';
+    box.appendChild(img);
     els.terminalOutput.appendChild(box);
     els.terminalOutput.scrollTop = els.terminalOutput.scrollHeight;
 }
@@ -53,8 +59,8 @@ async function checkAndDisplayApk(jobId, app, flavor) {
                 writeTerminal(`📲 Android APK ready: ${data.filename} (${data.sizeFormatted})`, 'success');
                 writeTerminal(`📥 Wi-Fi Download Link: ${data.downloadUrl}`);
             }
-            if (data.qrAscii) {
-                writeTerminalBox(data.qrAscii, `Scan on Wi-Fi (${data.lanIp}) to Install:`);
+            if (data.qrSvg) {
+                writeTerminalQr(data.qrSvg, `Scan on Wi-Fi (${data.lanIp}) to Install:`);
             }
         }
     } catch (err) {
@@ -116,8 +122,10 @@ async function checkAndDisplayIpa(jobId, app, flavor) {
                 writeTerminal(`🍎 iOS IPA ready: ${data.filename} (${data.sizeFormatted})`, 'success');
                 writeTerminal(`⚡ Instant Apple OTA URL: ${data.itmsUrl}`);
             }
-            if (data.qrAscii) {
-                writeTerminalBox(data.qrAscii, `Scan with iPhone Camera (${data.lanIp}) for 10s OTA Install:`);
+            if (data.otaReady === false) {
+                writeTerminal(`⚠️  ${data.otaWarning}`, 'warning');
+            } else if (data.qrSvg) {
+                writeTerminalQr(data.qrSvg, `Scan with iPhone Camera (${data.lanIp}) to install:`);
             }
         }
     } catch (err) {
@@ -203,7 +211,7 @@ if (els.copyIpaQrUrlBtn) {
 // Global exports
 window.currentApkInfo = currentApkInfo;
 window.currentIpaInfo = currentIpaInfo;
-window.writeTerminalBox = writeTerminalBox;
+window.writeTerminalQr = writeTerminalQr;
 window.checkAndDisplayApk = checkAndDisplayApk;
 window.checkAndDisplayIpa = checkAndDisplayIpa;
 window.openQrModal = openQrModal;

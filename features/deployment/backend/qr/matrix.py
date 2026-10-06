@@ -79,7 +79,7 @@ SPECS_M: dict[int, tuple[int, list[tuple[int, int, int]]]] = {
     7: (124, [(4, 31, 18)]),
     8: (154, [(2, 38, 22), (2, 39, 22)]),
     9: (182, [(3, 36, 22), (2, 37, 22)]),
-    10: (216, [(4, 40, 26), (1, 41, 26)]),
+    10: (216, [(4, 43, 26), (1, 44, 26)]),
 }
 
 ALIGNMENT_LOCATIONS: dict[int, list[int]] = {
@@ -104,6 +104,14 @@ def _format_info_bits(ec_level_bits: int, mask_idx: int) -> int:
         if rem & (1 << (14 - i)):
             rem ^= (0x537 << (4 - i))
     return ((data << 10) | rem) ^ 0x5412
+
+
+def _version_info_bits(version: int) -> int:
+    """18-bit version information (versions >= 7) with BCH(18, 6) error correction."""
+    rem = version
+    for _ in range(12):
+        rem = (rem << 1) ^ ((rem >> 11) * 0x1F25)
+    return (version << 12) | rem
 
 
 def _select_version(data_len: int, ec_level: str) -> int:
@@ -332,6 +340,15 @@ def generate_qr_matrix(text: str, ec_level: str = "L") -> list[list[bool]]:
     for r in range(size - 7, size):
         reserved[r][8] = True
 
+    # 5b. Version information (two 6x3 blocks, versions >= 7)
+    if version >= 7:
+        vbits = _version_info_bits(version)
+        for i in range(18):
+            bit = bool((vbits >> i) & 1)
+            a, b = size - 11 + i % 3, i // 3
+            set_module(a, b, bit)   # bottom-left block
+            set_module(b, a, bit)   # top-right block
+
     # 6. Place data codewords
     codewords = _encode_data(text_bytes, version, ec_level)
     data_bits = []
@@ -376,19 +393,21 @@ def generate_qr_matrix(text: str, ec_level: str = "L") -> list[list[bool]]:
                 row.append(orig)
             cand.append(row)
 
+        # Format info (ISO 18004 7.9). cand is [row][col]; bit 0 is the least significant.
         fmt_bits = _format_info_bits(ec_level_bits, mask_idx)
         for i in range(6):
-            cand[8][i] = bool((fmt_bits >> i) & 1)
-        cand[8][7] = bool((fmt_bits >> 6) & 1)
+            cand[i][8] = bool((fmt_bits >> i) & 1)
+        cand[7][8] = bool((fmt_bits >> 6) & 1)
         cand[8][8] = bool((fmt_bits >> 7) & 1)
-        cand[7][8] = bool((fmt_bits >> 8) & 1)
+        cand[8][7] = bool((fmt_bits >> 8) & 1)
         for i in range(9, 15):
-            cand[14 - i][8] = bool((fmt_bits >> i) & 1)
+            cand[8][14 - i] = bool((fmt_bits >> i) & 1)
 
         for i in range(8):
-            cand[size - 1 - i][8] = bool((fmt_bits >> i) & 1)
+            cand[8][size - 1 - i] = bool((fmt_bits >> i) & 1)
         for i in range(8, 15):
-            cand[8][size - 15 + i] = bool((fmt_bits >> i) & 1)
+            cand[size - 15 + i][8] = bool((fmt_bits >> i) & 1)
+        cand[size - 8][8] = True  # dark module
 
         penalty = _evaluate_penalty(cand, size)
         if penalty < best_penalty:

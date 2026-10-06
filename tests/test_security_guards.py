@@ -18,6 +18,16 @@ import commands
 import server
 import jobs
 
+from _isolation import isolate_dashboard_config, restore_dashboard_config
+
+
+def setUpModule():
+    isolate_dashboard_config()
+
+
+def tearDownModule():
+    restore_dashboard_config()
+
 
 class TestSecurityGuards(unittest.TestCase):
     @classmethod

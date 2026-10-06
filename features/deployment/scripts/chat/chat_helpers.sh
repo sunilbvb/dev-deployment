@@ -154,7 +154,7 @@ send_chat_text() {
   escaped="$(json_escape "$text")"
   set +e
   http_code="$(
-    curl -sS -X POST -H "Content-Type: application/json; charset=utf-8" \
+    curl -sS --connect-timeout 5 --max-time 20 -X POST -H "Content-Type: application/json; charset=utf-8" \
       --data "{\"text\":\"$escaped\"}" \
       "$GOOGLE_CHAT_WEBHOOK_URL" \
       -w "%{http_code}" -o /dev/null
@@ -406,7 +406,7 @@ EOF
   local build_id="${commit_sha}_${BUILD_NO}"
   local stash_code
   set +e
-  stash_code="$(curl -sS -X POST -H "Content-Type: application/json; charset=utf-8" \
+  stash_code="$(curl -sS --connect-timeout 5 --max-time 20 -X POST -H "Content-Type: application/json; charset=utf-8" \
     --data "$card_payload" \
     "${LOCAL_DASHBOARD_URL:-http://localhost:18082}/api/webhook/stash?id=$build_id" \
     -w "%{http_code}" -o /dev/null || echo "000")"
@@ -448,7 +448,7 @@ EOF
   local http_code response_body_file
   response_body_file="$(mktemp "${DEPLOYMENT_TMP_DIR:-${TMPDIR:-/tmp}}/chat_resp.XXXXXX" 2>/dev/null || echo "/tmp/chat_resp.json")"
   http_code="$(
-    curl -sS -X POST -H "Content-Type: application/json; charset=utf-8" \
+    curl -sS --connect-timeout 5 --max-time 20 -X POST -H "Content-Type: application/json; charset=utf-8" \
       --data "$card_payload" \
       "$GOOGLE_CHAT_WEBHOOK_URL" \
       -w "%{http_code}" -o "$response_body_file"
@@ -493,7 +493,7 @@ send_slack_notification() {
   escaped_title="$(json_escape "$title")"
   escaped_body="$(json_escape "$body")"
   payload="{\"text\": \"*${escaped_title}*\n${escaped_body}\"}"
-  curl -sS -X POST -H "Content-Type: application/json" --data "$payload" "$SLACK_WEBHOOK_URL" >/dev/null 2>&1 || true
+  curl -sS --connect-timeout 5 --max-time 20 -X POST -H "Content-Type: application/json" --data "$payload" "$SLACK_WEBHOOK_URL" >/dev/null 2>&1 || true
 }
 
 send_teams_notification() {
@@ -504,7 +504,7 @@ send_teams_notification() {
   escaped_title="$(json_escape "$title")"
   escaped_body="$(json_escape "$body")"
   payload="{\"@type\": \"MessageCard\", \"summary\": \"${escaped_title}\", \"text\": \"### ${escaped_title}\n\n${escaped_body}\"}"
-  curl -sS -X POST -H "Content-Type: application/json" --data "$payload" "$TEAMS_WEBHOOK_URL" >/dev/null 2>&1 || true
+  curl -sS --connect-timeout 5 --max-time 20 -X POST -H "Content-Type: application/json" --data "$payload" "$TEAMS_WEBHOOK_URL" >/dev/null 2>&1 || true
 }
 
 send_discord_notification() {
@@ -515,6 +515,6 @@ send_discord_notification() {
   escaped_title="$(json_escape "$title")"
   escaped_body="$(json_escape "$body")"
   payload="{\"content\": \"**${escaped_title}**\n${escaped_body}\"}"
-  curl -sS -X POST -H "Content-Type: application/json" --data "$payload" "$DISCORD_WEBHOOK_URL" >/dev/null 2>&1 || true
+  curl -sS --connect-timeout 5 --max-time 20 -X POST -H "Content-Type: application/json" --data "$payload" "$DISCORD_WEBHOOK_URL" >/dev/null 2>&1 || true
 }
 
