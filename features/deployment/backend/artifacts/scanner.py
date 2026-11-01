@@ -27,7 +27,7 @@ def find_apk_artifact(
     if app_id and app_id != "latest":
         try:
             app_dir = _resolve_app_dir(app_id)
-            if app_dir == ws_root:
+            if app_dir.resolve() == ws_root.resolve():
                 from config import load_deploy_config
                 deploy_cfg = load_deploy_config()
                 known = set(deploy_cfg.get("apps", {}).keys())
@@ -156,7 +156,7 @@ def find_ipa_artifact(
     if app_id and app_id != "latest":
         try:
             app_dir = _resolve_app_dir(app_id)
-            if app_dir == ws_root:
+            if app_dir.resolve() == ws_root.resolve():
                 from config import load_deploy_config
                 deploy_cfg = load_deploy_config()
                 known = set(deploy_cfg.get("apps", {}).keys())

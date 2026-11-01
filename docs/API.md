@@ -85,7 +85,7 @@ curl -s -H "X-API-Token: $TOKEN" \
 
 | Method | Endpoint | Query / Body | Returns / Purpose |
 |:---|:---|:---|:---|
-| `POST` | `/api/deployment/execute` | `{"app", "templateId", "flavor", "confirmed"}` | Starts asynchronous build job. Rejects arbitrary commands; only pre-verified template actions run. |
+| `POST` | `/api/deployment/execute` | `{"app", "templateId", "flavor", "confirmed", "releaseNotes": {"en-US": "..."}}` | Starts asynchronous build job; optional `releaseNotes` ride along to the upload. Rejects arbitrary commands; only pre-verified template actions run. |
 | `GET` | `/api/deployment/job` | `?id=<job_id>` | Polls job execution state: `running`, `success`, `error`, `stopped`, stdout/stderr chunks, duration. |
 | `POST` | `/api/deployment/stop` | `{"jobId": "<job_id>"}` | Sends `SIGTERM` (followed by `SIGKILL`) to terminate active process group. Releases app busy lock. |
 | `GET` | `/api/deployment/running-jobs` | – | Returns list of all currently active jobs across all projects. |
@@ -288,6 +288,7 @@ Incoming requests are accepted if ANY of the following match:
 | `GET` | `/api/deployment/ipa-info` | `?app=<app_id>&flavor=<flavor>` | Locates latest `.ipa` artifact and returns direct download URL and native `itms-services://` OTA link. |
 | `GET` | `/api/deployment/download-ipa/<target>` | `?token=<auth_token>` | Streams compiled `.ipa` binary with chunked range support. |
 | `GET` | `/api/deployment/ota/manifest.plist` | `?app=<app>&flavor=<flavor>&token=<token>` | Generates Apple's dynamic XML `manifest.plist` for 10-second Camera QR OTA install. |
+| `GET` | `/api/deployment/ota/install` | `?target=<app or job>&token=<token>` | HTTPS landing page with an Install button (opens `itms-services://`). The iOS QR code points here. Needs HTTPS: run with `--tls-cert/--tls-key` or `--public-url`. |
 
 ---
 
@@ -317,4 +318,57 @@ Incoming requests are accepted if ANY of the following match:
 |:---|:---|:---|:---|
 | `GET` | `/api/deployment/cache-warmer/status` | – | Returns daemon status (`idle`, `warming`, `ready`), watched branch, and last warm time. |
 | `POST` | `/api/deployment/cache-warmer/warm` | – | Triggers background dependency resolution (`flutter pub get`) when no jobs are active. |
+
+---
+
+## Pre-Release Deep Link & Universal Link Validator
+
+| Method | Endpoint | Query / Body | Returns / Purpose |
+|:---|:---|:---|:---|
+| `GET` | `/api/deployment/deep-links` | `?app=<app_id>&domain=<override>` | Scans manifests/entitlements and tests live `assetlinks.json` and `apple-app-site-association` endpoints. |
+| `POST` | `/api/deployment/deep-links/verify` | `{"domain": "...", "packageName": "...", "fingerprint": "...", "teamId": "...", "bundleId": "..."}` | Verifies target domain web fingerprints against expected production mobile credentials. |
+
+---
+
+## Store Metadata & Localized Release Notes
+
+| Method | Endpoint | Query / Body | Returns / Purpose |
+|:---|:---|:---|:---|
+| `GET` | `/api/deployment/metadata` | `?app=<app_id>` | Reads multi-locale Fastlane metadata and release notes with character counts and store policy limits. |
+| `POST` | `/api/deployment/metadata/save` | `{"app": "...", "platform": "android|ios", "locale": "...", "releaseNotes": "...", "title": "...", "version": "42"}` | Atomically saves localized release notes and metadata back to project Fastlane structure. With `version` (build number or version name) only that version's notes are written (`changelogs/<version>.txt` on Android, `release_notes_<version>.txt` on iOS); uploads prefer them over the shared default. |
+| `GET` | `/api/deployment/release-notes` | `?app=&platform=android\|ios&version=` | Notes of every app language for a build (`version` empty = shared default), the versions that have notes, and the last build's notes. |
+| `POST` | `/api/deployment/release-notes/save` | `{"app", "platform", "version", "notes": {"en-US": "...", "de-DE": "..."}}` | Saves per-language notes for a build; empty text removes that language's file for the build. Enforces store limits (500 Play / 4000 App Store). |
+| `POST` | `/api/deployment/release-notes/publish` | `{"app", "platform", "version", "notes": {...}, "identifier": "<bundle id>"}` | Saves, then (iOS) pushes every language to that TestFlight build. Android is save-only: Play cannot edit a published release. |
+| `POST` | `/api/deployment/release-notes/locales` | `{"app", "locales": ["en-US", "de-DE"]}` | Sets the languages release notes are written in for this app (stored as `release_locales` in the deploy config). |
+| `GET` | `/api/deployment/release-notes/store-locales` | `?app=&platform=&identifier=` | Reads the languages already set up in the store listing (Play `listings` / App Store version localizations) via fastlane. |
+| `GET` | `/api/deployment/release-notes/identifier` | `?app=&platform=&flavor=` | Bundle id / package name discovered for the app. |
+| `POST` | `/api/deployment/metadata/update-build` | `{"app": "...", "bundleId": "com.example.app", "buildNumber": "42", "releaseNotes": "...", "locale": "en-US", "saveToFiles": true}` | iOS only. Sets the TestFlight "What to Test" notes of an already-uploaded build via the fixed `ios update_testflight_notes` lane (needs the app's Apple API key). Also saves the per-version file unless `saveToFiles` is `false`. Android has no equivalent: Play only edits notes of draft releases. |
+| `GET` | `/api/deployment/metadata/preview` | `?app=<app>&platform=<android|ios>&locale=<loc>` | Returns mockup preview data for mobile store update card. |
+
+---
+
+## Zero-Friction Crash Symbol Vault
+
+| Method | Endpoint | Query / Body | Returns / Purpose |
+|:---|:---|:---|:---|
+| `GET` | `/api/deployment/symbols` | `?app=<app_id>&flavor=<flavor>` | Discovers ProGuard/R8 `mapping.txt` and Apple `.dSYM` archives with file sizes, line counts, and SHA-256 digests. |
+| `GET` | `/api/deployment/symbols/download` | `?app=<app_id>&flavor=<flavor>&token=<token>` | Downloads compiled crash symbols as an assembled `.zip` archive for Firebase Crashlytics or Sentry. |
+
+---
+
+## Semantic Version Bumper & Git Conventional Changelog
+
+| Method | Endpoint | Query / Body | Returns / Purpose |
+|:---|:---|:---|:---|
+| `GET` | `/api/deployment/version` | `?app=<app_id>` | Returns current `pubspec.yaml` semantic version and previews next patch, minor, major, and build bumps. |
+| `POST` | `/api/deployment/version/bump` | `{"app": "...", "bumpType": "patch|minor|major|build|custom", "customVersion": "...", "customBuild": 12}` | Safely updates `pubspec.yaml` version while preserving all YAML comments and structure. |
+| `GET` | `/api/deployment/version/changelog` | `?app=<app_id>&since=<tag>&max=50` | Formats git commits into Conventional Commit Markdown changelog and concise Play Store bullet notes (&le; 500 chars). |
+
+---
+
+## APK / IPA Security & Dangerous Permissions Inspector
+
+| Method | Endpoint | Query / Body | Returns / Purpose |
+|:---|:---|:---|:---|
+| `GET` | `/api/deployment/security/permissions` | `?app=<app_id>` | Audits Android permissions, cleartext HTTP, exported components, and Apple privacy manifest strings. |
 

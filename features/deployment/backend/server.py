@@ -3,12 +3,14 @@ import argparse
 import base64
 import hashlib
 import hmac
+import html
 import http.server
 import ipaddress
 import json
 import logging
 import os
 import secrets
+import ssl
 import sys
 import threading
 import time
@@ -252,6 +254,42 @@ class DeploymentHandler(http.server.SimpleHTTPRequestHandler):
         except Exception:
             logging.exception("Failed to stream IPA download: %s", cand_path)
 
+    def serve_ota_install(self, query: dict[str, list[str]]) -> None:
+        """HTTPS landing page the QR points at; its button opens the itms-services link."""
+        target = query.get("target", ["latest"])[0]
+        token = query.get("token", [""])[0]
+        if not download_tokens.check(token, target, "ipa"):
+            token = download_tokens.issue(target, {"ipa", "manifest"})
+        is_job = target.startswith("job_") or len(target) > 20
+        info = router.get_ipa_download_info(
+            job_id=target if is_job else None,
+            app_id=None if is_job else target,
+            port=getattr(self.server, "server_port", 18112) or 18112,
+            token=token,
+            host_override=query.get("host", [""])[0],
+        )
+        if not info.get("hasIpa"):
+            self.write_json({"success": False, "error": "No IPA artifact found."}, status=404)
+            return
+        name = html.escape(str(info.get("appName") or info.get("app") or "App"))
+        link = html.escape(info["itmsUrl"], quote=True)
+        body = (
+            "<!doctype html><html><head><meta charset=\"utf-8\">"
+            "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">"
+            f"<title>Install {name}</title></head>"
+            "<body style=\"font-family:-apple-system,sans-serif;text-align:center;padding:48px 24px\">"
+            f"<h2>{name}</h2><p>Version build: {html.escape(str(info.get('flavor') or ''))}</p>"
+            f"<p><a href=\"{link}\" style=\"display:inline-block;padding:14px 32px;border-radius:12px;"
+            "background:#007aff;color:#fff;font-size:18px;text-decoration:none\">Install</a></p>"
+            "</body></html>"
+        ).encode("utf-8")
+        self.send_response(200)
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+        self.wfile.write(body)
+
     def serve_ota_manifest(self, query: dict[str, list[str]], is_head: bool = False) -> None:
         target = query.get("target", ["latest"])[0]
         if not self._verify_auth_with_query(query, scope="manifest", target=target):
@@ -292,6 +330,28 @@ class DeploymentHandler(http.server.SimpleHTTPRequestHandler):
         if not is_head:
             self.wfile.write(body)
 
+    def serve_symbols_download(self, query: dict[str, list[str]], is_head: bool = False) -> None:
+        app_id = query.get("app", [""])[0]
+        flavor = query.get("flavor", ["prod"])[0]
+        sym_type = query.get("type", ["all"])[0]
+        target = app_id or "symbols"
+        if not self._verify_auth_with_query(query, scope="symbols", target=target):
+            self.write_json({"success": False, "error": "Unauthorized: valid token required"}, status=401)
+            return
+
+        try:
+            zip_bytes = router.package_symbols_zip(app_id=app_id, symbol_type=sym_type, flavor=flavor)
+            self.send_response(200)
+            self.send_header("Content-Type", "application/zip")
+            self.send_header("Content-Disposition", f'attachment; filename="symbols-{app_id or "app"}-{flavor}.zip"')
+            self.send_header("Content-Length", str(len(zip_bytes)))
+            self.send_header("Cache-Control", "no-cache, must-revalidate")
+            self.end_headers()
+            if not is_head:
+                self.wfile.write(zip_bytes)
+        except Exception:
+            logging.exception("Failed to stream symbols download for app %s", app_id)
+
     def do_HEAD(self) -> None:
         if not self._is_allowed_host():
             self.send_error(403, "Invalid Host header: DNS rebinding rejected")
@@ -310,6 +370,10 @@ class DeploymentHandler(http.server.SimpleHTTPRequestHandler):
         if parsed.path == "/api/deployment/ota/manifest.plist":
             query = parse_qs(parsed.query)
             self.serve_ota_manifest(query, is_head=True)
+            return
+        if parsed.path == "/api/deployment/symbols/download":
+            query = parse_qs(parsed.query)
+            self.serve_symbols_download(query, is_head=True)
             return
         super().do_HEAD()
 
@@ -351,7 +415,12 @@ class DeploymentHandler(http.server.SimpleHTTPRequestHandler):
                     if not self._verify_auth_with_query(query, scope="ipa" if is_ipa else "apk", target=dl_target):
                         self.write_json({"success": False, "error": "Unauthorized: valid token required"}, status=401)
                         return
-                elif parsed.path == "/api/deployment/ota/manifest.plist":
+                elif parsed.path == "/api/deployment/symbols/download":
+                    sym_app = query.get("app", [""])[0] or "symbols"
+                    if not self._verify_auth_with_query(query, scope="symbols", target=sym_app):
+                        self.write_json({"success": False, "error": "Unauthorized: valid token required"}, status=401)
+                        return
+                elif parsed.path in ("/api/deployment/ota/manifest.plist", "/api/deployment/ota/install"):
                     if not self._verify_auth_with_query(query, scope="manifest", target=query.get("target", ["latest"])[0]):
                         self.write_json({"success": False, "error": "Unauthorized: valid token required"}, status=401)
                         return
@@ -481,6 +550,64 @@ class DeploymentHandler(http.server.SimpleHTTPRequestHandler):
                     query.get("flavor", ["prod"])[0],
                 ))
                 return
+            if parsed.path == "/api/deployment/symbols/download":
+                self.serve_symbols_download(query)
+                return
+            if parsed.path == "/api/deployment/symbols":
+                app_id = query.get("app", [""])[0]
+                flavor = query.get("flavor", ["prod"])[0]
+                sym_res = router.scan_symbols(app_id=app_id, flavor=flavor)
+                sym_res["downloadToken"] = download_tokens.issue(app_id or "symbols", {"symbols"})
+                sym_res["downloadUrl"] = f"/api/deployment/symbols/download?app={app_id}&flavor={flavor}&token={sym_res['downloadToken']}"
+                self.write_json(sym_res)
+                return
+            if parsed.path == "/api/deployment/deep-links":
+                app_id = query.get("app", [""])[0]
+                domain = query.get("domain", [""])[0]
+                self.write_json(router.validate_app_deep_links(app_id=app_id, domain_override=domain))
+                return
+            if parsed.path == "/api/deployment/metadata":
+                app_id = query.get("app", [""])[0]
+                self.write_json(router.get_store_metadata(app_id=app_id))
+                return
+            if parsed.path == "/api/deployment/release-notes":
+                self.write_json(router.get_release_notes(
+                    app_id=query.get("app", [""])[0],
+                    platform=query.get("platform", ["android"])[0],
+                    version=query.get("version", [""])[0],
+                ))
+                return
+            if parsed.path == "/api/deployment/release-notes/store-locales":
+                self.write_json(router.fetch_store_locales(
+                    app_id=query.get("app", [""])[0],
+                    platform=query.get("platform", ["android"])[0],
+                    identifier=query.get("identifier", [""])[0],
+                ))
+                return
+            if parsed.path == "/api/deployment/release-notes/identifier":
+                self.write_json({"success": True, "identifier": router.default_identifier(
+                    query.get("app", [""])[0], query.get("platform", ["ios"])[0], query.get("flavor", [""])[0])})
+                return
+            if parsed.path == "/api/deployment/metadata/preview":
+                app_id = query.get("app", [""])[0]
+                platform = query.get("platform", ["android"])[0]
+                locale = query.get("locale", ["en-US"])[0]
+                self.write_json(router.preview_store_card(app_id=app_id, platform=platform, locale=locale))
+                return
+            if parsed.path == "/api/deployment/version":
+                app_id = query.get("app", [""])[0]
+                self.write_json(router.get_version_info(app_id=app_id))
+                return
+            if parsed.path == "/api/deployment/version/changelog":
+                app_id = query.get("app", [""])[0]
+                since = query.get("since", [""])[0]
+                max_c = int(query.get("max", [50])[0]) if query.get("max", ["50"])[0].isdigit() else 50
+                self.write_json(router.generate_changelog(app_id=app_id, since_ref=since, max_commits=max_c))
+                return
+            if parsed.path in ("/api/deployment/security/permissions", "/api/deployment/security"):
+                app_id = query.get("app", [""])[0]
+                self.write_json(router.inspect_app_security(app_id=app_id))
+                return
             if parsed.path.startswith("/api/deployment/download/"):
                 target = parsed.path.split("/api/deployment/download/", 1)[1].strip()
                 self.serve_apk_download(target, query)
@@ -506,6 +633,9 @@ class DeploymentHandler(http.server.SimpleHTTPRequestHandler):
                 return
             if parsed.path == "/api/deployment/ota/manifest.plist":
                 self.serve_ota_manifest(query)
+                return
+            if parsed.path == "/api/deployment/ota/install":
+                self.serve_ota_install(query)
                 return
             if parsed.path == "/api/deployment/ipa-info":
                 job_id = query.get("jobId", query.get("id", [""]))[0] or None
@@ -933,6 +1063,85 @@ class DeploymentHandler(http.server.SimpleHTTPRequestHandler):
                 self.write_json(router.trigger_cache_warm(force=force))
                 return
 
+            if parsed.path == "/api/deployment/deep-links/verify":
+                domain = str(data.get("domain") or "").strip()
+                pkg = str(data.get("packageName") or data.get("package") or "").strip()
+                fp = str(data.get("fingerprint") or "").strip()
+                team_id = str(data.get("teamId") or "").strip()
+                bundle_id = str(data.get("bundleId") or "").strip()
+                a_rep = router.verify_android_assetlinks(domain, package_name=pkg, expected_fingerprint=fp)
+                i_rep = router.verify_apple_aasa(domain, team_id=team_id, bundle_id=bundle_id)
+                self.write_json({"success": True, "domain": domain, "android": a_rep, "ios": i_rep})
+                return
+
+            if parsed.path == "/api/deployment/metadata/save":
+                app_id = str(data.get("app") or "").strip()
+                platform = str(data.get("platform") or "android").strip()
+                locale = str(data.get("locale") or "en-US").strip()
+                notes = str(data.get("releaseNotes") or data.get("changelog") or "")
+                res = router.save_store_metadata(
+                    app_id=app_id,
+                    platform=platform,
+                    locale=locale,
+                    release_notes=notes,
+                    title=str(data.get("title") or ""),
+                    short_description=str(data.get("shortDescription") or ""),
+                    description=str(data.get("description") or ""),
+                    subtitle=str(data.get("subtitle") or ""),
+                    keywords=str(data.get("keywords") or ""),
+                    version=str(data.get("version") or ""),
+                )
+                self.write_json(res)
+                return
+
+            if parsed.path == "/api/deployment/release-notes/save":
+                self.write_json(router.save_release_notes(
+                    app_id=str(data.get("app") or "").strip(),
+                    platform=str(data.get("platform") or "android").strip(),
+                    version=str(data.get("version") or ""),
+                    notes=data.get("notes"),
+                ))
+                return
+
+            if parsed.path == "/api/deployment/release-notes/publish":
+                self.write_json(router.update_build_notes(
+                    app_id=str(data.get("app") or "").strip(),
+                    platform=str(data.get("platform") or "ios").strip(),
+                    version=str(data.get("version") or ""),
+                    notes=data.get("notes"),
+                    identifier=str(data.get("identifier") or "").strip(),
+                ))
+                return
+
+            if parsed.path == "/api/deployment/release-notes/locales":
+                self.write_json(router.set_app_locales(
+                    str(data.get("app") or "").strip(), data.get("locales")))
+                return
+
+            if parsed.path == "/api/deployment/metadata/update-build":
+                self.write_json(router.update_testflight_notes(
+                    app_id=str(data.get("app") or "").strip(),
+                    bundle_id=str(data.get("bundleId") or "").strip(),
+                    build_number=str(data.get("buildNumber") or "").strip(),
+                    release_notes=str(data.get("releaseNotes") or ""),
+                    locale=str(data.get("locale") or "en-US").strip(),
+                    save_to_files=data.get("saveToFiles") is not False,
+                ))
+                return
+
+            if parsed.path == "/api/deployment/version/bump":
+                app_id = str(data.get("app") or "").strip()
+                bump_type = str(data.get("bumpType") or "patch").strip()
+                custom_ver = str(data.get("customVersion") or "").strip()
+                custom_bld = int(data.get("customBuild")) if (data.get("customBuild") is not None and str(data.get("customBuild")).isdigit()) else None
+                self.write_json(router.bump_version(
+                    app_id=app_id,
+                    bump_type=bump_type,
+                    custom_version=custom_ver,
+                    custom_build=custom_bld,
+                ))
+                return
+
             if parsed.path in ("/api/deployment/server/stop", "/api/deployment/server/end"):
                 self.write_json({"success": True, "message": "Server shutting down gracefully..."})
                 def _do_shutdown():
@@ -1008,6 +1217,7 @@ class DeploymentHandler(http.server.SimpleHTTPRequestHandler):
                     flavor=target_cmd.get("flavor", req_flavor),
                     confirmed=bool(data.get("confirmed") or False),
                     clean_build=data["cleanBuild"] if isinstance(data.get("cleanBuild"), bool) else None,
+                    release_notes=data.get("releaseNotes") if isinstance(data.get("releaseNotes"), dict) else None,
                 )
                 self.write_json(res)
                 return
@@ -1128,7 +1338,14 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Deployment Console web app")
     parser.add_argument("--port", type=int, default=18112)
     parser.add_argument("--host", default="0.0.0.0", help="Bind address (default: 0.0.0.0)")
+    parser.add_argument("--tls-cert", default=os.environ.get("DEPLOYMENT_TLS_CERT", ""), help="PEM certificate (enables HTTPS; needed for iOS OTA installs)")
+    parser.add_argument("--tls-key", default=os.environ.get("DEPLOYMENT_TLS_KEY", ""), help="PEM private key for --tls-cert")
+    parser.add_argument("--public-url", default=os.environ.get("DEPLOYMENT_PUBLIC_URL", ""), help="Public https URL (tunnel) iPhones use for OTA installs")
     args = parser.parse_args()
+    if bool(args.tls_cert) != bool(args.tls_key):
+        parser.error("--tls-cert and --tls-key must be given together")
+    if args.public_url:
+        os.environ["DEPLOYMENT_PUBLIC_URL"] = args.public_url
 
     token = _get_auth_token()
     if token:
@@ -1142,10 +1359,19 @@ def main() -> int:
     global _ACTIVE_SERVER
     server = http.server.ThreadingHTTPServer((args.host, args.port), DeploymentHandler)
     _ACTIVE_SERVER = server
+    scheme = "http"
+    if args.tls_cert:
+        ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+        ctx.load_cert_chain(args.tls_cert, args.tls_key)
+        server.socket = ctx.wrap_socket(server.socket, server_side=True)
+        os.environ["DEPLOYMENT_TLS_ACTIVE"] = "1"
+        scheme = "https"
     lan_ip = router.get_lan_ip()
-    print(f"Deployment app: http://localhost:{args.port}")
+    print(f"Deployment app: {scheme}://localhost:{args.port}")
     if lan_ip and lan_ip != "127.0.0.1":
-        print(f"Wi-Fi / LAN:    http://{lan_ip}:{args.port}")
+        print(f"Wi-Fi / LAN:    {scheme}://{lan_ip}:{args.port}")
+    if scheme == "http" and not args.public_url:
+        print("Note: iOS OTA installs need HTTPS. Use --tls-cert/--tls-key or --public-url (tunnel).")
     try:
         router.start_cache_warmer_daemon()
     except Exception:

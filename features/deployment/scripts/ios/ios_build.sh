@@ -113,6 +113,35 @@ EOF
 }
 
 #------------------------------------------------------------------------------
+# export_archive_if_ipa_missing - fallback when `flutter build ipa` exits 0 but
+# leaves no IPA in build/ios/ipa. Runs xcodebuild -exportArchive on the newest
+# archive. Must run inside the app directory. Returns non-zero on failure.
+#------------------------------------------------------------------------------
+export_archive_if_ipa_missing() {
+    local export_plist="${1:-}"
+    if [ -n "$(find build/ios/ipa -name '*.ipa' 2>/dev/null | head -n 1)" ]; then
+        return 0
+    fi
+    local archive
+    archive="$(ls -dt build/ios/archive/*.xcarchive 2>/dev/null | head -n 1)"
+    if [ -z "$archive" ] || [ -z "$export_plist" ] || [ ! -f "$export_plist" ]; then
+        echo "Error: flutter build ipa finished but produced no IPA and no archive/export options to export from." >&2
+        return 1
+    fi
+    echo "flutter build ipa produced no IPA; exporting '$archive' with xcodebuild -exportArchive..."
+    local rc=0
+    set +e
+    xcodebuild -exportArchive -archivePath "$archive" -exportPath build/ios/ipa \
+        -exportOptionsPlist "$export_plist" -allowProvisioningUpdates 2>&1
+    rc=$?
+    set -e
+    if [ "$rc" -ne 0 ]; then
+        echo "Error: xcodebuild -exportArchive failed (exit $rc)." >&2
+        return "$rc"
+    fi
+}
+
+#------------------------------------------------------------------------------
 # run_xcode_build_and_export - Archive and export the built IPA
 #------------------------------------------------------------------------------
 # USAGE: run_xcode_build_and_export <env_name> <secret_file> <flutter_flavor> <export_method> <export_plist> <apple_key> <apple_issuer> <apple_key_path> <result_var_name> <app_name> <log_file_var_name>
@@ -369,6 +398,12 @@ buildIPARaw() {
     local ipa_build_status=0
     local ipa_build_log_file=""
     run_xcode_build_and_export "$env_name" "$secret_file" "$flutter_flavor" "$export_method" "$export_plist" "$apple_key" "$apple_issuer" "$apple_key_path" "ipa_build_status" "$app_name" "ipa_build_log_file"
+
+    # flutter can exit 0 after archiving without exporting an IPA (the archive is
+    # named after the Xcode scheme, e.g. "<App Name>.xcarchive"). Export it ourselves.
+    if [ "$ipa_build_status" -eq 0 ]; then
+        export_archive_if_ipa_missing "$export_plist" || ipa_build_status=$?
+    fi
 
     # Clean up the temporary plist file if created
     if [ -n "$export_plist" ] && [ -f "$export_plist" ]; then

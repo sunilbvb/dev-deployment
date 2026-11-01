@@ -39,12 +39,19 @@ from .github_actions import (
     save_github_token,
     save_repo_override,
 )
+from .version_bumper import (
+    bump_version,
+    generate_changelog,
+    get_version_info,
+    parse_pubspec_version,
+)
 
 __all__ = [
     "adb_manager",
     "build_profiler",
     "cache_warmer",
     "github_actions",
+    "version_bumper",
     "connect_wireless_adb",
     "disconnect_wireless_adb",
     "find_adb_binary",
@@ -65,4 +72,8 @@ __all__ = [
     "install_workflow_template",
     "save_github_token",
     "save_repo_override",
+    "bump_version",
+    "generate_changelog",
+    "get_version_info",
+    "parse_pubspec_version",
 ]

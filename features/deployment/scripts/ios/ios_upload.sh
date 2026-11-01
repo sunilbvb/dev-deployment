@@ -52,6 +52,7 @@ runWithIosEnv() {
     APPLE_API_KEY_PATH="${APPLE_API_KEY_PATH:-}" \
     IOS_IPA_PATH="${IOS_IPA_PATH:-}" \
     IPA_PATH="${IPA_PATH:-}" \
+    RELEASE_NOTES_JSON="${RELEASE_NOTES_JSON:-}" \
     "${cmd[@]}"
 }
 
@@ -145,6 +146,7 @@ uploadIPARaw() {
     raw_ipa_path="$(findIpaFile)" || exit 2
     IOS_IPA_PATH="$(pwd)/$raw_ipa_path"
     export IOS_IPA_PATH
+    exportReleaseNotes "$app_name" ios
     
     # Upload to TestFlight using the configured tool (altool or fastlane)
     cd "$MELOS_ROOT_PATH" || return 1

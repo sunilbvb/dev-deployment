@@ -1,0 +1,14 @@
+# Known store-upload errors. Columns (TAB separated):  class <TAB> pattern (ERE, case-insensitive) <TAB> hint
+#   duplicate - the build/version already reached the store; treated as success
+#   permanent - retrying cannot fix it; fail at once and print the hint
+# Add a line here to teach the tool a new error - no code change needed.
+duplicate	must be higher than the previously uploaded version	-
+duplicate	ENTITY_ERROR\.ATTRIBUTE\.INVALID\.DUPLICATE	-
+duplicate	redundant binary upload|ITMS-90189	-
+duplicate	apkNotificationMessageKeyUpgradeVersionConflict	-
+duplicate	specifies a version code that has already been used|version code [0-9]+ has already been used	-
+permanent	Foreground Service permissions	Play Console > App content (or the prompt on the release page) > Foreground service permissions > declare usage, then re-run. If the app does not use one, remove FOREGROUND_SERVICE* permissions and services (tools:node="remove") from the manifest instead.
+permanent	You must let us know whether your app uses	Open Play Console > App content, complete the declaration named in the error above, then re-run.
+permanent	previously approved version|\(90062\)	This marketing version (CFBundleShortVersionString) is already approved in App Store Connect. Bump the x.y.z part of 'version:' in pubspec.yaml (e.g. 1.0.6 -> 1.0.7), then re-run.
+permanent	Unicode Normalization not appropriate for ASCII-8BIT	Terminal locale is not UTF-8. Run with LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8.
+permanent	APK has the wrong package name	The uploaded build was made for a different flavor/package than the Play app. Rebuild the right flavor, or upload to the matching package.

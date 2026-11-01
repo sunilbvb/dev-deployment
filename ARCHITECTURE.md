@@ -188,6 +188,12 @@ Pre-flight verification, health monitoring, and zero-cable installation:
 
 ---
 
+## 📝 Release Notes Flow
+
+Notes are optional and per language. `POST /execute {releaseNotes}` → `jobs.execute_command` puts them in the job environment as `RELEASE_NOTES_JSON` → the upload script calls `exportReleaseNotes` (`project_resolver.sh`), which resolves `{locale: text}` via `metadata/release_notes.py` (`RELEASE_NOTES_JSON` → `RELEASE_NOTES` → per-build file → default file) and never fails → the Fastfile sends it to Play (`release_notes`) or TestFlight (`localized_build_info`). On job success `jobs._record_history_entry` records `platform`, `buildNumber`, `releaseNotes` and saves the notes as that build's files, which the History dialog edits later. iOS "publish" runs the fixed `update_testflight_notes` lane with values as environment variables only. Details and pending work: [docs/proposals/0003-release-notes.md](docs/proposals/0003-release-notes.md).
+
+---
+
 ## ⚡ Server Lifecycle Management
 
 `server_manager.py` manages local server execution without requiring an open terminal window:
@@ -259,12 +265,13 @@ Every tracked file and what it owns. Paths are relative to the repository root.
 | `notifications/` | Universal webhook dispatch (Slack, Discord, Teams, Google Chat, WhatsApp Meta Cloud/Twilio, Custom Templates), payload templating, incoming CI/CD ingestion gateway with HMAC SHA-256 / token validation (`templates.py`, `channels.py`, `incoming.py`) | `send_deployment_notification`, `test_notification_channel`, `handle_incoming_webhook`, `render_template` |
 | `server_manager/` | Server process lifecycle management, desktop launcher generation (`.desktop`), and systemd user service registration (`paths.py`, `desktop.py`, `service.py`) | `get_server_status`, `install_desktop_launcher`, `install_systemd_service`, `get_service_status` |
 | `docs_provider.py` | In-app documentation repository provider, dynamic Markdown overview generator, and document security validator | `list_available_docs`, `get_doc_content` |
-| `artifacts/` | Local APK/AAB/IPA build artifact scanning, safe path resolution, file metadata extraction, Apple OTA `manifest.plist` generation, and local download endpoint serving (`network.py`, `scanner.py`, `distributor.py`) | `find_apk_artifact`, `find_ipa_artifact`, `resolve_safe_apk_path`, `resolve_safe_ipa_path`, `get_apk_download_info`, `get_ipa_download_info`, `generate_ota_manifest_plist`, `get_lan_ip` |
-| `automation/` | Mobile automation suite: Wireless ADB device discovery and parallel push (`adb_manager.py`), compilation bottleneck profiler (`build_profiler.py`), silent dependency cache warmer (`cache_warmer.py`), and GitHub Actions cloud CI runner (`github_actions.py`) | `get_adb_devices`, `connect_wireless_adb`, `push_apk_to_devices`, `get_job_build_profile`, `get_cache_warmer_status`, `trigger_cache_warm`, `start_cache_warmer_daemon`, `dispatch_workflow` |
+| `metadata/` | Store metadata editor and mobile update card preview (`store_metadata.py`); optional multi-language per-build release notes, app languages, store-language lookup and per-build publish (`release_notes.py`); TestFlight notes updater running the fixed `update_testflight_notes` lane (`notes_updater.py`) | `get_store_metadata`, `save_store_metadata`, `preview_store_card`, `get_release_notes`, `save_release_notes`, `resolve_notes_map`, `get_app_locales`, `set_app_locales`, `fetch_store_locales`, `update_build_notes`, `update_testflight_notes` |
+| `artifacts/` | Local APK/AAB/IPA build artifact scanning, safe path resolution, file metadata extraction, Apple OTA `manifest.plist` generation, local download endpoints, and Crash Symbol Vault (`symbols.py`, `scanner.py`, `distributor.py`, `download_tokens.py`, `network.py`) | `find_apk_artifact`, `find_ipa_artifact`, `resolve_safe_apk_path`, `resolve_safe_ipa_path`, `get_apk_download_info`, `get_ipa_download_info`, `generate_ota_manifest_plist`, `scan_symbols`, `package_symbols_zip` |
+| `automation/` | Mobile automation suite: Wireless ADB device discovery (`adb_manager.py`), compilation bottleneck profiler (`build_profiler.py`), silent cache warmer (`cache_warmer.py`), cloud CI runner (`github_actions.py`), and semantic version bumper & conventional commit changelog (`version_bumper.py`) | `get_adb_devices`, `connect_wireless_adb`, `push_apk_to_devices`, `get_job_build_profile`, `get_cache_warmer_status`, `trigger_cache_warm`, `start_cache_warmer_daemon`, `dispatch_workflow`, `get_version_info`, `bump_version`, `generate_changelog` |
 | `qr/` | Pure Python QR code generation (zero external pip dependencies), GF(256) Reed-Solomon engine, SVG/ASCII renderers (`matrix.py`, `renderer.py`) | `generate_qr_matrix`, `generate_qr`, `qr_svg`, `qr_ascii` |
 | `sentinel/` | Expiry sentinel monitors for Apple certificates (.cer/.p12/.mobileprovision), Android Keystores, and Firebase project configuration mismatch checks (`parsers.py`, `apple_sentinel.py`, `android_sentinel.py`, `firebase_sentinel.py`, `runner.py`) | `check_app_sentinel`, `check_workspace_sentinel`, `check_apple_expiry`, `check_android_keystore_expiry`, `check_firebase_mismatch` |
 | `build_size/` | Build size archive diffing, historical artifact tracking, uncompressed raw asset detection (`ZIP_STORED` ≥ 500 KB), breakdown by file type (`formatter.py`, `archive_inspector.py`, `history_tracker.py`, `analyzer.py`) | `find_build_artifact`, `inspect_archive_contents`, `compare_build_size`, `inspect_and_diff_job`, `get_build_size_info` |
-| `doctor/` | Pre-flight App Doctor diagnostic suite checking Flutter, Java, Xcode, CocoaPods, Fastlane, Melos, Git, environment sanity (`tool_checks.py`, `project_checks.py`, `runner.py`) | `diagnose_app` |
+| `doctor/` | Pre-flight App Doctor diagnostics (`tool_checks.py`, `project_checks.py`, `runner.py`), pre-release deep link & universal link validator (`deep_links.py`), and mobile permissions & security inspector (`permissions.py`) | `diagnose_app`, `extract_android_domains`, `extract_ios_domains`, `validate_app_deep_links`, `verify_android_assetlinks`, `verify_apple_aasa`, `inspect_app_security`, `scan_android_security`, `scan_ios_security` |
 | `picker.py` | Native folder/file dialogs (`osascript` on macOS, `zenity` on Linux); remembers chosen folders for inspection | `pick_path`, `was_picked` |
 | `p8.py` | `.p8` upload endpoint, delegating to `credentials.py` | `upload_p8_key` |
 
@@ -276,13 +283,19 @@ Every tracked file and what it owns. Paths are relative to the repository root.
 
 | File | What it owns |
 |---|---|
-| `index.html` | Page layout: header, Projects bar, app grid + packages list, environment tabs, command cards, *Ready to execute*, Live Terminal / History; banners for APK/IPA/Profiler; **Import Project** dialog; **Configure** dialog with tabs (General, Keys, iOS, Android, Firebase, Release, Webhooks, Pipelines, Cloud CI) |
-| `app.js` | Fetch wrapper (adds `X-API-Token` and the tab's `X-Workspace`), project tabs (`selectProject`), apps/commands loading and grouping, job run/poll/stop, history, Import Project dialog (`inspectImportFolder`) |
-| `setup.js` | Configure dialog orchestrator: app sidebar, tabs (`showSetupTab`), form load/save, auto-scan, `.p8` dropzone, credential status (`loadCredentialStatus`), Play key upload, folder scan and import (`runCredentialScan`, `importScanned`), native picker helper (`pickNativePath`) |
-| `styles.css` | Dashboard styles on top of the UI kit: Import result, Configure tabs, status dots, banner animations |
+| `index.html` | Page layout: header, Projects bar, Tools bar (Deep Links, Store Notes, Symbols, Version, Security), app grid, command cards, Live Terminal; modal dialogs; Configure tabs |
+| `app.js` | Fetch wrapper (adds `X-API-Token` and `X-Workspace`), project tabs, apps/commands loading, job run/poll/stop, history, upload keys preview, clean build toggle |
+| `setup.js` | Configure dialog orchestrator: app sidebar, tabs (`showSetupTab`), form load/save, auto-scan, `.p8` dropzone, credential status, Play key upload, folder scan and import |
+| `styles.css` | Dashboard styles on top of the UI kit: Import result, Configure tabs, status dots, banner animations, tools bar |
 | `modules/dashboard/app_workspace.js` | Project folder import inspector, layout detection preview, and multi-workspace tab switcher |
 | `modules/dashboard/app_sentinel.js` | Signing certificate & keystore expiration sentinel alerts, warnings banner, and expiration details modal |
 | `modules/dashboard/app_doctor.js` | Pre-flight App Doctor diagnostics runner, categorized health checks, and actionable fix recommendations |
+| `modules/dashboard/app_deep_links.js` | Pre-release Deep Link & Universal Link Validator testing live AssetLinks and Apple AASA endpoints |
+| `modules/dashboard/app_release_notes.js` | Release-notes editor component: inline in the Run panel (no confirmation) and in the History "Release notes" dialog; language chips, last-build reuse, store-language fetch, iOS publish |
+| `modules/dashboard/app_metadata.js` | Store Metadata & Localized Release Notes editor, 500-char Play Store limit enforcement, and update card mockup |
+| `modules/dashboard/app_symbols.js` | Zero-Friction Crash Symbol Vault table, ProGuard mapping / dSYM file details, and 1-click zip export |
+| `modules/dashboard/app_version_bump.js` | Semantic version bumper (+1 Patch, Minor, Major, Build) and Conventional Commit Markdown & Play Store notes generator |
+| `modules/dashboard/app_security.js` | Mobile Security & Dangerous Permissions Inspector checking Android manifests and Apple privacy strings |
 | `modules/dashboard/app_apk_qr.js` | Local APK and iOS IPA artifact detection, download buttons, and camera QR scan-to-install modal overlays |
 | `modules/dashboard/app_adb.js` | Wireless & USB ADB device detection, Wi-Fi device pairing, and multi-threaded parallel APK push modal |
 | `modules/dashboard/app_profiler.js` | Build Time Profiler modal, visual segmented heatmap progress bar, bottleneck detection cards, and phase timings |
@@ -320,14 +333,15 @@ Every tracked file and what it owns. Paths are relative to the repository root.
 
 | File | What it owns |
 |---|---|
-| `run_build.sh` | Main CLI entrypoint `run_build.sh <action> <app> <env>`: resolves project root, sources `core/json_utils.sh`, executes action |
+| `run_build.sh` | Main CLI entrypoint `run_build.sh <action> <app> <env>`: resolves project root, sources `core/json_utils.sh`, forces a UTF-8 locale when none is set (CocoaPods/fastlane crash otherwise), executes action |
 | `core/json_utils.sh` | Modular coordinator hub sourcing domain core scripts and platform utilities |
 | `core/melos_runner.sh` | Melos script detection, naming, argument resolution, and fallback direct execution (`runMelosOrDirect`) |
 | `core/fastlane_utils.sh` | Deployment Fastlane folder and Fastfile locators (`resolveDeploymentFastlaneDir`) |
 | `core/project_resolver.sh` | App folder, package name, service account, and JSON configuration extractors (`resolveAppDir`, `resolvePlayServiceAccount`, `resolveAndroidPackageName`, `getValueByKey`, `exportAppContents`) |
-| `core/retry_utils.sh` | Resilient store upload retry engine with exponential backoff and duplicate-version short-circuiting (`_retryUpload`) |
+| `core/retry_utils.sh` | Resilient store upload retry engine (`_retryUpload`): retries transient failures up to 3x, then classifies each failure using `core/known_store_errors.tsv`; kills its watchdog `sleep` so the output pipe closes promptly |
+| `core/known_store_errors.tsv` | Known store errors, one per line: `class<TAB>pattern (ERE)<TAB>hint`. `duplicate` = already uploaded, treated as success; `permanent` = retrying cannot help, fail at once and print the hint. Add a line to teach the tool a new error; override the path with `KNOWN_STORE_ERRORS_FILE` |
 | `core/release_commands.sh` | Release tool CLI wrappers (`releasePreview`, `releaseChangelog`, `releaseCommit`, `releaseTag`, `releasePush`, `releaseBumpPatch`, `releaseUndo`) |
-| `core/multiplatform.sh` | Combined Android + iOS build and deploy orchestrator sharing a single version bump (`deployBothPlatforms`) |
+| `core/multiplatform.sh` | Combined Android + iOS build and deploy orchestrator sharing a single version bump (`deployBothPlatforms`); iOS still runs if Android fails, and both exit codes are reported |
 | `core/build_profiles.json` | Named build profiles & environment configurations |
 | `json_utils.sh` | Backward-compatibility delegator sourcing `core/json_utils.sh` |
 
@@ -339,7 +353,7 @@ Every tracked file and what it owns. Paths are relative to the repository root.
 |---|---|
 | `android/android_utils.sh` | Coordinator hub: sources `android_diagnostics.sh`, `android_build.sh`, `android_upload.sh`; holds `flutterAndroidFlavor`, `findAabFile`, `buildAndUploadAndroid`, `deployAAB` |
 | `android/android_build.sh` | Pure build automation: `buildAAB`, `buildAABRaw`, clean build wipe, JDK resolution, Dart defines generation |
-| `android/android_upload.sh` | Google Play Store uploads: `runWithAndroidEnv`, `uploadAndroid`, `uploadAAB`, retry wrapper integration |
+| `android/android_upload.sh` | Google Play Store uploads: `runWithAndroidEnv`, `uploadAndroid`, `uploadAAB`, `verifyAabPackage`, `preflightAabForegroundService` (warns before upload if the AAB declares foreground-service permissions; needs `bundletool`, never blocks), retry wrapper integration |
 | `android/android_diagnostics.sh` | Error messages (missing AAB, missing service account with all lookup locations, upload failures) |
 
 ---
@@ -410,7 +424,7 @@ Every tracked file and what it owns. Paths are relative to the repository root.
 
 | File | What it owns |
 |---|---|
-| `Fastfile` | Lanes `android upload_android` (Play `internal` track, `SERVICE_ACCOUNT_JSON` path or raw JSON) and `ios testflight_build` |
+| `Fastfile` | Lanes `android upload_android` (Play `internal` track, `SERVICE_ACCOUNT_JSON` path or raw JSON, per-language `release_notes` from `RELEASE_NOTES_JSON`), `android list_locales`, `ios testflight_build` (per-language `localized_build_info`), `ios update_testflight_notes` (notes of an already-uploaded build), `ios list_locales`; shared helpers `asc_api_key`, `notes_by_locale` |
 | `Gemfile`, `Gemfile.lock` | Fastlane dependencies |
 | `README.md` | Generated by fastlane |
 

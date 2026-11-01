@@ -579,6 +579,8 @@ function updateExecutionPanel() {
         els.iosCertBanner.classList.add('hidden');
         if (els.uploadKeyInfo) els.uploadKeyInfo.classList.add('hidden');
         if (els.cleanBuildRow) els.cleanBuildRow.classList.add('hidden');
+        const notesPanel = document.getElementById('runNotesPanel');
+        if (notesPanel) notesPanel.classList.add('hidden');
         return;
     }
 
@@ -600,10 +602,13 @@ function updateExecutionPanel() {
         els.iosCertBanner.classList.add('hidden');
         if (els.uploadKeyInfo) els.uploadKeyInfo.classList.add('hidden');
         if (els.cleanBuildRow) els.cleanBuildRow.classList.add('hidden');
+        const notesPanelP = document.getElementById('runNotesPanel');
+        if (notesPanelP) notesPanelP.classList.add('hidden');
         return;
     }
 
     els.runButton.querySelector('span').textContent = 'Run';
+    if (typeof refreshRunNotesPanel === 'function') refreshRunNotesPanel();
     const command = resolvedCommandForExecution();
     const canUseCloudRunner = state.selectedCommand.platform === 'android' ||
         ['build_aab', 'build_apk', 'deploy_aab', 'upload_aab'].includes(state.selectedCommand.templateId);
@@ -839,6 +844,14 @@ function startTimer() {
     }, 500);
 }
 
+function formatDuration(totalSeconds) {
+    const h = Math.floor(totalSeconds / 3600);
+    const m = Math.floor((totalSeconds % 3600) / 60);
+    const s = totalSeconds % 60;
+    if (h) return `${h}h ${m}m ${s}s`;
+    return m ? `${m}m ${s}s` : `${s}s`;
+}
+
 function stopTimer() {
     if (state.timerId) clearInterval(state.timerId);
     state.timerId = null;
@@ -885,6 +898,7 @@ async function executeSelected(confirmed = false) {
                 flavor: state.selectedCommand.flavor || '',
                 confirmed: !!confirmed,
                 cleanBuild: cleanBuildForRequest(),
+                releaseNotes: (typeof collectRunNotes === 'function') ? collectRunNotes() : undefined,
             }),
         });
         const data = await res.json();
@@ -973,6 +987,11 @@ function finishExecution() {
     state.pipelineLastStepIndex = 0;
     els.runButton.disabled = false;
     els.stopJobBtn.disabled = true;
+    if (state.timerId && state.timerStartedAt) {
+        const total = Math.floor((Date.now() - state.timerStartedAt) / 1000);
+        els.executionTimer.textContent = formatDuration(total);
+        writeTerminal(`⏱ Total time: ${formatDuration(total)}`, 'muted');
+    }
     stopTimer();
 }
 
@@ -1181,11 +1200,12 @@ function renderHistory() {
         const chained = entry.chainedJobId ? ` · chained → ${escapeHtml(entry.chainedJobId)}` : '';
         const excerpt = entry.errorExcerpt || entry.outputExcerpt || '';
         const apkBtn = entry.artifact ? ` · <button type="button" class="ui-button" data-variant="secondary" data-size="xs" style="padding:1px 6px; font-size:11px; color:#10b981;" onclick="openQrModalForTarget('${escapeHtml(entry.id)}', '${escapeHtml(entry.app || '')}', '${escapeHtml(entry.flavor || '')}')"><i data-lucide="qr-code" style="width:12px;height:12px;"></i> APK QR</button>` : '';
+        const notesBtn = (entry.platform && entry.status === 'success') || /upload|deploy|release|testflight/i.test(entry.templateId || '') ? ` · <button type="button" class="ui-button" data-variant="secondary" data-size="xs" style="padding:1px 6px; font-size:11px;" onclick="openReleaseNotesForHistory('${escapeHtml(entry.id)}')"><i data-lucide="file-text" style="width:12px;height:12px;"></i> Release notes</button>` : '';
         const bsBtn = (entry.buildSize || entry.artifact) ? ` · <button type="button" class="ui-button" data-variant="secondary" data-size="xs" style="padding:1px 6px; font-size:11px;" onclick="openBuildSizeModalForTarget('${escapeHtml(entry.id)}', '${escapeHtml(entry.app || '')}', '${escapeHtml(entry.flavor || '')}')"><i data-lucide="package" style="width:12px;height:12px;"></i> ${escapeHtml(entry.buildSize ? entry.buildSize.summary : ((entry.artifact.type || 'Size') + ': ' + (entry.artifact.sizeFormatted || '')))}</button>` : '';
         return `
             <div class="terminal-line history-row">
                 <span class="${statusClass}">${escapeHtml((entry.status || '').toUpperCase())}</span>
-                &nbsp;${escapeHtml(time)} · ${escapeHtml(entry.app || '')} · ${escapeHtml(entry.templateId || '')} · ${escapeHtml(entry.flavor || '')} · ${duration} · #${escapeHtml(entry.id || '')}${chained}${apkBtn}${bsBtn}
+                &nbsp;${escapeHtml(time)} · ${escapeHtml(entry.app || '')} · ${escapeHtml(entry.templateId || '')} · ${escapeHtml(entry.flavor || '')} · ${duration} · #${escapeHtml(entry.id || '')}${chained}${apkBtn}${bsBtn}${notesBtn}
                 ${excerpt ? `<pre class="history-excerpt">${escapeHtml(excerpt)}</pre>` : ''}
             </div>
         `;

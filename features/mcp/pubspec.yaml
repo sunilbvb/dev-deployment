@@ -1,0 +1,13 @@
+name: dev_deployment_mcp
+description: MCP server (stdio) for the Dev Deployment Console.
+publish_to: none
+version: 0.2.0
+
+environment:
+  sdk: ^3.7.0
+
+dependencies:
+  dart_mcp: ^0.5.2
+
+dev_dependencies:
+  test: ^1.25.0

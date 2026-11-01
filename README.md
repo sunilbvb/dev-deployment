@@ -23,7 +23,7 @@ Open `http://localhost:18112`, pick a project tab, select an app, choose an envi
 8. [Pre-flight Diagnostics ("App Doctor")](#-pre-flight-diagnostics-app-doctor)
 9. [Certificate & Keystore Expiry Sentinel](#-certificate--keystore-expiry-sentinel)
 10. [Build Size Inspector & Uncompressed Asset Diff](#-build-size-inspector--uncompressed-asset-diff)
-11. [Building & Store Deployments](#-building--store-deployments)
+11. [Building & Store Deployments](#-building--store-deployments) (incl. [Release Notes](#-release-notes))
 12. [Artifact Distribution: Local APK Hosting & Instant iOS OTA QR](#-artifact-distribution-local-apk-hosting--instant-ios-ota-qr)
 13. [Wireless ADB Multi-Device Push (Instant Test Desk Sync)](#-wireless-adb-multi-device-push-instant-test-desk-sync)
 14. [Build Time Profiler & Compilation Bottleneck Heatmap](#-build-time-profiler--compilation-bottleneck-heatmap)
@@ -45,6 +45,12 @@ Open `http://localhost:18112`, pick a project tab, select an app, choose an envi
 - **Zero-Terminal Startup:** 1-click desktop shortcut creation (`.desktop`) and systemd user login daemon to run in background automatically.
 - **Interactive Offline Demo Mode:** Explore, test simulated builds, diagnostics, and size diffs without running the backend server.
 - **Pre-flight "App Doctor":** 12+ diagnostic checks (Flutter SDK, Android SDK, CocoaPods, keystores, provisioning profiles, Git cleanliness, Firebase configs) catching issues before long builds.
+- **Pre-Release Deep Link & Universal Link Validator:** Live `assetlinks.json` & `apple-app-site-association` verification, intent-filter inspection, and universal domain health audits.
+- **Optional multi-language release notes:** shipped with every Play / TestFlight upload (never blocks a build), added inline in the Run panel, reused from the last build, and fixed later from History (iOS can publish to the TestFlight build). See [Release notes](#-release-notes).
+- **Store Metadata & Localized Release Notes Previewer:** Fastlane metadata manager with character limit checks and live Google Play & App Store update card mockups.
+- **Crash Symbol Vault (dSYM & ProGuard Mappings):** Discovers ProGuard/R8 `mapping.txt` and Apple `.dSYM` archives with SHA-256 integrity digests and 1-click in-memory ZIP export.
+- **Git Auto-Changelog & Semantic Version Bumper:** 1-click semantic version bump (+1 Patch, Minor, Major, Build) preserving `pubspec.yaml` comments and grouped changelog preview.
+- **APK / IPA Security & Dangerous Permissions Inspector:** Audits `AndroidManifest.xml` and `Info.plist` for dangerous runtime permissions, cleartext HTTP traffic, and missing Apple privacy strings.
 - **Certificate & Keystore Expiry Sentinel:** Proactive alerts when Apple `.p8` keys, distribution certificates, or Android keystores expire within 30 days, or when Firebase project IDs mismatch.
 - **Build Size Inspector & Diff:** Analyzes AAB/APK ZIP central directories without disk extraction. Displays deltas (`AAB: 24.2 MB (+3.8 MB, +18%) ⚠️`) and warns if raw uncompressed assets (`ZIP_STORED` ≥ 500 KB) are packaged.
 - **Instant iOS OTA QR Install:** Serve native Apple `itms-services://?action=download-manifest` and `manifest.plist` over HTTPS to install development/ad-hoc IPAs on iPhones via QR code in 10s (bypassing the 25-minute TestFlight processing delay).
@@ -275,6 +281,21 @@ Powered by `release_changelog_tagger.dart`:
 
 ---
 
+## 📝 Release Notes
+
+Notes are **optional** — a build or upload never fails because they are missing.
+
+- **Add them when you run.** Selecting an upload command shows a collapsible *Release notes* box under the command. It is autofilled (this build's notes, else the shared default, else the last build's), so you can edit it, clear it, or press *Use last build's notes*. Clicking **Run** starts immediately — notes never add a confirmation.
+- **Languages are per app.** Use the language chips (e.g. `en-US`, `de-DE`) to add or remove languages, or **Languages from store** to read what the Play / App Store listing already supports. Each language has its own text and character counter (Play 500, App Store 4000).
+- **Other ways in.** Set `RELEASE_NOTES_JSON='{"en-US":"…","de-DE":"…"}'`, or `RELEASE_NOTES` (plain text, first language), or keep files in the fastlane metadata (`changelogs/<build>.txt` / `default.txt` on Android, `release_notes_<build>.txt` / `release_notes.txt` on iOS). Priority: Run panel → `RELEASE_NOTES_JSON` → `RELEASE_NOTES` → per-build file → default file.
+- **Fix them later.** In **History**, press **Release notes** on an upload: you see the notes (or add them), edit per language and **Save**. On iOS, **Save & publish to TestFlight** pushes them to that build.
+- **Android limit.** Google Play cannot edit the notes of an already-published release, so on Android *Save* keeps them for the next upload only. (Uploads stay `completed`; there is no draft mode.)
+- **TestFlight timing.** Uploads that carry notes wait for Apple to finish processing so the notes attach, which makes them slower.
+
+Status and the pending list: [docs/proposals/0003-release-notes.md](docs/proposals/0003-release-notes.md).
+
+---
+
 ## 🔔 Universal Webhooks: Multi-Destination Channels & CI/CD Ingestion
 
 Broadcast deployment outcomes and trigger automated builds from any third-party system:
@@ -344,6 +365,8 @@ All dashboard styling originates from **`developer-dashboard-ui`** (`frontend/de
 | `DEPLOYMENT_TMP_DIR` | System tmp | Directory for ephemeral build logs |
 | `WEBHOOK_SECRET` | None | Shared secret for CI webhook triggers |
 | `GOOGLE_CHAT_WEBHOOK_URL` | None | Webhook URL for Google Chat notifications |
+| `RELEASE_NOTES_JSON` | None | Release notes per language for an upload, e.g. `{"en-US":"…","de-DE":"…"}` (the Run panel sets it per job) |
+| `RELEASE_NOTES` | None | Plain-text release notes for the app's first language |
 
 ---
 

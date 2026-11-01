@@ -96,11 +96,65 @@ getProfileValue() {
             config_file="$root/features/deployment/scripts/build_profiles.json"
         fi
     fi
-    if [ ! -f "$config_file" ]; then
-        return 1
+    local value=""
+    if [ -f "$config_file" ]; then
+        value="$(python3 -c "import json; print(json.load(open('$config_file')).get('$profile', {}).get('$key', ''))" 2>/dev/null || true)"
     fi
-    
-    python3 -c "import json; print(json.load(open('$config_file')).get('$profile', {}).get('$key', ''))" 2>/dev/null
+    if [ -z "$value" ]; then
+        value="$(profileFallbackValue "$profile" "$key")"
+    fi
+    # app_name is read first by every profile-based entry point, so report an
+    # unresolvable profile once here instead of letting a vague "must be
+    # provided" error be the only hint.
+    if [ -z "$value" ] && [ "$key" = "app_name" ]; then
+        explainUnresolvedProfile "$profile" "$config_file" >&2
+    fi
+    echo "$value"
+}
+
+#------------------------------------------------------------------------------
+# explainUnresolvedProfile - tell the user why <profile> could not be resolved
+# and how to fix it.
+#------------------------------------------------------------------------------
+explainUnresolvedProfile() {
+    local profile="$1" config_file="${2:-}"
+    echo "Error: build profile '$profile' could not be resolved."
+    if [ -z "$config_file" ] || [ ! -f "$config_file" ]; then
+        echo "  - build_profiles.json was not found, so no profiles are defined."
+    else
+        echo "  - '$profile' is not defined in $config_file"
+    fi
+    case "$profile" in
+        *_*) echo "  - '${profile%_*}' (from '<APP>_<ENV>') does not match an app folder in the current workspace." ;;
+        *)   echo "  - The name is not in '<APP>_<ENV>' form (for example GYO_DEV), so no app could be derived." ;;
+    esac
+    echo "  Fix: select the right project in the console, add a '$profile' entry to build_profiles.json,"
+    echo "       or call the command with explicit arguments (<app_name> <env_name> ...) instead of a profile name."
+}
+
+#------------------------------------------------------------------------------
+# profileFallbackValue - derive profile values from a "<APP>_<ENV>" name (e.g.
+# GYO_DEV) when it is not listed in build_profiles.json. The app must resolve
+# to a real app folder in the workspace.
+#------------------------------------------------------------------------------
+profileFallbackValue() {
+    local profile="$1" key="$2"
+    case "$profile" in *_*) ;; *) return 0 ;; esac
+    local app_part="${profile%_*}" env_name app_name
+    env_name="$(echo "${profile##*_}" | tr '[:upper:]' '[:lower:]')"
+    app_name="$(echo "$app_part" | tr '[:upper:]' '[:lower:]')"
+    local app_dir root
+    app_dir="$(resolveAppDir "$app_name")"
+    root="${WORKSPACE_ROOT:-${MELOS_ROOT_PATH:-$(pwd)}}"
+    # An unknown app id resolves to the workspace root itself; reject that.
+    if [ ! -d "$app_dir" ] || [ "$(cd "$app_dir" && pwd -P)" = "$(cd "$root" && pwd -P)" ]; then
+        return 0
+    fi
+    case "$key" in
+        app_name)    echo "$app_name" ;;
+        env_name)    echo "$env_name" ;;
+        secret_file) echo "$env_name.json" ;;
+    esac
 }
 
 #------------------------------------------------------------------------------
@@ -120,6 +174,44 @@ PY
 )"
     # Never return empty: `cd ""` would silently stay in the current directory.
     echo "${resolved:-$root/apps/$1}"
+}
+
+#------------------------------------------------------------------------------
+# resolveReleaseNotes - release notes per language for a build, as JSON
+# ({"en-US": "...", "de-DE": "..."}; "{}" when there are none).
+# USAGE: resolveReleaseNotes <app_id> <android|ios>
+# Order: $RELEASE_NOTES_JSON (dashboard / API), $RELEASE_NOTES (plain text,
+# first app language), then the app's fastlane metadata files.
+#------------------------------------------------------------------------------
+resolveReleaseNotes() {
+    local backend_dir out
+    backend_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../backend" >/dev/null 2>&1 && pwd)"
+    out="$(WORKSPACE_ROOT="${WORKSPACE_ROOT:-${MELOS_ROOT_PATH:-$(pwd)}}" \
+        "${DEPLOYMENT_PYTHON:-python3}" - "$backend_dir" "$(resolveAppDir "$1")" "$2" "$1" <<'PY' 2>/dev/null
+import json, sys
+from pathlib import Path
+sys.path.insert(0, sys.argv[1])
+from metadata import release_notes
+print(json.dumps(release_notes.resolve_notes_map(Path(sys.argv[2]), sys.argv[3], app_id=sys.argv[4]), ensure_ascii=False))
+PY
+)"
+    echo "${out:-{\}}"
+}
+
+#------------------------------------------------------------------------------
+# exportReleaseNotes - export RELEASE_NOTES_JSON for the upload step.
+# Release notes are optional: with none, the upload simply goes without them.
+# USAGE: exportReleaseNotes <app_id> <android|ios>
+#------------------------------------------------------------------------------
+exportReleaseNotes() {
+    local notes_json
+    notes_json="$(resolveReleaseNotes "$1" "$2")"
+    if [ "$notes_json" = "{}" ]; then
+        echo "ℹ️  No release notes for $1 ($2); uploading without them (add them in the dashboard to include them)."
+    else
+        echo "📝 Release notes ($(printf '%s' "$notes_json" | wc -c | tr -d ' ') bytes of JSON) will be sent with the $2 upload."
+    fi
+    export RELEASE_NOTES_JSON="$notes_json"
 }
 
 #------------------------------------------------------------------------------

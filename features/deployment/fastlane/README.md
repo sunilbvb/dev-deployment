@@ -23,6 +23,14 @@ For _fastlane_ installation instructions, see [Installing _fastlane_](https://do
 
 Upload AAB to Google Play Store
 
+### android list_locales
+
+```sh
+[bundle exec] fastlane android list_locales
+```
+
+List the languages of the Play Store listing (writes JSON to LOCALES_OUT)
+
 ----
 
 
@@ -35,6 +43,22 @@ Upload AAB to Google Play Store
 ```
 
 Upload IPA to TestFlight
+
+### ios update_testflight_notes
+
+```sh
+[bundle exec] fastlane ios update_testflight_notes
+```
+
+Set the "What to Test" notes of an already-uploaded build (IOS_BUNDLE_ID, IOS_BUILD_NUMBER, RELEASE_NOTES)
+
+### ios list_locales
+
+```sh
+[bundle exec] fastlane ios list_locales
+```
+
+List the languages of the App Store listing (writes JSON to LOCALES_OUT)
 
 ----
 

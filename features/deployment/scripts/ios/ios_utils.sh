@@ -95,7 +95,7 @@ findIpaFile() {
     
     # Error handling when no IPA found
     if [ -z "${ipa_path:-}" ] || [ ! -f "$ipa_path" ]; then
-        print_ipa_not_found_error "$search_dir"
+        print_ipa_not_found_error "$search_dir" >&2
         return 1
     fi
     

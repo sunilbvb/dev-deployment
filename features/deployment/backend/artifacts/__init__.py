@@ -21,6 +21,12 @@ from .scanner import (
     resolve_safe_apk_path,
     resolve_safe_ipa_path,
 )
+from .symbols import (
+    find_android_mappings,
+    find_ios_dsyms,
+    package_symbols_zip,
+    scan_symbols,
+)
 
 __all__ = [
     "find_apk_artifact",
@@ -32,4 +38,8 @@ __all__ = [
     "get_lan_ip",
     "resolve_safe_apk_path",
     "resolve_safe_ipa_path",
+    "find_android_mappings",
+    "find_ios_dsyms",
+    "package_symbols_zip",
+    "scan_symbols",
 ]

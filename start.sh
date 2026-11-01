@@ -2,11 +2,21 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 
-# Verify Python version >= 3.10
-python3 -c 'import sys; sys.exit(0 if sys.version_info >= (3, 10) else 1)' 2>/dev/null || {
+# Find a Python >= 3.10 (system python3 on macOS is often 3.9)
+PYTHON=""
+for cand in python3 python3.14 python3.13 python3.12 python3.11 python3.10 \
+            /opt/homebrew/bin/python3 /usr/local/bin/python3; do
+    if command -v "$cand" >/dev/null 2>&1 && \
+       "$cand" -c 'import sys; sys.exit(0 if sys.version_info >= (3, 10) else 1)' 2>/dev/null; then
+        PYTHON="$(command -v "$cand")"
+        break
+    fi
+done
+if [ -z "$PYTHON" ]; then
     echo "❌ Error: Python 3.10 or higher is required. Found $(python3 --version 2>&1 || echo 'none')."
+    echo "   Install one, e.g.: brew install python@3.12"
     exit 1
-}
+fi
 
 # Load environment variables from .env if present
 if [ -f ".env" ]; then
@@ -50,7 +60,7 @@ if [ -z "${DEPLOYMENT_AUTH_TOKEN:-}" ]; then
         fi
     fi
     if [ -z "${DEPLOYMENT_AUTH_TOKEN:-}" ]; then
-        DEPLOYMENT_AUTH_TOKEN="$(openssl rand -hex 16 2>/dev/null || python3 -c 'import secrets; print(secrets.token_hex(16))')"
+        DEPLOYMENT_AUTH_TOKEN="$(openssl rand -hex 16 2>/dev/null || "$PYTHON" -c 'import secrets; print(secrets.token_hex(16))')"
         echo "$DEPLOYMENT_AUTH_TOKEN" > "$TOKEN_FILE"
         chmod 600 "$TOKEN_FILE"
     fi
@@ -87,4 +97,4 @@ if [ "$OPEN_BROWSER" = "1" ] || [ "${AUTO_OPEN:-0}" = "1" ]; then
     ) &
 fi
 
-exec python3 "features/deployment/backend/server.py" --port "$PORT" ${ARGS[@]+"${ARGS[@]}"}
+exec "$PYTHON" "features/deployment/backend/server.py" --port "$PORT" ${ARGS[@]+"${ARGS[@]}"}

@@ -8,6 +8,12 @@ set -euo pipefail
 # Ensure rbenv, CocoaPods, Dart, Melos, Flutter, and Homebrew binaries are in PATH
 export PATH="$HOME/.rbenv/shims:$HOME/.rbenv/bin:$HOME/.rbenv/versions/3.2.0/bin:$HOME/.pub-cache/bin:$HOME/fvm/default/bin:$HOME/development/flutter/bin:/opt/homebrew/bin:/usr/local/bin:$PATH"
 
+# CocoaPods/fastlane crash on a non-UTF-8 locale (e.g. when started from a service or IDE)
+case "${LC_ALL:-${LANG:-}}" in
+    *UTF-8*|*utf-8*|*UTF8*|*utf8*) ;;
+    *) export LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8 ;;
+esac
+
 # 1. Dynamically locate workspace root
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
 ROOT="${MELOS_ROOT_PATH:-}"
