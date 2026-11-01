@@ -147,6 +147,27 @@ DOC_REGISTRY: dict[str, dict[str, Any]] = {
         "category": "Proposals & ADRs",
         "file": "docs/proposals/0001-pipelines.md",
     },
+    "proposal-power-action": {
+        "id": "proposal-power-action",
+        "title": "After-Build Power Action (ADR 0002)",
+        "description": "Post-build automated shutdown and sleep power state handling.",
+        "category": "Proposals & ADRs",
+        "file": "docs/proposals/0002-after-build-power-action.md",
+    },
+    "proposal-release-notes": {
+        "id": "proposal-release-notes",
+        "title": "Release Notes Proposal (ADR 0003)",
+        "description": "Multi-language localized release notes and store metadata synchronization.",
+        "category": "Proposals & ADRs",
+        "file": "docs/proposals/0003-release-notes.md",
+    },
+    "proposal-mcp-server": {
+        "id": "proposal-mcp-server",
+        "title": "MCP Server Proposal (ADR 0004)",
+        "description": "Model Context Protocol stdio server specification for AI agent integrations.",
+        "category": "Proposals & ADRs",
+        "file": "docs/proposals/0004-mcp-server.md",
+    },
     "installing": {
         "id": "installing",
         "title": "Installation & Setup Guide",

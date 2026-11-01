@@ -48,6 +48,7 @@ An exhaustive guide to all capabilities available in the Dev Deployment Console.
 
 ## 🚀 Advanced Deployment Automations
 - **Pre-Release Deep Link & Universal Link Validator**: Automatically scans Android manifests and iOS associated domains, querying live `/.well-known/assetlinks.json` and `/.well-known/apple-app-site-association` to verify domain fingerprints before store submission.
+- **Optional Multi-Language Release Notes**: Notes ship with every Play / TestFlight upload (never blocking), are entered inline in the Run panel (autofilled, reusable from the last build, no confirmation), languages are set per app or read from the store listing, and History lets you add/edit a build's notes afterwards (iOS can publish to the TestFlight build; Android is save-only). See `docs/proposals/0003-release-notes.md`.
 - **Store Metadata & Localized Release Notes Previewer**: Full multi-locale Fastlane metadata editor with automated character count validation (enforcing Google Play's 500-char release notes ceiling) and mobile phone update card mockup.
 - **Zero-Friction Crash Symbol Vault**: Discovers and indexes ProGuard/R8 `mapping.txt` and Apple `.dSYM` archives, providing 1-click zip export for Firebase Crashlytics and Sentry symbolication.
 - **Semantic Version Bumper & Git Conventional Changelog**: 1-click pubspec.yaml version bumping (`+1 Patch`, `+1 Minor`, `+1 Major`, `+1 Build`) with automatic Git conventional commit classification into Markdown changelogs and concise store notes.

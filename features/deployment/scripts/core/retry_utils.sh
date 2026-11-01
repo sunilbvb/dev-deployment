@@ -17,21 +17,16 @@ _retryUpload() {
     local max_attempts=3
     local attempt=1
 
-    # Fixed phrases/codes (matched case-insensitively, one line at a time)
-    # that mean "this is not transient - Apple/Google are telling us this
-    # exact build/version already made it to the store".
-    local -a duplicate_version_patterns=(
-        # iOS / altool / Transporter / App Store Connect API
-        "must be higher than the previously uploaded version"
-        "ENTITY_ERROR\.ATTRIBUTE\.INVALID\.DUPLICATE"
-        # iOS - distinct phrasing for same condition (ITMS-90189)
-        "redundant binary upload"
-        "ITMS-90189"
-        # Android / fastlane upload_android / supply
-        "apkNotificationMessageKeyUpgradeVersionConflict"
-        "specifies a version code that has already been used"
-        "version code [0-9]+ has already been used"
-    )
+    # Known errors live in known_store_errors.tsv (class, pattern, hint).
+    local -a err_class=() err_pattern=() err_hint=()
+    local errors_file="${KNOWN_STORE_ERRORS_FILE:-$(dirname "${BASH_SOURCE[0]}")/known_store_errors.tsv}"
+    local _c _p _h
+    if [ -f "$errors_file" ]; then
+        while IFS=$'\t' read -r _c _p _h || [ -n "$_c" ]; do
+            case "$_c" in ""|\#*) continue ;; esac
+            err_class+=("$_c"); err_pattern+=("$_p"); err_hint+=("$_h")
+        done < "$errors_file"
+    fi
 
     while [ "$attempt" -le "$max_attempts" ]; do
         if [ "$attempt" -gt 1 ]; then
@@ -70,6 +65,8 @@ _retryUpload() {
         local watchdog_pid=$!
 
         wait "$pipe_pid" 2>/dev/null
+        # kill the watchdog's pending sleep too, or it keeps our stdout pipe open until it expires
+        pkill -P "$watchdog_pid" 2>/dev/null
         kill "$watchdog_pid" 2>/dev/null
         wait "$watchdog_pid" 2>/dev/null
         [ "$had_monitor" -eq 0 ] && set +m
@@ -86,13 +83,18 @@ _retryUpload() {
             return 0
         fi
 
-        local pattern
-        for pattern in "${duplicate_version_patterns[@]}"; do
-            if grep -qiE "$pattern" "$log_file"; then
+        local i
+        for i in "${!err_class[@]}"; do
+            grep -qiE "${err_pattern[$i]}" "$log_file" || continue
+            if [ "${err_class[$i]}" = "duplicate" ]; then
                 echo "ℹ️  $description: Apple/Google rejected this as a duplicate build/version - it was already uploaded successfully in a prior run, no action needed."
                 rm -f "$log_file"
                 return 0
             fi
+            echo "🛑 $description: retrying cannot fix this error."
+            echo "   Fix: ${err_hint[$i]}"
+            rm -f "$log_file"
+            return 1
         done
 
         rm -f "$log_file"

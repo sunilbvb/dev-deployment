@@ -11,10 +11,14 @@ from .store_metadata import (
     save_store_metadata,
     preview_store_card,
 )
+from .notes_updater import update_testflight_notes
+from . import release_notes
 
 __all__ = [
     "METADATA_LIMITS",
     "get_store_metadata",
     "save_store_metadata",
     "preview_store_card",
+    "update_testflight_notes",
+    "release_notes",
 ]

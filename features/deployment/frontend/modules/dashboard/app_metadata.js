@@ -8,6 +8,7 @@ const metadataState = {
     appId: null,
     platform: 'android',
     locale: 'en-US',
+    version: '',
     data: null,
 };
 
@@ -54,7 +55,15 @@ function renderMetadataEditor() {
     const localesObj = platformData.locales || {};
     const currentMeta = localesObj[locale] || localesObj['en-US'] || {};
 
-    const notesText = platform === 'android' ? (currentMeta.changelog || '') : (currentMeta.releaseNotes || '');
+    const versionNotes = currentMeta.versionNotes || {};
+    const defaultNotes = platform === 'android' ? (currentMeta.changelog || '') : (currentMeta.releaseNotes || '');
+    const notesText = metadataState.version
+        ? (versionNotes[metadataState.version] !== undefined ? versionNotes[metadataState.version] : defaultNotes)
+        : defaultNotes;
+    const versionList = document.getElementById('metaVersionList');
+    if (versionList) versionList.innerHTML = Object.keys(versionNotes).map(v => `<option value="${v.replace(/[&<>"]/g, '')}"></option>`).join('');
+    const pushRow = document.getElementById('metaPushBuildRow');
+    if (pushRow) pushRow.style.display = platform === 'ios' ? '' : 'none';
     const titleText = platform === 'android' ? (currentMeta.title || '') : (currentMeta.name || '');
     const limit = platform === 'android' ? 500 : 4000;
 
@@ -115,6 +124,7 @@ async function saveCurrentMetadata() {
                 locale: metadataState.locale,
                 releaseNotes: notes,
                 title: title,
+                version: metadataState.version,
             }),
         });
         const data = await res.json();
@@ -131,6 +141,43 @@ async function saveCurrentMetadata() {
     }
 }
 
+async function pushBuildNotes() {
+    const textarea = document.getElementById('metaNotesTextarea');
+    const bundleInput = document.getElementById('metaBundleIdInput');
+    const btn = document.getElementById('pushBuildNotesBtn');
+    const appId = metadataState.appId || (window.state && window.state.selectedApp) || '';
+    const bundleId = bundleInput ? bundleInput.value.trim() : '';
+    const buildNumber = metadataState.version;
+    const toast = (m) => { if (typeof showToast === 'function') showToast(m); };
+
+    if (!/^\d+(\.\d+){0,2}$/.test(buildNumber)) { toast('Enter the build number in "Version / build" first.'); return; }
+    if (!bundleId) { toast('Enter the Bundle ID first.'); return; }
+    try { localStorage.setItem('metaBundleId:' + appId, bundleId); } catch (e) { /* storage unavailable */ }
+
+    if (btn) btn.disabled = true;
+    try {
+        const url = (typeof api === 'function') ? api('/api/deployment/metadata/update-build') : '/api/deployment/metadata/update-build';
+        const token = window.__DEPLOYMENT_TOKEN__ || '';
+        const res = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', ...(token ? { 'X-API-Token': token } : {}) },
+            body: jsonPayload({
+                app: appId, bundleId, buildNumber,
+                locale: metadataState.locale,
+                releaseNotes: textarea ? textarea.value : '',
+            }),
+        });
+        const data = await res.json();
+        if (!data.success) throw new Error(data.error || 'Update failed');
+        toast(`✅ TestFlight notes updated for build ${buildNumber}`);
+        await loadStoreMetadata();
+    } catch (err) {
+        toast('❌ ' + err.message);
+    } finally {
+        if (btn) btn.disabled = false;
+    }
+}
+
 function jsonPayload(obj) {
     return JSON.stringify(obj);
 }
@@ -142,6 +189,17 @@ document.addEventListener('DOMContentLoaded', () => {
     if (closeBtn) closeBtn.addEventListener('click', closeMetadataModal);
     const saveBtn = document.getElementById('saveMetadataBtn');
     if (saveBtn) saveBtn.addEventListener('click', saveCurrentMetadata);
+    const pushBtn = document.getElementById('pushBuildNotesBtn');
+    if (pushBtn) pushBtn.addEventListener('click', pushBuildNotes);
+    const versionInput = document.getElementById('metaVersionInput');
+    if (versionInput) versionInput.addEventListener('change', () => {
+        metadataState.version = versionInput.value.trim();
+        renderMetadataEditor();
+    });
+    const bundleInput = document.getElementById('metaBundleIdInput');
+    if (bundleInput) {
+        try { bundleInput.value = localStorage.getItem('metaBundleId:' + (metadataState.appId || (window.state && window.state.selectedApp) || '')) || ''; } catch (e) { /* storage unavailable */ }
+    }
 
     const platformSelect = document.getElementById('metaPlatformSelect');
     if (platformSelect) {

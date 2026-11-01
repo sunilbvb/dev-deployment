@@ -74,7 +74,51 @@ runWithAndroidEnv() {
     SERVICE_ACCOUNT_JSON="$SERVICE_ACCOUNT_JSON" \
     ANDROID_AAB_PATH="${ANDROID_AAB_PATH:-}" \
     ANDROID_PACKAGE_NAME="${ANDROID_PACKAGE_NAME:-}" \
+    RELEASE_NOTES_JSON="${RELEASE_NOTES_JSON:-}" \
     "${cmd[@]}"
+}
+
+#------------------------------------------------------------------------------
+# verifyAabPackage - Pre-flight: the AAB's real package must equal the package we
+# are about to upload to. Catches wrong flavor/package mix-ups locally, before
+# a slow upload that Play would reject ("APK has the wrong package name").
+# USAGE: verifyAabPackage <aab_path> <expected_package>
+#------------------------------------------------------------------------------
+verifyAabPackage() {
+    local aab="$1" expected="$2" actual=""
+    if command -v bundletool >/dev/null 2>&1; then
+        actual="$(bundletool dump manifest --bundle="$aab" --xpath=/manifest/@package 2>/dev/null | tr -d '[:space:]')" || actual=""
+    fi
+    if [ -z "$actual" ]; then
+        echo "⚠️  Could not read the package name from $aab (install bundletool to enable this check); skipping."
+        return 0
+    fi
+    if [ "$actual" != "$expected" ]; then
+        echo "❌ Package mismatch - refusing to upload."
+        echo "   AAB:      $aab"
+        echo "   AAB package:      $actual"
+        echo "   Upload package:   $expected"
+        echo "   Fix: the AAB was built for a different flavor than the one being uploaded."
+        echo "        Rebuild the right flavor, or pass the matching flavor/package explicitly."
+        return 1
+    fi
+    echo "✅ AAB package matches upload target ($actual)"
+}
+
+#------------------------------------------------------------------------------
+# preflightAabForegroundService - Warn (never fails) when the AAB declares
+# foreground-service permissions: Play then requires a Console declaration and
+# rejects the upload without it. Checked before the upload to save a failed run.
+#------------------------------------------------------------------------------
+preflightAabForegroundService() {
+    local aab="$1" found=""
+    command -v bundletool >/dev/null 2>&1 || return 0
+    found="$(bundletool dump manifest --bundle="$aab" 2>/dev/null | grep -oE 'android\.permission\.FOREGROUND_SERVICE[A-Z_]*' | sort -u | tr '\n' ' ')" || true
+    [ -z "$found" ] && return 0
+    echo "⚠️  Preflight: this AAB declares foreground-service permissions: $found"
+    echo "   Play requires the 'Foreground service permissions' declaration (Console > App content) or the upload is rejected."
+    echo "   Not needed? Remove them with tools:node=\"remove\" in the app manifest (plugins merge them in)."
+    return 0
 }
 
 #------------------------------------------------------------------------------
@@ -110,6 +154,8 @@ uploadAndroid() {
         local profile="$1"
         app_name="$(getProfileValue "$profile" "app_name")"
         package_name="$(getProfileValue "$profile" "package_name")"
+        flavor="$(getProfileValue "$profile" "env_name")"
+        if [ "$flavor" = "null" ]; then flavor=""; fi
         if [ -z "$app_name" ] || [ "$app_name" = "null" ]; then
             # No bundled profile: treat APP_ID_FLAVOR (e.g. GYO_BUSINESS_QA) as app + flavor.
             local lower
@@ -172,6 +218,10 @@ uploadAndroid() {
     ANDROID_AAB_PATH="$(pwd)/$raw_aab_path"
     export ANDROID_AAB_PATH
     
+    verifyAabPackage "$ANDROID_AAB_PATH" "$package_name" || return 1
+    preflightAabForegroundService "$ANDROID_AAB_PATH"
+    exportReleaseNotes "$app_name" android
+
     # Set package name
     export ANDROID_PACKAGE_NAME="$package_name"
     
@@ -280,6 +330,9 @@ uploadAAB() {
     raw_aab_path="$(findAabFile)" || exit 2
     ANDROID_AAB_PATH="$(pwd)/$raw_aab_path"
     export ANDROID_AAB_PATH
+    verifyAabPackage "$ANDROID_AAB_PATH" "$package_name" || return 1
+    preflightAabForegroundService "$ANDROID_AAB_PATH"
+    exportReleaseNotes "$app_name" android
     export ANDROID_PACKAGE_NAME="$package_name"
     
     # Change back to workspace root so Fastlane runs with workspace-local Gemfile/paths.

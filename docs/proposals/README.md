@@ -5,6 +5,9 @@ Designed features that are ready to be built. Each proposal explains the problem
 | # | Proposal | Status | Good first step |
 |---|---|---|---|
 | [0001](0001-pipelines.md) | Pipelines — chain commands into a saved workflow | Ready to build | Phase 1, task 1.1 (data model + validation) |
+| [0002](0002-after-build-power-action.md) | After-build power action — screen off / sleep when a long job ends | Ready to build | Phase 1, task 1.1 (action table + validation) |
+| [0003](0003-release-notes.md) | Release notes — optional, multi-language, per build, editable after upload | Mostly built; real-store verification and follow-ups pending | §6 item 1 (verify on a real store) |
+| [0004](0004-mcp-server.md) | MCP server — drive builds in plain English | Prototype built (read + run tools) | §5 (more tools, real-build verification) |
 
 ## How to work on a proposal
 

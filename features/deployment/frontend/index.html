@@ -257,6 +257,10 @@
                     </div>
                 </div>
                 <pre id="selectedCommandPreview"></pre>
+                <details id="runNotesPanel" class="hidden" style="margin: 8px 0;" open>
+                    <summary style="cursor:pointer; font-size:0.8rem; font-weight:600;">Release notes <span style="font-weight:400; color:var(--ui-text-muted);">(optional — sent with the upload, no extra confirmation)</span></summary>
+                    <div id="runNotesEditor" style="margin-top:6px;"></div>
+                </details>
                 <label id="cleanBuildRow" class="clean-build-row hidden">
                     <input type="checkbox" id="cleanBuildToggle">
                     <span><strong>Clean build</strong> — wipe <code>build/</code> first so the build always has your latest code. Untick only for a faster rebuild when nothing changed.</span>
@@ -917,6 +921,37 @@
     </div>
 </div>
 
+<!-- ═══════════════════════════ HISTORY: RELEASE NOTES OF A BUILD ═══════════════════════════ -->
+<div id="releaseNotesOverlay" class="ui-modal-backdrop" role="dialog" aria-modal="true" aria-label="Release notes of a build">
+    <div class="ui-modal" data-size="md" style="max-height: 85vh; display: flex; flex-direction: column;">
+        <div class="ui-modal-header">
+            <div>
+                <h3 class="ui-modal-title">📝 Release notes</h3>
+                <p id="rnHistoryTitle" class="modal-subtitle" style="font-size: 0.8rem; color: var(--ui-text-muted); margin: 0;"></p>
+            </div>
+            <button id="rnCloseBtn" class="ui-modal-close" type="button">&times;</button>
+        </div>
+        <div class="ui-modal-body" style="overflow-y: auto; flex: 1; padding: 16px;">
+            <div style="display:flex; gap:10px; flex-wrap:wrap; margin-bottom:10px;">
+                <div>
+                    <label for="rnVersionInput" style="font-size:0.75rem; font-weight:600; display:block; margin-bottom:2px;">Build number</label>
+                    <input id="rnVersionInput" class="ui-input" placeholder="e.g. 42" style="width:120px;">
+                </div>
+                <div id="rnIdentifierRow" style="flex:1; min-width:200px;">
+                    <label for="rnIdentifierInput" style="font-size:0.75rem; font-weight:600; display:block; margin-bottom:2px;">Bundle ID / package name</label>
+                    <input id="rnIdentifierInput" class="ui-input" placeholder="com.example.app" style="width:100%;">
+                </div>
+            </div>
+            <div id="rnHistoryEditor"></div>
+            <p id="rnAndroidNote" style="display:none; font-size:0.76rem; color:var(--ui-text-muted); margin-top:10px;">Google Play cannot change the notes of an already-published release. Saving keeps them for the next upload of this version.</p>
+            <div style="display:flex; gap:8px; margin-top:12px;">
+                <button id="rnSaveBtn" class="ui-button" data-variant="secondary" data-size="sm" type="button">Save</button>
+                <button id="rnPublishBtn" class="ui-button" data-variant="primary" data-size="sm" type="button">Save &amp; publish to TestFlight</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- ═══════════════════════════ STORE METADATA & RELEASE NOTES PREVIEWER MODAL ═══════════════════════════ -->
 <div id="storeMetadataOverlay" class="ui-modal-backdrop" role="dialog" aria-modal="true" aria-label="Store Metadata & Release Notes">
     <div class="ui-modal" data-size="lg" style="max-height: 85vh; display: flex; flex-direction: column;">
@@ -947,6 +982,11 @@
                         <option value="pt-BR">pt-BR (Portuguese)</option>
                     </select>
                 </div>
+                <div>
+                    <label style="font-size: 0.75rem; font-weight: 600; display: block; margin-bottom: 2px;" for="metaVersionInput">Version / build:</label>
+                    <input type="text" id="metaVersionInput" class="ui-input" list="metaVersionList" placeholder="All builds (default)" title="Build number or version name. Empty = default notes used when a build has none of its own." style="width: 160px;">
+                    <datalist id="metaVersionList"></datalist>
+                </div>
                 <div style="margin-left: auto; text-align: right;">
                     <span id="metaCharCounter" style="font-size: 0.78rem; font-family: monospace;">0 / 500 characters</span>
                 </div>
@@ -964,6 +1004,14 @@
                         <i data-lucide="save"></i>
                         <span>Save Metadata to Fastlane</span>
                     </button>
+                    <div id="metaPushBuildRow" style="display: none; margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--ui-border-color);">
+                        <label style="font-size: 0.75rem; font-weight: 600; display: block; margin-bottom: 4px;" for="metaBundleIdInput">Already uploaded? Update this build's TestFlight notes:</label>
+                        <input type="text" id="metaBundleIdInput" class="ui-input" placeholder="Bundle ID (e.g. com.example.app)" style="width: 100%; margin-bottom: 6px;">
+                        <button id="pushBuildNotesBtn" class="ui-button" data-variant="ghost" data-size="sm" type="button" title="Sends these notes to App Store Connect for the build number in 'Version / build'">
+                            <i data-lucide="send"></i>
+                            <span>Push notes to TestFlight build</span>
+                        </button>
+                    </div>
                 </div>
 
                 <!-- Phone Mockup Card -->
@@ -2831,6 +2879,7 @@ cd dev-deployment
 <script src="modules/dashboard/app_demo.js"></script>
 <script src="modules/dashboard/app_deep_links.js"></script>
 <script src="modules/dashboard/app_metadata.js"></script>
+<script src="modules/dashboard/app_release_notes.js"></script>
 <script src="modules/dashboard/app_symbols.js"></script>
 <script src="modules/dashboard/app_version_bump.js"></script>
 <script src="modules/dashboard/app_security.js"></script>

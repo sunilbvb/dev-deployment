@@ -137,6 +137,13 @@ verify_apple_aasa = doctor.verify_apple_aasa
 get_store_metadata = metadata.get_store_metadata
 save_store_metadata = metadata.save_store_metadata
 preview_store_card = metadata.preview_store_card
+update_testflight_notes = metadata.update_testflight_notes
+get_release_notes = metadata.release_notes.get_release_notes
+save_release_notes = metadata.release_notes.save_release_notes
+update_build_notes = metadata.release_notes.update_build_notes
+set_app_locales = metadata.release_notes.set_app_locales
+fetch_store_locales = metadata.release_notes.fetch_store_locales
+default_identifier = metadata.release_notes.default_identifier
 
 # Feature 3: Crash Symbol Vault
 scan_symbols = artifacts.scan_symbols

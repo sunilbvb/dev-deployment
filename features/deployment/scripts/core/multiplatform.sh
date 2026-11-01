@@ -40,13 +40,21 @@ deployBothPlatforms() {
 
     echo ""
     echo "── Android ──────────────────────────────"
-    deployAAB "$app_name" "$env_name"
+    local android_rc=0 ios_rc=0
+    deployAAB "$app_name" "$env_name" || android_rc=$?
+    if [ "$android_rc" -ne 0 ]; then
+        echo "⚠️  Android deploy failed (exit $android_rc) - continuing with iOS so one store problem does not block the other."
+    fi
 
     echo ""
     echo "── iOS ───────────────────────────────────"
-    deployIPA "$app_name" "$env_name"
+    deployIPA "$app_name" "$env_name" || ios_rc=$?
 
     unset SKIP_VERSION_BUMP
     echo ""
+    if [ "$android_rc" -ne 0 ] || [ "$ios_rc" -ne 0 ]; then
+        echo "❌ Combined deploy finished with failures for '$app_name' ($env_name): Android exit=$android_rc, iOS exit=$ios_rc (build $shared_version)"
+        return 1
+    fi
     echo "✅ Combined deploy complete for '$app_name' ($env_name) — Android + iOS both shipped from build $shared_version"
 }

@@ -12,6 +12,7 @@ A localhost web console that builds, uploads and releases mobile apps for **any*
 ./start.sh                                                     # run (needs Python >= 3.10)
 python3 -m unittest discover -s tests                          # all tests
 dart analyze features/deployment/scripts/release_changelog_tagger.dart
+(cd features/mcp && dart analyze && dart test)                  # MCP server (Dart)
 for f in $(find features/deployment/scripts -name "*.sh"); do bash -n "$f"; done
 ```
 

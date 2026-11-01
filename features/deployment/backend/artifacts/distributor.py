@@ -6,6 +6,8 @@ from pathlib import Path
 from typing import Any, Optional
 from urllib.parse import quote
 
+import os
+
 import qr
 from .network import get_lan_ip
 from .scanner import find_apk_artifact
@@ -128,6 +130,25 @@ def generate_ota_manifest_plist(
 </plist>"""
 
 
+def ota_origin(lan_ip: str, port: int, scheme: str = "https") -> tuple[str, str]:
+    """Origin iPhones should use for OTA installs, plus a warning when it cannot work.
+
+    iOS only installs over HTTPS with a certificate it trusts. DEPLOYMENT_PUBLIC_URL
+    (e.g. a tunnel) wins; otherwise the local server must run with TLS
+    (DEPLOYMENT_TLS_ACTIVE is set by server.py when --tls-cert/--tls-key are given).
+    """
+    public = os.environ.get("DEPLOYMENT_PUBLIC_URL", "").strip().rstrip("/")
+    if public.startswith("https://"):
+        return public, ""
+    if os.environ.get("DEPLOYMENT_TLS_ACTIVE") == "1":
+        return f"{scheme}://{lan_ip}:{port}", ""
+    return f"{scheme}://{lan_ip}:{port}", (
+        "iOS OTA needs HTTPS with a trusted certificate. This server is plain HTTP: set "
+        "DEPLOYMENT_PUBLIC_URL to an https tunnel URL, or start with --tls-cert/--tls-key "
+        "(mkcert) and trust the root CA on the iPhone."
+    )
+
+
 def get_ipa_download_info(
     job_id: Optional[str] = None,
     app_id: Optional[str] = None,
@@ -176,19 +197,25 @@ def get_ipa_download_info(
     bundle_id = app_cfg.get(f"bundle_id_{effective_flavor}") or app_cfg.get("bundle_id") or "com.example.app"
     app_name = app_cfg.get("name") or effective_app or "iOS App"
 
-    ipa_download_url = f"{scheme}://{lan_ip}:{port}/api/deployment/download-ipa/{target_param}{token_query}"
+    origin, ota_warning = ota_origin(lan_ip, port, scheme)
+    ipa_download_url = f"{origin}/api/deployment/download-ipa/{target_param}{token_query}"
     token_param = f"&token={token}" if token else ""
-    manifest_url = f"{scheme}://{lan_ip}:{port}/api/deployment/ota/manifest.plist?target={target_param}{token_param}"
+    manifest_url = f"{origin}/api/deployment/ota/manifest.plist?target={target_param}{token_param}"
+    # The QR encodes a normal https page: iOS Camera ignores bare itms-services:// codes.
+    install_page_url = f"{origin}/api/deployment/ota/install?target={quote(str(target_param), safe='')}{token_param}"
     # The manifest URL has its own query (&token=...), so it must be percent-encoded
     # or iOS treats its parameters as itms-services parameters.
     itms_url = f"itms-services://?action=download-manifest&url={quote(manifest_url, safe='')}"
 
-    qr_svg_markup = qr.qr_svg(itms_url, box_size=6)
-    qr_ascii_art = qr.qr_ascii(itms_url)
+    qr_svg_markup = qr.qr_svg(install_page_url, box_size=6)
+    qr_ascii_art = qr.qr_ascii(install_page_url)
 
     return {
         "success": True,
         "hasIpa": True,
+        "installPageUrl": install_page_url,
+        "otaWarning": ota_warning,
+        "otaReady": not ota_warning,
         "jobId": job_id,
         "app": effective_app,
         "appName": app_name,

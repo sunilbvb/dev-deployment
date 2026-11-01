@@ -3,6 +3,7 @@ import os
 import sys
 import tempfile
 import unittest
+from unittest import mock
 from pathlib import Path
 
 # Add backend directory to sys.path for importing modules
@@ -611,6 +612,38 @@ class TestDeploymentSecurityAndLogic(unittest.TestCase):
         self.assertTrue(checked_at.endswith("+00:00") or checked_at.endswith("Z"))
 
 
+
+class OtaOriginTests(unittest.TestCase):
+    def setUp(self):
+        self._saved = {k: os.environ.pop(k, None) for k in ("DEPLOYMENT_PUBLIC_URL", "DEPLOYMENT_TLS_ACTIVE")}
+
+    def tearDown(self):
+        for k, v in self._saved.items():
+            os.environ.pop(k, None)
+            if v is not None:
+                os.environ[k] = v
+
+    def test_plain_http_server_warns(self):
+        from artifacts.distributor import ota_origin
+        origin, warning = ota_origin("192.168.1.43", 18112)
+        self.assertEqual(origin, "https://192.168.1.43:18112")
+        self.assertIn("HTTPS", warning)
+
+    def test_tls_active_has_no_warning(self):
+        from artifacts.distributor import ota_origin
+        os.environ["DEPLOYMENT_TLS_ACTIVE"] = "1"
+        self.assertEqual(ota_origin("10.0.0.2", 18112)[1], "")
+
+    def test_public_url_wins(self):
+        from artifacts.distributor import ota_origin
+        os.environ["DEPLOYMENT_PUBLIC_URL"] = "https://abc.trycloudflare.com/"
+        self.assertEqual(ota_origin("10.0.0.2", 18112), ("https://abc.trycloudflare.com", ""))
+
+    def test_http_public_url_is_ignored(self):
+        from artifacts.distributor import ota_origin
+        os.environ["DEPLOYMENT_PUBLIC_URL"] = "http://abc.example.com"
+        self.assertNotEqual(ota_origin("10.0.0.2", 18112)[1], "")
+
 if __name__ == "__main__":
     unittest.main()
 
@@ -700,6 +733,149 @@ SERVICE_ACCOUNT = (
     b'{"type": "service_account", "project_id": "demo-proj", "private_key": "-----BEGIN PRIVATE KEY-----\\nX\\n-----END PRIVATE KEY-----\\n",'
     b' "client_email": "deployer@demo-proj.iam.gserviceaccount.com"}'
 )
+
+
+class TestProfileFallback(unittest.TestCase):
+    """getProfileValue derives app/env from <APP>_<ENV> for unlisted profiles."""
+
+    def _lookup(self, root: Path, profile: str, key: str) -> str:
+        import subprocess
+        script = Path(__file__).resolve().parent.parent / "features/deployment/scripts/core/project_resolver.sh"
+        env = dict(os.environ, WORKSPACE_ROOT=str(root))
+        out = subprocess.run(
+            ["bash", "-c", f'source "{script}"; getProfileValue {profile} {key}'],
+            capture_output=True, text=True, env=env, cwd=str(root),
+        )
+        self.assertEqual(out.returncode, 0, out.stderr)
+        return out.stdout.strip()
+
+    def test_unlisted_profile_is_derived_from_app_and_env(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _flutter_app(root / "apps" / "gyo", "gyo")
+            self.assertEqual(self._lookup(root, "GYO_DEV", "app_name"), "gyo")
+            self.assertEqual(self._lookup(root, "GYO_DEV", "env_name"), "dev")
+            self.assertEqual(self._lookup(root, "GYO_DEV", "secret_file"), "dev.json")
+
+    def test_upload_android_unlisted_profile_uses_flavor_package(self):
+        import subprocess
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _flutter_app(root / "apps" / "gyo", "gyo")
+            self.assertEqual(self._lookup(root, "GYO_QA", "env_name"), "qa")
+            script = Path(__file__).resolve().parent.parent / "features/deployment/scripts/android/android_upload.sh"
+            text = script.read_text()
+            self.assertIn('flavor="$(getProfileValue "$profile" "env_name")"', text)
+
+    def test_retry_utils_fails_fast_on_wrong_package_name(self):
+        text = (Path(__file__).resolve().parent.parent / "features/deployment/scripts/core/known_store_errors.tsv").read_text()
+        self.assertIn("APK has the wrong package name", text)
+
+    def test_upload_scripts_verify_aab_package_before_upload(self):
+        text = (Path(__file__).resolve().parent.parent / "features/deployment/scripts/android/android_upload.sh").read_text()
+        self.assertGreaterEqual(text.count('verifyAabPackage "$ANDROID_AAB_PATH"'), 2)
+
+    def test_unresolved_profile_explains_why(self):
+        import subprocess
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _flutter_app(root / "apps" / "gyo", "gyo")
+            script = Path(__file__).resolve().parent.parent / "features/deployment/scripts/core/project_resolver.sh"
+            out = subprocess.run(
+                ["bash", "-c", f'source "{script}"; getProfileValue NOPE_DEV app_name'],
+                capture_output=True, text=True,
+                env=dict(os.environ, WORKSPACE_ROOT=str(root)), cwd=str(root),
+            )
+            self.assertEqual(out.returncode, 0)
+            self.assertIn("build profile 'NOPE_DEV' could not be resolved", out.stderr)
+            self.assertIn("Fix:", out.stderr)
+            # a resolvable profile stays silent
+            _flutter_app(root / "apps" / "nope", "nope")
+            ok = subprocess.run(
+                ["bash", "-c", f'source "{script}"; getProfileValue NOPE_DEV app_name'],
+                capture_output=True, text=True,
+                env=dict(os.environ, WORKSPACE_ROOT=str(root)), cwd=str(root),
+            )
+            self.assertEqual(ok.stderr, "")
+
+    def test_unknown_app_stays_empty(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _flutter_app(root / "apps" / "gyo", "gyo")
+            self.assertEqual(self._lookup(root, "NOPE_DEV", "app_name"), "")
+
+
+class TestRetryUploadFailFast(unittest.TestCase):
+    """_retryUpload must not retry store configuration errors."""
+
+    def _run(self, message: str):
+        import subprocess
+        script = Path(__file__).resolve().parent.parent / "features/deployment/scripts/core/retry_utils.sh"
+        with tempfile.TemporaryDirectory() as tmp:
+            counter = Path(tmp) / "count"
+            body = (
+                f'source "{script}"; '
+                f'runner() {{ echo x >> "{counter}"; echo "{message}"; return 1; }}; '
+                '_retryUpload "Play Store upload" runner arg || echo "rc=$?"'
+            )
+            out = subprocess.run(["bash", "-c", body], capture_output=True, text=True, cwd=tmp)
+            attempts = len(counter.read_text().split()) if counter.exists() else 0
+            return out.stdout, attempts
+
+    def test_foreground_service_error_fails_fast_with_hint(self):
+        out, attempts = self._run(
+            "Google Api Error: Invalid request - You must let us know whether your app uses any Foreground Service permissions.")
+        self.assertEqual(attempts, 1)
+        self.assertNotIn("Retrying", out)
+        self.assertIn("Foreground service permissions", out)
+        self.assertIn("rc=1", out)
+
+    def test_ios_approved_version_error_fails_fast_with_hint(self):
+        out, attempts = self._run(
+            "This bundle is invalid. must contain a higher version than that of the previously approved version [1.0.6] (90062)")
+        self.assertEqual(attempts, 1)
+        self.assertIn("Bump the x.y.z part", out)
+        self.assertIn("rc=1", out)
+
+    def test_custom_errors_file_teaches_a_new_permanent_error(self):
+        import subprocess
+        script = Path(__file__).resolve().parent.parent / "features/deployment/scripts/core/retry_utils.sh"
+        with tempfile.TemporaryDirectory() as tmp:
+            tsv = Path(tmp) / "errs.tsv"
+            tsv.write_text("permanent\tweird store problem\tDo the thing in the console.\n")
+            body = f'source "{script}"; r() {{ echo "weird store problem"; return 1; }}; _retryUpload "up" r arg || echo "rc=$?"'
+            out = subprocess.run(["bash", "-c", body], capture_output=True, text=True, cwd=tmp,
+                                 env=dict(os.environ, KNOWN_STORE_ERRORS_FILE=str(tsv)))
+            self.assertIn("Do the thing in the console.", out.stdout)
+            self.assertNotIn("Retrying", out.stdout)
+
+    def test_transient_error_still_retries(self):
+        out, attempts = self._run("network hiccup")
+        self.assertEqual(attempts, 3)
+        self.assertIn("failed after 3 attempt(s)", out)
+
+
+class TestUtf8LocaleAndPreflight(unittest.TestCase):
+    SCRIPTS = Path(__file__).resolve().parent.parent / "features/deployment/scripts"
+
+    def test_run_build_forces_utf8_locale(self):
+        import subprocess
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _flutter_app(root / "apps" / "a", "a")
+            env = {k: v for k, v in os.environ.items() if k not in ("LANG", "LC_ALL")}
+            env.update(WORKSPACE_ROOT=str(root), LC_ALL="C")
+            out = subprocess.run(
+                ["bash", str(self.SCRIPTS / "run_build.sh"), "printenv", "LC_ALL"],
+                capture_output=True, text=True, env=env, cwd=str(root))
+            self.assertEqual(out.stdout.strip().splitlines()[-1], "en_US.UTF-8")
+
+    def test_preflight_is_silent_without_bundletool(self):
+        import subprocess
+        body = f'source "{self.SCRIPTS}/android/android_upload.sh" 2>/dev/null; PATH=/usr/bin:/bin preflightAabForegroundService /nonexistent.aab; echo "rc=$?"'
+        out = subprocess.run(["bash", "-c", body], capture_output=True, text=True)
+        self.assertIn("rc=0", out.stdout)
+        self.assertNotIn("Preflight", out.stdout)
 
 
 class TestCredentials(unittest.TestCase):
@@ -3239,5 +3415,241 @@ class TestDocumentationAndServerStatus(unittest.TestCase):
             httpd.server_close()
 
 
+class TestReleaseNotesForUploads(unittest.TestCase):
+    """Uploads carry release notes when there are any, and never fail without them."""
+
+    def _export(self, app: Path, platform: str, env: dict) -> "subprocess.CompletedProcess":
+        import subprocess
+        root = Path(__file__).resolve().parents[1] / "features" / "deployment" / "scripts" / "core"
+        script = f'''source "{root}/project_resolver.sh"
+resolveAppDir() {{ echo "{app}"; }}
+exportReleaseNotes demo {platform} && printf 'JSON=[%s]' "$RELEASE_NOTES_JSON"'''
+        e = {**os.environ, "MELOS_ROOT_PATH": str(app), "DEPLOYMENT_PYTHON": sys.executable}
+        for k in ("RELEASE_NOTES", "RELEASE_NOTES_JSON"):
+            e.pop(k, None)
+        e.update(env)
+        return subprocess.run(["bash", "-c", script], capture_output=True, text=True, env=e)
+
+    def test_android_notes_read_and_truncated(self):
+        from metadata import store_metadata
+        with tempfile.TemporaryDirectory() as tmp:
+            app = Path(tmp)
+            cl = app / "android" / "fastlane" / "metadata" / "android" / "en-US" / "changelogs"
+            cl.mkdir(parents=True)
+            (cl / "default.txt").write_text("x" * 900, encoding="utf-8")
+            notes = store_metadata.resolve_release_notes(app, "android")
+            self.assertEqual(len(notes), store_metadata.METADATA_LIMITS["android"]["changelog"])
+
+    def test_ios_notes_read(self):
+        from metadata import store_metadata
+        with tempfile.TemporaryDirectory() as tmp:
+            app = Path(tmp)
+            d = app / "ios" / "fastlane" / "metadata" / "en-US"
+            d.mkdir(parents=True)
+            (d / "release_notes.txt").write_text("Fixed login\n", encoding="utf-8")
+            self.assertEqual(store_metadata.resolve_release_notes(app, "ios"), "Fixed login")
+
+    def test_no_notes_never_fails_the_upload(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            r = self._export(Path(tmp), "ios", {})
+            self.assertEqual(r.returncode, 0)
+            self.assertIn("JSON=[{}]", r.stdout)
+
+    def test_json_env_from_dashboard_wins(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            r = self._export(Path(tmp), "android", {"RELEASE_NOTES_JSON": '{"en-US": "Hi", "de-DE": "Hallo"}'})
+            self.assertEqual(r.returncode, 0)
+            self.assertIn("Hallo", r.stdout)
+
+    def test_plain_env_notes_go_to_first_locale(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            r = self._export(Path(tmp), "android", {"RELEASE_NOTES": "From env"})
+            self.assertIn("From env", r.stdout)
 
 
+class TestPerVersionReleaseNotes(unittest.TestCase):
+    def test_version_file_beats_default(self):
+        from metadata import store_metadata as sm
+        with tempfile.TemporaryDirectory() as tmp:
+            app = Path(tmp)
+            cl = app / "android" / "fastlane" / "metadata" / "android" / "en-US" / "changelogs"
+            cl.mkdir(parents=True)
+            (cl / "default.txt").write_text("default", encoding="utf-8")
+            (cl / "42.txt").write_text("for 42", encoding="utf-8")
+            self.assertEqual(sm.resolve_release_notes(app, "android", version="42"), "for 42")
+            self.assertEqual(sm.resolve_release_notes(app, "android", version="43"), "default")
+
+    def test_current_pubspec_build_is_used(self):
+        from metadata import store_metadata as sm
+        with tempfile.TemporaryDirectory() as tmp:
+            app = Path(tmp)
+            (app / "pubspec.yaml").write_text("name: demo\nversion: 1.2.3+7\n", encoding="utf-8")
+            d = app / "ios" / "fastlane" / "metadata" / "en-US"
+            d.mkdir(parents=True)
+            (d / "release_notes.txt").write_text("default", encoding="utf-8")
+            (d / "release_notes_7.txt").write_text("build seven", encoding="utf-8")
+            self.assertEqual(sm.resolve_release_notes(app, "ios"), "build seven")
+
+    def test_save_with_version_leaves_default_and_rejects_traversal(self):
+        from metadata import store_metadata as sm
+        with tempfile.TemporaryDirectory() as tmp:
+            ws = Path(tmp)
+            with mock.patch.object(config, "get_workspace_root", return_value=ws):
+                self.assertTrue(sm.save_store_metadata("", "android", "en-US", "shared")["success"])
+                self.assertTrue(sm.save_store_metadata("", "android", "en-US", "only 9", version="9")["success"])
+                self.assertFalse(sm.save_store_metadata("", "ios", "en-US", "x", version="../evil")["success"])
+                self.assertTrue(sm.save_store_metadata("", "ios", "en-US", "ios 9", version="9")["success"])
+            cl = ws / "android" / "fastlane" / "metadata" / "android" / "en-US" / "changelogs"
+            self.assertEqual((cl / "default.txt").read_text().strip(), "shared")
+            self.assertEqual((cl / "9.txt").read_text().strip(), "only 9")
+            self.assertTrue((ws / "ios" / "fastlane" / "metadata" / "en-US" / "release_notes_9.txt").exists())
+
+
+class TestUpdateTestflightNotes(unittest.TestCase):
+    def _call(self, **kw):
+        from metadata import notes_updater
+        args = dict(app_id="demo", bundle_id="com.example.app", build_number="42", release_notes="Fixed login")
+        args.update(kw)
+        return notes_updater.update_testflight_notes(**args)
+
+    def test_validation(self):
+        self.assertFalse(self._call(bundle_id="bad id; rm -rf /")["success"])
+        self.assertFalse(self._call(build_number="4 2")["success"])
+        self.assertFalse(self._call(release_notes="  ")["success"])
+        self.assertFalse(self._call(release_notes="x" * 4001)["success"])
+
+    def test_requires_apple_credentials(self):
+        from metadata import notes_updater
+        with mock.patch.object(notes_updater.credentials, "job_env", return_value={}), \
+                mock.patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("APPLE_API_KEY", None)
+            self.assertIn("Apple API key", self._call()["error"])
+
+    def test_runs_fixed_lane_with_values_in_env(self):
+        from metadata import notes_updater
+        done = mock.Mock(returncode=0, stdout="ok", stderr="")
+        with mock.patch.object(notes_updater.credentials, "job_env", return_value={"APPLE_API_KEY": "K", "APPLE_API_ISSUER": "I"}), \
+                mock.patch.object(notes_updater.subprocess, "run", return_value=done) as run:
+            res = self._call(save_to_files=False)
+        self.assertTrue(res["success"])
+        cmd = run.call_args.args[0]
+        self.assertEqual(cmd, ["bundle", "exec", "fastlane", "ios", "update_testflight_notes"])
+        env = run.call_args.kwargs["env"]
+        self.assertEqual((env["IOS_BUILD_NUMBER"], env["RELEASE_NOTES"]), ("42", "Fixed login"))
+
+
+class TestMultiLocaleReleaseNotes(unittest.TestCase):
+    def setUp(self):
+        from metadata import release_notes
+        self.rn = release_notes
+        self.tmp = tempfile.TemporaryDirectory()
+        self.app = Path(self.tmp.name) / "app"
+        self.app.mkdir()
+        (self.app / "pubspec.yaml").write_text("name: demo\nversion: 1.2.3+7\n", encoding="utf-8")
+        self.patches = [
+            mock.patch.object(config, "_resolve_app_dir", return_value=self.app),
+            mock.patch.object(config, "load_deploy_config", return_value={}),
+        ]
+        for p in self.patches:
+            p.start()
+
+    def tearDown(self):
+        for p in self.patches:
+            p.stop()
+        self.tmp.cleanup()
+
+    def test_locales_default_then_from_existing_folders_then_configured(self):
+        self.assertEqual(self.rn.get_app_locales("demo"), ["en-US"])
+        (self.app / "ios" / "fastlane" / "metadata" / "de-DE").mkdir(parents=True)
+        self.assertEqual(self.rn.get_app_locales("demo"), ["de-DE"])
+        with mock.patch.object(config, "load_deploy_config", return_value={"apps": {"demo": {"release_locales": ["en-US", "de-DE", "bad locale"]}}}):
+            self.assertEqual(self.rn.get_app_locales("demo"), ["en-US", "de-DE"])
+
+    def test_set_locales_validates_and_saves(self):
+        saved = {}
+        with mock.patch.object(config, "save_deploy_config", side_effect=lambda d: saved.update(d) or {"success": True}):
+            self.assertFalse(self.rn.set_app_locales("demo", ["nope!"])["success"])
+            self.assertEqual(self.rn.set_app_locales("demo", ["en-US", "de_DE"])["locales"], ["en-US", "de-DE"])
+        self.assertEqual(saved["apps"]["demo"]["release_locales"], ["en-US", "de-DE"])
+
+    def test_save_and_read_two_languages_per_build_with_last_build(self):
+        res = self.rn.save_release_notes("demo", "android", "7", {"en-US": "Fixed login", "de-DE": "Login behoben"})
+        self.assertTrue(res["success"])
+        with mock.patch.object(config, "load_deploy_config", return_value={"apps": {"demo": {"release_locales": ["en-US", "de-DE"]}}}):
+            got = self.rn.get_release_notes("demo", "android", "8")
+        self.assertEqual(got["notes"]["de-DE"]["text"], "")
+        self.assertEqual(got["lastBuild"], {"version": "7", "notes": {"en-US": "Fixed login", "de-DE": "Login behoben"}})
+        self.assertEqual(got["versions"], ["7"])
+
+    def test_empty_text_removes_version_file_and_limits_enforced(self):
+        self.rn.save_release_notes("demo", "ios", "7", {"en-US": "x"})
+        self.rn.save_release_notes("demo", "ios", "7", {"en-US": ""})
+        self.assertEqual(self.rn._versions_found(self.app, "ios"), [])
+        self.assertFalse(self.rn.save_release_notes("demo", "android", "7", {"en-US": "x" * 501})["success"])
+
+    def test_resolve_map_prefers_json_env_then_files(self):
+        self.rn.save_release_notes("demo", "android", "", {"en-US": "shared"})
+        with mock.patch.dict(os.environ, {}, clear=False):
+            for k in ("RELEASE_NOTES", "RELEASE_NOTES_JSON"):
+                os.environ.pop(k, None)
+            self.assertEqual(self.rn.resolve_notes_map(self.app, "android", "demo"), {"en-US": "shared"})
+            os.environ["RELEASE_NOTES_JSON"] = '{"en-US": "run", "de-DE": "lauf"}'
+            self.assertEqual(self.rn.resolve_notes_map(self.app, "android", "demo"), {"en-US": "run", "de-DE": "lauf"})
+
+    def test_update_build_notes_android_is_save_only(self):
+        res = self.rn.update_build_notes("demo", "android", "7", {"en-US": "hi"})
+        self.assertTrue(res["success"])
+        self.assertFalse(res["published"])
+
+    def test_ios_publish_calls_lane_per_language(self):
+        with mock.patch.object(self.rn, "store_metadata_update", return_value={"success": True}) as up:
+            res = self.rn.update_build_notes("demo", "ios", "7", {"en-US": "hi", "de-DE": "hallo", "fr-FR": ""}, identifier="com.example.app")
+        self.assertTrue(res["success"])
+        self.assertEqual(sorted(res["published"]), ["de-DE", "en-US"])
+        self.assertEqual(up.call_count, 2)
+
+    def test_execute_command_forwards_notes_as_env_json(self):
+        import jobs
+        self.assertEqual(jobs._clean_release_notes({"en-US": " Hi ", "de-DE": "", "x y": "bad"}), {"en-US": "Hi"})
+
+
+class TestAndroidPreflightUnderErrexit(unittest.TestCase):
+    """The AAB pre-flight helpers must not abort a `set -e` script when grep finds nothing."""
+
+    def test_foreground_preflight_survives_errexit_without_permissions(self):
+        import shutil
+        import subprocess
+        script = Path(__file__).resolve().parent.parent / "features/deployment/scripts/android/android_upload.sh"
+        with tempfile.TemporaryDirectory() as tmp:
+            bt = Path(tmp) / "bundletool"
+            bt.write_text("#!/bin/bash\necho '<manifest package=\"com.x\"/>'\n")
+            bt.chmod(0o755)
+            out = subprocess.run(
+                ["bash", "-c", f'set -euo pipefail; source "{script}"; preflightAabForegroundService x.aab; echo REACHED'],
+                env={**os.environ, "PATH": f"{tmp}:{os.environ['PATH']}"},
+                capture_output=True, text=True,
+            )
+        self.assertIn("REACHED", out.stdout, out.stderr)
+
+
+class TestKeepAwake(unittest.TestCase):
+    def test_starts_caffeinate_on_macos(self):
+        with mock.patch.object(jobs.sys, "platform", "darwin"), \
+             mock.patch.object(jobs.shutil, "which", return_value="/usr/bin/caffeinate"), \
+             mock.patch.object(jobs.subprocess, "Popen") as popen, \
+             mock.patch.object(jobs, "_append_job_log") as log:
+            jobs._keep_awake_for(4242, "j1")
+        self.assertEqual(popen.call_args[0][0], ["caffeinate", "-i", "-w", "4242"])
+        log.assert_called_once()
+
+    def test_skipped_off_macos(self):
+        with mock.patch.object(jobs.sys, "platform", "linux"), \
+             mock.patch.object(jobs.subprocess, "Popen") as popen:
+            jobs._keep_awake_for(1, "j1")
+        popen.assert_not_called()
+
+    def test_failure_is_ignored(self):
+        with mock.patch.object(jobs.sys, "platform", "darwin"), \
+             mock.patch.object(jobs.shutil, "which", return_value="/x"), \
+             mock.patch.object(jobs.subprocess, "Popen", side_effect=OSError("boom")):
+            jobs._keep_awake_for(1, "j1")

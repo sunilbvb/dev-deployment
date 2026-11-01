@@ -747,6 +747,7 @@ Building your own internal build server is **often significantly more secure tha
 - **Dynamic Gradle Flavors:** Gradle flavors declared inside complex Groovy loops or remote scripts cannot be statically determined without executing Gradle; specify them once in **Configure → General**.
 - **iOS Builds Require macOS:** Native iOS IPA compilation and codesigning require Xcode and macOS hardware.
 - **Single Workstation Scope:** Designed for local developer machines and dedicated build mac-minis; multi-tenant remote hosting is intentionally disallowed for security.
+- **Release notes after upload:** Google Play cannot edit the notes of an already-published release (our uploads are `completed`), so on Android History can only save notes for the next upload; iOS can publish to the TestFlight build. TestFlight notes are "What to Test", not the public App Store "What's New". Pipelines have no notes field yet. See [proposal 0003](docs/proposals/0003-release-notes.md).
 - **Conventional Commit Requirement:** Automated changelog generation relies on Conventional Commit prefixes (`feat:`, `fix:`, `chore:`); non-conforming commits are grouped under maintenance.
 
 ### Can I deploy the Dev Deployment Console to Netlify, Vercel, or serverless hosts?
@@ -968,6 +969,17 @@ Here are the high-impact mobile automation features built into the Dev Deploymen
     - `POST /api/deployment/metadata/save`: Saves updated localized changelogs directly to project Fastlane files.
     - `GET /api/deployment/metadata/preview`: Generates mobile phone update card mockup data.
   - **The Magic:** Flags character limits (e.g. 500 characters for Play Store release notes) and missing translations right inside the console before triggering store submission!
+
+### 10b. Optional Multi-Language Release Notes (Run panel, History, TestFlight) 📝
+- **Status:** **Implemented** ✓ — real-store verification pending (see `docs/proposals/0003-release-notes.md`).
+- **Are release notes required?** No. A build or upload never fails because notes are missing; the console prints one info line and goes on.
+- **How do I add them?** Select an upload command: a *Release notes* box appears under it, autofilled from this build's notes, the shared default or the last build's. Edit, clear, or press *Use last build's notes*, then click **Run** — there is no extra confirmation. Other ways: `RELEASE_NOTES_JSON='{"en-US":"…","de-DE":"…"}'`, `RELEASE_NOTES="…"`, or fastlane metadata files.
+- **Which languages?** Per app. Add/remove chips in the box (saved as `release_locales`), or press **Languages from store** to read the store listing's languages (needs the Play service account / Apple key). Without a setting it uses the existing metadata folders, else `en-US`.
+- **I forgot the notes. Can I fix it?** History → **Release notes** on the upload: see/add/edit per language and **Save**. On iOS, **Save & publish to TestFlight** updates that build (enter the build number and bundle ID if not prefilled). On Android, Save only: Google Play cannot edit a published release, and uploads stay `completed` (no draft mode). Saved notes apply to the next upload of that build number.
+- **Why is an iOS upload with notes slower?** TestFlight attaches notes only after Apple finishes processing the build, so the upload waits. Without notes it returns immediately.
+- **Which file wins?** Run panel → `RELEASE_NOTES_JSON` → `RELEASE_NOTES` → `changelogs/<build>.txt` / `release_notes_<build>.txt` → `default.txt` / `release_notes.txt`.
+- **Limits:** Google Play 500, App Store 4000 characters per language.
+- **Not covered yet:** pipelines (no notes field), the public App Store "What's New" of a store version, per-flavor notes, build numbers of non-Flutter stacks (type it in the dialog).
 
 ### 11. Semantic Version Bumper & Git Conventional Changelog 🏷️🚀
 - **Status:** **Implemented & Fully Operational** ✓

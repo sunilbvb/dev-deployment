@@ -6,6 +6,7 @@ Pure Python standard library only.
 from __future__ import annotations
 
 import logging
+import re
 from pathlib import Path
 from typing import Any, Optional
 
@@ -56,6 +57,35 @@ def _find_metadata_roots(app_dir: Path) -> dict[str, list[Path]]:
     return existing
 
 
+_VERSION_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._+-]{0,39}$")
+
+
+def _clean_version(version: str) -> str:
+    """A version token usable in a file name ("" = the shared default notes)."""
+    v = (version or "").strip()
+    return v if _VERSION_RE.match(v) and ".." not in v else ""
+
+
+def _notes_file(platform_key: str, loc_dir: Path, version: str = "") -> Path:
+    """Android: changelogs/<version>.txt (default.txt); iOS: release_notes_<version>.txt."""
+    v = _clean_version(version)
+    if platform_key == "android":
+        return loc_dir / "changelogs" / f"{v or 'default'}.txt"
+    return loc_dir / (f"release_notes_{v}.txt" if v else "release_notes.txt")
+
+
+def _current_version_tokens(app_dir: Path) -> list[str]:
+    """Build number then version name from pubspec.yaml (what a fresh upload is)."""
+    try:
+        from automation.version_bumper import parse_pubspec_version
+        cur = parse_pubspec_version(app_dir / "pubspec.yaml")
+        name = f"{cur['major']}.{cur['minor']}.{cur['patch']}"
+        return [str(cur["build"]), name] if cur.get("build") else [name]
+    except Exception as e:
+        logger.debug("No pubspec version for %s: %s", app_dir, e)
+        return []
+
+
 def _read_file_safe(path: Path) -> str:
     """Read a text file safely returning trimmed string."""
     try:
@@ -64,6 +94,31 @@ def _read_file_safe(path: Path) -> str:
     except Exception as e:
         logger.debug("Failed reading file %s: %s", path, e)
     return ""
+
+
+def resolve_release_notes(app_dir: Path, platform: str, locale: str = "en-US", version: str = "") -> str:
+    """Release notes to ship with a build ("" when none), cut to the store limit.
+
+    A per-version file wins over the shared default. Tried in order: `version`
+    (build number or version name), the app's current build number, its current
+    version name, then the default notes.
+    """
+    key = "android" if platform.lower() == "android" else "ios"
+    tokens = [t for t in [_clean_version(version), *_current_version_tokens(app_dir)] if t]
+    notes = ""
+    for root in _find_metadata_roots(app_dir)[key]:
+        for tok in [*tokens, ""]:
+            notes = _read_file_safe(_notes_file(key, root / locale, tok))
+            if notes:
+                break
+        if not notes and key == "android":
+            cl_dir = root / locale / "changelogs"
+            txts = sorted(cl_dir.glob("*.txt")) if cl_dir.is_dir() else []
+            notes = _read_file_safe(txts[-1]) if txts else ""
+        if notes:
+            break
+    limit = METADATA_LIMITS[key]["changelog" if key == "android" else "release_notes"]
+    return notes[:limit]
 
 
 def get_store_metadata(app_id: str = "") -> dict[str, Any]:
@@ -103,6 +158,10 @@ def get_store_metadata(app_id: str = "") -> dict[str, Any]:
                     "changelogLength": len(cl),
                     "changelogLimit": METADATA_LIMITS["android"]["changelog"],
                     "changelogExceeds": len(cl) > METADATA_LIMITS["android"]["changelog"],
+                    "versionNotes": {
+                        f.stem: _read_file_safe(f)
+                        for f in sorted(cl_dir.glob("*.txt")) if f.stem != "default"
+                    } if cl_dir.exists() else {},
                     "title": title,
                     "shortDescription": short_desc,
                     "fullDescription": full_desc,
@@ -141,6 +200,10 @@ def get_store_metadata(app_id: str = "") -> dict[str, Any]:
                     "releaseNotesLength": len(rn),
                     "releaseNotesLimit": METADATA_LIMITS["ios"]["release_notes"],
                     "releaseNotesExceeds": len(rn) > METADATA_LIMITS["ios"]["release_notes"],
+                    "versionNotes": {
+                        f.stem[len("release_notes_"):]: _read_file_safe(f)
+                        for f in sorted(loc_dir.glob("release_notes_*.txt"))
+                    },
                     "name": name,
                     "subtitle": subtitle,
                     "description": desc,
@@ -189,8 +252,16 @@ def save_store_metadata(
     description: str = "",
     subtitle: str = "",
     keywords: str = "",
+    version: str = "",
 ) -> dict[str, Any]:
-    """Save updated metadata files for a platform and locale."""
+    """Save updated metadata files for a platform and locale.
+
+    With `version` (build number or version name) only the notes for that
+    version are written; other fields belong to the app, not to one version.
+    """
+    if (version or "").strip() and not _clean_version(version):
+        return {"success": False, "error": "Invalid version: use letters, digits, '.', '_', '+', '-' (max 40)."}
+    version = _clean_version(version)
     ws = config.get_workspace_root()
     app_dir = ws / "apps" / app_id if app_id else ws
     if not app_dir.exists():
@@ -203,7 +274,9 @@ def save_store_metadata(
         target_root = app_dir / "android" / "fastlane" / "metadata" / "android" / locale
         cl_dir = target_root / "changelogs"
         cl_dir.mkdir(parents=True, exist_ok=True)
-        (cl_dir / "default.txt").write_text(release_notes.strip() + "\n", encoding="utf-8")
+        (cl_dir / f"{version or 'default'}.txt").write_text(release_notes.strip() + "\n", encoding="utf-8")
+        if version:
+            return {"success": True, "message": f"Saved Android notes for version {version} ({locale}).", "savedPath": str(cl_dir / f"{version}.txt")}
         if title:
             (target_root / "title.txt").write_text(title.strip() + "\n", encoding="utf-8")
         if short_description:
@@ -220,7 +293,10 @@ def save_store_metadata(
     elif platform == "ios":
         target_root = app_dir / "ios" / "fastlane" / "metadata" / locale
         target_root.mkdir(parents=True, exist_ok=True)
-        (target_root / "release_notes.txt").write_text(release_notes.strip() + "\n", encoding="utf-8")
+        notes_path = _notes_file("ios", target_root, version)
+        notes_path.write_text(release_notes.strip() + "\n", encoding="utf-8")
+        if version:
+            return {"success": True, "message": f"Saved iOS notes for version {version} ({locale}).", "savedPath": str(notes_path)}
         if title:
             (target_root / "name.txt").write_text(title.strip() + "\n", encoding="utf-8")
         if subtitle:

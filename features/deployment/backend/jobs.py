@@ -1,6 +1,7 @@
 import json
 import logging
 import os
+import re
 import shlex
 import shutil
 import signal
@@ -117,7 +118,16 @@ def _record_history_entry(job_id: str, chained_job_id: Optional[str] = None) -> 
             "outputExcerpt": output_excerpt,
             "artifact": job.get("artifact"),
             "buildSize": job.get("buildSize"),
+            "releaseNotes": job.get("release_notes") or None,
         }
+        entry.update(_notes_context(job))
+
+    if entry["releaseNotes"] and entry["status"] == "success" and entry.get("buildNumber") and entry.get("platform"):
+        try:
+            from metadata import release_notes as _rn
+            _rn.save_release_notes(entry["app"], entry["platform"], entry["buildNumber"], entry["releaseNotes"])
+        except Exception:
+            logging.exception("Failed to save release notes for build %s", entry.get("buildNumber"))
 
     history_file = _get_history_file()
     with _HISTORY_LOCK:
@@ -174,6 +184,37 @@ def _trigger_chained_release(app: str, env: str, action_id: str, parent_job_id: 
     )
 
 
+def _clean_release_notes(raw: Any) -> dict[str, str]:
+    """Release notes sent with a run: {locale: text}, empty texts dropped."""
+    out: dict[str, str] = {}
+    if isinstance(raw, dict):
+        for loc, text in raw.items():
+            loc, text = str(loc).strip(), str(text or "").strip()
+            if text and re.match(r"^[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8})?$", loc):
+                out[loc] = text[:4000]
+    return out
+
+
+def _notes_context(job: dict[str, Any]) -> dict[str, Any]:
+    """Platform + build number for a finished job, so History can show/edit its notes."""
+    ctx: dict[str, Any] = {}
+    try:
+        app, template_id = job.get("app") or "", job.get("template_id") or ""
+        for c in get_commands(app).get("commands", []):
+            if c.get("templateId") == template_id and c.get("platform") in ("android", "ios"):
+                ctx["platform"] = c["platform"]
+                break
+        from automation.version_bumper import parse_pubspec_version
+        from config import _resolve_app_dir
+        cur = parse_pubspec_version(_resolve_app_dir(app) / "pubspec.yaml")
+        if cur.get("build"):
+            ctx["buildNumber"] = str(cur["build"])
+            ctx["version"] = f"{cur['major']}.{cur['minor']}.{cur['patch']}"
+    except Exception:
+        logging.debug("Could not read platform/build for job %s", job.get("id"), exc_info=True)
+    return ctx
+
+
 def clean_build_env_value(clean_build: Optional[bool], flavor: str = "", env: str = "") -> str:
     """CLEAN_BUILD for build scripts: wipe build/ before compiling?
 
@@ -182,6 +223,22 @@ def clean_build_env_value(clean_build: Optional[bool], flavor: str = "", env: st
     "Clean build" checkbox turned off in the console) keeps build/ for speed.
     """
     return "false" if clean_build is False else "true"
+
+
+def _keep_awake_for(pid: int, job_id: str) -> None:
+    """macOS: hold off idle sleep until the job process exits (caffeinate -i -w)."""
+    if sys.platform != "darwin" or not shutil.which("caffeinate"):
+        return
+    try:
+        subprocess.Popen(
+            ["caffeinate", "-i", "-w", str(pid)],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True,
+        )
+        _append_job_log(job_id, "output", "☕ Keeping the Mac awake while this job runs\n")
+    except Exception as exc:
+        logging.warning("keep-awake failed: %s", exc)
 
 
 def execute_command(
@@ -196,6 +253,7 @@ def execute_command(
     chained_parent_id: Optional[str] = None,
     response_url: Optional[str] = None,
     clean_build: Optional[bool] = None,
+    release_notes: Optional[dict[str, str]] = None,
 ) -> dict[str, Any]:
     if not app or not command:
         return {"success": False, "error": "App and command are required"}
@@ -218,6 +276,8 @@ def execute_command(
             "error": f"This runs a PROD store deploy for '{app}' - resend with confirmed: true once explicitly approved.",
             "needsConfirmation": True,
         }
+
+    notes_map = _clean_release_notes(release_notes)
 
     ws_root = get_workspace_root()
     is_cloud_runner = (runner == "github_actions")
@@ -279,6 +339,10 @@ def execute_command(
     child_env["WORKSPACE_ROOT"] = str(get_workspace_root())
     child_env.update(credentials_job_env(app))
     child_env["CLEAN_BUILD"] = clean_build_env_value(clean_build, flavor, env)
+    if notes_map:
+        child_env["RELEASE_NOTES_JSON"] = json.dumps(notes_map, ensure_ascii=False)
+    else:
+        child_env.pop("RELEASE_NOTES_JSON", None)
 
     if runner == "custom":
         shell_bin = shutil.which("bash") or shutil.which("zsh") or os.environ.get("SHELL") or "/bin/sh"
@@ -316,6 +380,7 @@ def execute_command(
                 "flavor": flavor or env,
                 "chained_job_id": chained_parent_id,
                 "is_pipeline_step": bool(_assume_app_lock_held),
+                "release_notes": notes_map,
                 "started_at": time.time(),
                 "workspace": str(ws_root.resolve()),
                 "runner": "github_actions",
@@ -413,10 +478,12 @@ def execute_command(
             "flavor": flavor or env,
             "chained_job_id": chained_parent_id,
             "is_pipeline_step": bool(_assume_app_lock_held),
+                "release_notes": notes_map,
             "started_at": time.time(),
             "workspace": str(ws_root.resolve()),
             "response_url": response_url,
         }
+
         lock_entry = _APP_LOCKS.get(lock_key) or _APP_LOCKS.get(app)
         if lock_entry is not None:
             lock_entry["job_id"] = job_id
@@ -432,6 +499,8 @@ def execute_command(
                 "workspace": str(ws_root.resolve()),
                 "app": app,
             }
+
+    _keep_awake_for(process.pid, job_id)
 
     def stream_pipe(pipe, field: str) -> None:
         try:
