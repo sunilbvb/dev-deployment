@@ -23,6 +23,7 @@ The Dev Deployment Console provides a robust REST API powering both the web UI a
 15. [Wireless ADB Device Management & Parallel Push](#wireless-adb-device-management--parallel-push)
 16. [Build Time Profiler & Bottleneck Heatmap](#build-time-profiler--bottleneck-heatmap)
 17. [Smart Silent Cache Warmer](#smart-silent-cache-warmer)
+18. [Deployment & Build Queue](#deployment--build-queue)
 
 ---
 
@@ -371,4 +372,21 @@ Incoming requests are accepted if ANY of the following match:
 | Method | Endpoint | Query / Body | Returns / Purpose |
 |:---|:---|:---|:---|
 | `GET` | `/api/deployment/security/permissions` | `?app=<app_id>` | Audits Android permissions, cleartext HTTP, exported components, and Apple privacy manifest strings. |
+
+---
+
+## Deployment & Build Queue
+
+| Method | Endpoint | Query / Body | Returns / Purpose |
+|:---|:---|:---|:---|
+| `GET` | `/api/deployment/queue` | – | Returns live queue status: pending list, currently running item, `isPaused` flag, and stats counts (`total`, `pending`, `running`, `completed`, `failed`). |
+| `POST` | `/api/deployment/queue/add` | `{"app": "...", "type": "command"\|"pipeline", "command": "...", "runner": "...", "flavor": "...", "templateId": "...", "cleanBuild": true, "releaseNotes": {...}, "stopOnError": true}` | Validates and enqueues a build job for sequential FIFO background execution across multiple apps. Starts runner thread if idle. |
+| `POST` | `/api/deployment/queue/remove` | `{"itemId": "<id>"}` | Removes an item from the queue. If item is currently active, stops the running process group and cancels the task. |
+| `POST` | `/api/deployment/queue/reorder` | `{"itemIds": ["id1", "id2", ...]}` | Updates the execution sequence of pending queue items according to user preference. |
+| `POST` | `/api/deployment/queue/clear` | `{"clearAll": false\|true}` | Purges pending items (or completed history when `clearAll: false`). |
+| `POST` | `/api/deployment/queue/pause` | – | Pauses queue processing after current running job completes. |
+| `POST` | `/api/deployment/queue/resume` | – | Unpauses queue and starts processing next pending item. |
+| `POST` | `/api/deployment/queue/stop-current` | – | Immediately stops currently executing queue item. |
+| `POST` | `/api/deployment/queue/retry` | `{"itemId": "<id>"}` | Re-enqueues a failed or cancelled item back to pending state. |
+
 

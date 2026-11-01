@@ -140,6 +140,13 @@ DOC_REGISTRY: dict[str, dict[str, Any]] = {
         "category": "API Endpoints",
         "file": "docs/API.md",
     },
+    "api-queue": {
+        "id": "api-queue",
+        "title": "Deployment & Build Queue APIs",
+        "description": "Multi-app sequential build queuing, FIFO execution, pause/resume, and reordering endpoints.",
+        "category": "API Endpoints",
+        "file": "docs/API.md",
+    },
     "pipelines": {
         "id": "pipelines",
         "title": "Pipelines Proposal (ADR 0001)",
@@ -360,6 +367,11 @@ Welcome to the **Dev Deployment Console** — a lightweight, zero-dependency dev
 14. **Smart Silent Cache Warmer (Zero Cold-Start Lag)**
     - Low-priority background daemon watching Git branch switches and dependency lockfile changes (`pubspec.yaml`, `Podfile.lock`).
     - Silently pre-fetches dependencies via `flutter pub get` when no builds are running, eliminating cold-start build delay.
+
+15. **Deployment & Build Queue (Sequential Multi-App Runner)**
+    - Queue multiple builds across different apps and pipelines back-to-back.
+    - Executes sequentially via FIFO worker to prevent machine freezing and RAM exhaustion.
+    - Cross-workspace context switching, pause/resume, reordering, stop-on-error, and instant re-try.
 
 ---
 

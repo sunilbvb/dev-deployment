@@ -1,6 +1,28 @@
 # Dev Deployment Console 🚀
 
-A lightweight, self-hosted web console to build, sign, inspect, upload and release mobile apps — Flutter first, with React Native, native Android/iOS, and web projects supported — without typing terminal commands.
+<div align="center">
+
+**A lightweight, self-hosted web console to build, sign, inspect, upload and release mobile apps — Flutter first, with React Native, native Android/iOS, and web projects supported — without typing terminal commands.**
+
+[![GitHub Stars](https://img.shields.io/github/stars/sunilbvb/dev-deployment?style=social)](https://github.com/sunilbvb/dev-deployment)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
+[![Zero External Dependencies](https://img.shields.io/badge/dependencies-zero%20pip-success.svg)](#)
+[![App Doctor Pre-Flight](https://img.shields.io/badge/App%20Doctor-12%20Checks%20Passed-10b981.svg)](#-pre-flight-diagnostics-app-doctor)
+
+<br/>
+
+<a href="https://github.com/sunilbvb/dev-deployment">
+  <img src="docs/assets/demo.gif" alt="Dev Deployment Console Animated Demo" width="860">
+</a>
+
+<p align="center">
+  <sub>⭐ If Dev Deployment Console saves your team time, <b><a href="https://github.com/sunilbvb/dev-deployment">please star this repository on GitHub</a></b> — it helps other developers discover the tool!</sub>
+</p>
+
+</div>
+
+---
 
 Open `http://localhost:18112`, pick a project tab, select an app, choose an environment, run pre-flight diagnostics, click a build command, and watch real-time streamed logs.
 
@@ -28,14 +50,15 @@ Open `http://localhost:18112`, pick a project tab, select an app, choose an envi
 13. [Wireless ADB Multi-Device Push (Instant Test Desk Sync)](#-wireless-adb-multi-device-push-instant-test-desk-sync)
 14. [Build Time Profiler & Compilation Bottleneck Heatmap](#-build-time-profiler--compilation-bottleneck-heatmap)
 15. [Smart Silent Cache Warmer (Zero Cold-Start Lag)](#-smart-silent-cache-warmer-zero-cold-start-lag)
-16. [Saved Pipelines (Chained Workflows)](#-saved-pipelines-chained-workflows)
-17. [Releases: Conventional Commits, Changelog & Git Tags](#️-releases-conventional-commits-changelog--git-tags)
-18. [Outgoing Webhooks, CI/CD Ingestion & ChatOps](#-outgoing-webhooks-cicd-ingestion--chatops)
-19. [Design System: developer-dashboard-ui](#-design-system-developer-dashboard-ui)
-20. [Safety & Security Hardening](#️-safety--security-hardening)
-21. [Configuration & Data Files](#-configuration--data-files)
-22. [Environment Variables](#-environment-variables)
-23. [Contributing & Documentation Index](#-contributing--documentation-index)
+16. [Deployment & Build Queue (Sequential Multi-App Runner)](#-deployment--build-queue-sequential-multi-app-runner)
+17. [Saved Pipelines (Chained Workflows)](#-saved-pipelines-chained-workflows)
+18. [Releases: Conventional Commits, Changelog & Git Tags](#️-releases-conventional-commits-changelog--git-tags)
+19. [Outgoing Webhooks, CI/CD Ingestion & ChatOps](#-outgoing-webhooks-cicd-ingestion--chatops)
+20. [Design System: developer-dashboard-ui](#-design-system-developer-dashboard-ui)
+21. [Safety & Security Hardening](#️-safety--security-hardening)
+22. [Configuration & Data Files](#-configuration--data-files)
+23. [Environment Variables](#-environment-variables)
+24. [Contributing & Documentation Index](#-contributing--documentation-index)
 
 ---
 
@@ -56,6 +79,7 @@ Open `http://localhost:18112`, pick a project tab, select an app, choose an envi
 - **Instant iOS OTA QR Install:** Serve native Apple `itms-services://?action=download-manifest` and `manifest.plist` over HTTPS to install development/ad-hoc IPAs on iPhones via QR code in 10s (bypassing the 25-minute TestFlight processing delay).
 - **Wireless ADB 1-Click Multi-Device Push:** Detects local USB, Wi-Fi, and emulator Android devices via `adb devices -l` and pushes built APKs to all QA desk phones in parallel.
 - **Two-Way ChatOps Bot:** Handles incoming Slack/Discord/WhatsApp triggers and replies directly in the thread with generated QR code images, OTA install links, and download buttons.
+- **Deployment & Build Queue (Sequential Multi-App Runner):** Queue multiple builds across different apps and pipelines back-to-back. Executes sequentially via FIFO worker to prevent machine freezing and RAM exhaustion. Supports pause/resume, reordering, stop-on-error, and instant re-try.
 - **Build Time Profiler & Compilation Bottleneck Heatmap:** Parses Gradle and Xcode compile timings to display a visual breakdown bar (Dependencies, Compilation, Assets, Linking, Packaging, Signing) and flags compile bottlenecks (`>= 30%`).
 - **Smart Silent Cache Warmer:** Low-priority background daemon watching Git branch switches and dependency lockfile changes, running silent `flutter pub get` to eliminate cold-start build lag.
 - **Local APK Wireless QR Code:** Instantly host completed APKs over local HTTP and scan a QR code from any physical device on the local Wi-Fi to install without USB cables.
@@ -258,6 +282,16 @@ Never suffer from cold-start dependency lag when switching Git branches:
 1. A low-priority background daemon monitors Git `HEAD` commits and dependency lockfile digests (`pubspec.yaml`, `pubspec.lock`, `Podfile.lock`).
 2. When a branch switch or dependency change is detected, the warmer waits until no builds are actively executing, then silently runs `flutter pub get` in the background.
 3. A live **Cache Warmer badge** in the top navigation bar displays daemon status (`Idle`, `Warming`, `Warm`). Click the badge at any time to manually trigger an immediate warm.
+
+---
+
+## 📋 Deployment & Build Queue (Sequential Multi-App Runner)
+
+Eliminate the need to babysit the console when compiling multiple apps across a monorepo:
+1. **Multi-App Queueing:** Select App 1 (`prod apk`) and click **Add to Queue**, then select App 2 (`staging aab`) and click **Add to Queue**, then select App 3 (`ios testflight`).
+2. **Sequential FIFO Execution:** Runs in a dedicated background worker thread executing tasks one after another. Because heavy compilation tools (Gradle, Xcode, `dart compile`) max out CPU and RAM, running them sequentially prevents workstation freezing and out-of-memory errors.
+3. **Queue Controls & Reordering:** Open the **Queue** modal to view active building items with live elapsed timers, reorder upcoming pending builds with `↑` and `↓` buttons, pause/resume the queue, or stop active jobs.
+4. **Resilience & Safety:** Built with configurable **Stop queue on failure** protection (prevents cascading failures). Failed items can be re-enqueued with a single click on **Retry**.
 
 ---
 

@@ -576,6 +576,8 @@ function updateExecutionPanel() {
     if (!state.selectedApp || (!state.selectedCommand && !state.selectedPipeline)) {
         els.executionPanel.classList.add('hidden');
         els.runButton.disabled = true;
+        const queueBtn = document.getElementById('addToQueueBtn');
+        if (queueBtn) queueBtn.disabled = true;
         els.iosCertBanner.classList.add('hidden');
         if (els.uploadKeyInfo) els.uploadKeyInfo.classList.add('hidden');
         if (els.cleanBuildRow) els.cleanBuildRow.classList.add('hidden');
@@ -598,6 +600,8 @@ function updateExecutionPanel() {
         });
         els.selectedCommandPreview.textContent = lines.join('\n');
         els.runButton.disabled = false;
+        const queueBtnP = document.getElementById('addToQueueBtn');
+        if (queueBtnP) queueBtnP.disabled = false;
         els.runButton.querySelector('span').textContent = 'Run Pipeline';
         els.iosCertBanner.classList.add('hidden');
         if (els.uploadKeyInfo) els.uploadKeyInfo.classList.add('hidden');
@@ -636,6 +640,8 @@ function updateExecutionPanel() {
     }
     // lock run button for unconfigured flavors
     els.runButton.disabled = isLocked;
+    const queueBtnC = document.getElementById('addToQueueBtn');
+    if (queueBtnC) queueBtnC.disabled = isLocked;
 
     const isProdIos = state.selectedCommand.platform === 'ios' && state.selectedCommand.flavor === 'prod';
     renderCertExpiryBanner(isProdIos ? state.selectedApp : null);

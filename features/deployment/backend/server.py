@@ -439,6 +439,9 @@ class DeploymentHandler(http.server.SimpleHTTPRequestHandler):
             if parsed.path == "/api/deployment/running-jobs":
                 self.write_json({"success": True, "runningJobs": router.get_running_jobs()})
                 return
+            if parsed.path == "/api/deployment/queue":
+                self.write_json(router.get_queue_status())
+                return
             if parsed.path == "/api/deployment/workspaces":
                 self.write_json(router.get_workspaces_list())
                 return
@@ -1224,6 +1227,68 @@ class DeploymentHandler(http.server.SimpleHTTPRequestHandler):
 
             if parsed.path in ("/api/deployment/stop", "/api/deployment/job/stop"):
                 self.write_json(router.stop_job(str(data.get("jobId") or data.get("job_id") or "")))
+                return
+
+            # Deployment Queue endpoints
+            if parsed.path == "/api/deployment/queue/add":
+                app_id = str(data.get("app") or "").strip()
+                item_type = str(data.get("type") or "command").strip()
+                cmd = str(data.get("command") or "").strip()
+                runner = str(data.get("runner") or "make").strip()
+                flavor = str(data.get("flavor") or "prod").strip()
+                tmpl_id = str(data.get("templateId") or "").strip()
+                title = str(data.get("title") or "").strip()
+                clean_build = data["cleanBuild"] if isinstance(data.get("cleanBuild"), bool) else None
+                release_notes = data.get("releaseNotes") if isinstance(data.get("releaseNotes"), dict) else None
+                stop_on_error = data.get("stopOnError", True) is not False
+                res = router.add_to_queue(
+                    app=app_id,
+                    command=cmd,
+                    item_type=item_type,
+                    runner=runner,
+                    flavor=flavor,
+                    template_id=tmpl_id,
+                    title=title,
+                    clean_build=clean_build,
+                    release_notes=release_notes,
+                    stop_on_error=stop_on_error,
+                )
+                self.write_json(res, status=200 if res.get("success") else 400)
+                return
+
+            if parsed.path == "/api/deployment/queue/remove":
+                item_id = str(data.get("itemId") or data.get("id") or "").strip()
+                res = router.remove_from_queue(item_id)
+                self.write_json(res, status=200 if res.get("success") else 400)
+                return
+
+            if parsed.path == "/api/deployment/queue/reorder":
+                item_ids = data.get("itemIds") or data.get("items") or []
+                res = router.reorder_queue(item_ids)
+                self.write_json(res, status=200 if res.get("success") else 400)
+                return
+
+            if parsed.path == "/api/deployment/queue/clear":
+                clear_all = bool(data.get("clearAll") or False)
+                self.write_json(router.clear_queue(clear_all=clear_all))
+                return
+
+            if parsed.path == "/api/deployment/queue/pause":
+                self.write_json(router.pause_queue())
+                return
+
+            if parsed.path == "/api/deployment/queue/resume":
+                self.write_json(router.resume_queue())
+                return
+
+            if parsed.path == "/api/deployment/queue/stop-current":
+                self.write_json(router.stop_current_queue_item())
+                return
+
+            if parsed.path == "/api/deployment/queue/retry":
+                item_id = str(data.get("itemId") or data.get("id") or "").strip()
+                res = router.retry_queue_item(item_id)
+                self.write_json(res, status=200 if res.get("success") else 400)
                 return
             if parsed.path == "/api/deployment/deploy-config/save":
                 self.write_json(router.save_deploy_config(data))

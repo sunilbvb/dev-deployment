@@ -29,6 +29,7 @@ Welcome to the central documentation index for Dev Deployment Console.
 - [Diagnostics & Sentinel](api-diagnostics): App Doctor, certificate monitor, and size diffs.
 - [Webhooks & CI/CD Ingestion](api-webhooks): Universal webhook ingestion and HMAC verification.
 - [Mobile Innovations](api-innovations): Wireless ADB, Profiler, Cache Warmer, and GitHub Actions.
+- [Deployment & Build Queue](api-queue): Sequential multi-app build queuing, pause/resume, and reordering.
 
 ### 4. Repository & Governance
 - [README](readme): Project introduction and quick commands.

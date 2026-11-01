@@ -61,6 +61,10 @@
                     <i data-lucide="stethoscope" style="width: 14px; height: 14px;"></i>
                     <span>App Doctor</span>
                 </button>
+                <button type="button" class="console-nav-link" id="navLinkQueue" title="Deployment &amp; Build Queue (Sequential Runner)">
+                    <i data-lucide="layers" style="width: 14px; height: 14px; color: #38bdf8;"></i>
+                    <span>Queue (<span id="navQueueBadge">0</span>)</span>
+                </button>
             </div>
             <div style="display: flex; align-items: center; gap: 12px;">
                 <a href="https://github.com/sunilbvb/dev-deployment" target="_blank" rel="noopener noreferrer" class="console-nav-link" id="navLinkGithub" title="View Repository on GitHub">
@@ -270,6 +274,10 @@
                         <i data-lucide="play"></i>
                         <span>Run</span>
                     </button>
+                    <button id="addToQueueBtn" class="ui-button" data-variant="secondary" type="button" disabled title="Add this build to deployment queue">
+                        <i data-lucide="list-plus"></i>
+                        <span>Add to Queue</span>
+                    </button>
                     <button id="doctorPanelBtn" class="ui-button" data-variant="secondary" type="button" title="Run Pre-flight Doctor diagnostics on this app">
                         <i data-lucide="stethoscope"></i>
                         <span>Doctor</span>
@@ -417,6 +425,96 @@
 </main>
 
 <div id="toast" class="toast hidden"></div>
+
+<!-- ═══════════════════════════ DEPLOYMENT QUEUE MODAL ═══════════════════════════ -->
+<div id="queueModalOverlay" class="ui-modal-backdrop" role="dialog" aria-modal="true" aria-label="Deployment & Build Queue">
+    <div class="ui-modal" data-size="lg" style="max-width: 760px; max-height: 85vh; display: flex; flex-direction: column;">
+        <div class="ui-modal-header" style="display: flex; align-items: center; justify-content: space-between;">
+            <div style="display: flex; align-items: center; gap: 10px;">
+                <div style="background: rgba(56, 189, 248, 0.15); color: #38bdf8; width: 36px; height: 36px; border-radius: 8px; display: flex; align-items: center; justify-content: center;">
+                    <i data-lucide="layers" style="width: 20px; height: 20px;"></i>
+                </div>
+                <div>
+                    <h3 class="ui-modal-title" style="margin: 0; font-size: 1.15rem; font-weight: 700;">Deployment Build Queue</h3>
+                    <p class="ui-modal-subtitle" style="margin: 2px 0 0; font-size: 0.8rem; color: var(--ui-text-muted);">Sequential FIFO execution across multiple apps &amp; pipelines</p>
+                </div>
+            </div>
+            <div style="display: flex; align-items: center; gap: 8px;">
+                <span id="queueWorkerBadge" class="ui-badge" data-variant="neutral" style="font-size: 0.75rem; text-transform: uppercase;">IDLE</span>
+                <button id="closeQueueModalBtn" class="ui-modal-close" type="button" aria-label="Close modal">&times;</button>
+            </div>
+        </div>
+        <div class="ui-modal-body" style="padding: 18px 24px; overflow-y: auto; flex: 1;">
+            <!-- Queue Top Controls -->
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; flex-wrap: wrap; gap: 12px; background: var(--ui-bg-surface-elevated, rgba(255,255,255,0.03)); padding: 12px 16px; border-radius: 8px; border: 1px solid var(--ui-border);">
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    <button id="queuePauseResumeBtn" class="ui-button" data-variant="secondary" data-size="sm" type="button">
+                        <i data-lucide="pause" style="width: 14px; height: 14px;"></i>
+                        <span id="queuePauseResumeText">Pause Queue</span>
+                    </button>
+                    <button id="queueClearCompletedBtn" class="ui-button" data-variant="ghost" data-size="sm" type="button" title="Clear completed and failed items">
+                        <i data-lucide="trash-2" style="width: 14px; height: 14px;"></i>
+                        <span>Clear History</span>
+                    </button>
+                    <button id="queueClearAllBtn" class="ui-button" data-variant="ghost" data-size="sm" type="button" style="color: var(--ui-danger, #ef4444);" title="Remove all pending items">
+                        <span>Clear All Pending</span>
+                    </button>
+                </div>
+                <div style="display: flex; align-items: center; gap: 14px; font-size: 0.82rem; color: var(--ui-text-muted);">
+                    <label style="display: flex; align-items: center; gap: 6px; cursor: pointer;">
+                        <input type="checkbox" id="queueStopOnErrorToggle" checked>
+                        <span>Stop queue on failure</span>
+                    </label>
+                    <span id="queueSummaryStats">0 items</span>
+                </div>
+            </div>
+
+            <!-- Active / Running Item Banner -->
+            <div id="queueActiveItemBox" class="hidden" style="margin-bottom: 18px; padding: 14px 16px; background: rgba(56, 189, 248, 0.08); border: 1px solid rgba(56, 189, 248, 0.3); border-radius: 8px;">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        <span class="queue-spinner" style="display: inline-block; width: 14px; height: 14px; border: 2px solid #38bdf8; border-top-color: transparent; border-radius: 50%; animation: spin 1s linear infinite;"></span>
+                        <div>
+                            <div style="font-weight: 600; font-size: 0.92rem; color: var(--ui-text);">
+                                Currently Building: <span id="queueActiveItemTitle">-</span>
+                            </div>
+                            <div style="font-size: 0.78rem; color: var(--ui-text-muted); margin-top: 2px;">
+                                Command: <code id="queueActiveItemCommand" style="color: #38bdf8;">-</code>
+                            </div>
+                        </div>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        <span id="queueActiveItemTimer" style="font-family: monospace; font-size: 0.9rem; font-weight: 600;">00:00</span>
+                        <button id="queueStopActiveBtn" class="ui-button" data-variant="danger" data-size="xs" type="button">
+                            <i data-lucide="square" style="width: 12px; height: 12px;"></i>
+                            <span>Stop</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Empty State -->
+            <div id="queueEmptyState" style="text-align: center; padding: 40px 20px; color: var(--ui-text-muted);">
+                <i data-lucide="layers" style="width: 48px; height: 48px; stroke-width: 1.2; margin-bottom: 12px; opacity: 0.4;"></i>
+                <div style="font-weight: 600; font-size: 1rem; color: var(--ui-text);">Queue is Empty</div>
+                <div style="font-size: 0.85rem; margin-top: 4px; max-width: 420px; margin-inline: auto;">
+                    Select an app and command, then click <strong>"Add to Queue"</strong> to build multiple apps back-to-back without waiting.
+                </div>
+            </div>
+
+            <!-- Queue Items List -->
+            <div id="queueItemsList" class="queue-items-container" style="display: flex; flex-direction: column; gap: 8px;">
+                <!-- Dynamically rendered items -->
+            </div>
+        </div>
+        <div class="ui-modal-footer" style="display: flex; justify-content: space-between; align-items: center; padding: 12px 24px; border-top: 1px solid var(--ui-border);">
+            <div style="font-size: 0.8rem; color: var(--ui-text-muted);">
+                💡 Tip: Items run one after another sequentially to prevent high CPU / memory spikes.
+            </div>
+            <button id="closeQueueModalFooterBtn" class="ui-button" data-variant="primary" type="button">Done</button>
+        </div>
+    </div>
+</div>
 
 <!-- ═══════════════════════════ PROD DEPLOY CONFIRM MODAL ═══════════════════════════ -->
 <div id="prodConfirmOverlay" class="ui-modal-backdrop" role="dialog" aria-modal="true" aria-label="Confirm Production Deploy">
@@ -1919,6 +2017,10 @@
                         <i data-lucide="smartphone" style="width: 14px; height: 14px;"></i>
                         <span>ADB, Profiler &amp; Warmer</span>
                     </button>
+                    <button class="ui-button docs-nav-item" data-doc="api-queue" type="button" style="justify-content: flex-start; text-align: left; padding: 7px 10px; font-size: 0.8rem; width: 100%;">
+                        <i data-lucide="layers" style="width: 14px; height: 14px;"></i>
+                        <span>Deployment Build Queue</span>
+                    </button>
                 </div>
 
                 <div style="font-size: 0.68rem; font-weight: 700; text-transform: uppercase; color: var(--ui-text-muted); margin-bottom: 6px; padding-left: 8px;">Repository &amp; Community</div>
@@ -2355,6 +2457,32 @@ cd dev-deployment
 </tbody></table></div>
                 </article>
 
+                <!-- Article: Deployment Build Queue -->
+                <article data-doc="api-queue" data-title="Deployment Build Queue APIs" data-category="API Endpoints" data-filename="docs/API.md#queue">
+                    <h2 style="font-size:1.5rem; font-weight:800; margin:0 0 14px; color:var(--ui-text-primary);">Deployment &amp; Build Queue 📋⚡</h2>
+                    <p style="margin:8px 0; line-height:1.6; color:var(--ui-text-secondary);">Sequential FIFO multi-app build execution, background worker daemon, reordering, pause/resume, and multi-workspace support.</p>
+                    <hr style="border:0; border-top:1px solid var(--ui-border-color); margin:18px 0;">
+                    <h3 style="font-size:1.2rem; font-weight:700; margin:20px 0 10px; color:var(--ui-text-primary);">Queue Management Endpoints</h3>
+                    <div class="table-responsive" style="overflow-x:auto; margin:16px 0; border:1px solid var(--ui-border-color); border-radius:8px; background:rgba(0,0,0,0.18);">
+<table class="ui-table" style="width:100%; border-collapse:collapse; font-size:0.875rem;">
+<thead><tr style="background:rgba(255,255,255,0.03);">
+<th style="padding:10px 14px; font-weight:600; text-align:left; border-bottom:1px solid var(--ui-border-color); color:var(--ui-text-primary); white-space:nowrap;">Method</th>
+<th style="padding:10px 14px; font-weight:600; text-align:left; border-bottom:1px solid var(--ui-border-color); color:var(--ui-text-primary); white-space:nowrap;">Endpoint</th>
+<th style="padding:10px 14px; font-weight:600; text-align:left; border-bottom:1px solid var(--ui-border-color); color:var(--ui-text-primary); white-space:nowrap;">Query / Body</th>
+<th style="padding:10px 14px; font-weight:600; text-align:left; border-bottom:1px solid var(--ui-border-color); color:var(--ui-text-primary);">Returns / Purpose</th>
+</tr></thead><tbody>
+<tr style="border-bottom:1px solid rgba(255,255,255,0.05);"><td style="padding:10px 14px; vertical-align:top;"><span class="ui-badge" style="font-weight:700; font-size:0.75rem; padding:2px 8px; border-radius:4px; background:rgba(59,130,246,0.15); color:#60a5fa; border:1px solid rgba(59,130,246,0.3);">GET</span></td><td style="padding:10px 14px; vertical-align:top;"><code style="background:rgba(255,255,255,0.08); padding:2px 6px; border-radius:4px; font-family:monospace; font-size:0.85em; color:var(--ui-primary, #6366f1);">/api/deployment/queue</code></td><td style="padding:10px 14px; vertical-align:top;">–</td><td style="padding:10px 14px; color:var(--ui-text-secondary); vertical-align:top;">Returns live queue status: pending list, currently running item, isPaused flag, and stats counts.</td></tr>
+<tr style="border-bottom:1px solid rgba(255,255,255,0.05);"><td style="padding:10px 14px; vertical-align:top;"><span class="ui-badge" style="font-weight:700; font-size:0.75rem; padding:2px 8px; border-radius:4px; background:rgba(34,197,94,0.15); color:#4ade80; border:1px solid rgba(34,197,94,0.3);">POST</span></td><td style="padding:10px 14px; vertical-align:top;"><code style="background:rgba(255,255,255,0.08); padding:2px 6px; border-radius:4px; font-family:monospace; font-size:0.85em; color:var(--ui-primary, #6366f1);">/api/deployment/queue/add</code></td><td style="padding:10px 14px; vertical-align:top;"><code style="background:rgba(255,255,255,0.08); padding:2px 6px; border-radius:4px; font-family:monospace; font-size:0.85em; color:var(--ui-primary, #6366f1);">{&quot;app&quot;, &quot;command&quot;, &quot;flavor&quot;, ...}</code></td><td style="padding:10px 14px; color:var(--ui-text-secondary); vertical-align:top;">Enqueues a build job for sequential FIFO background execution across multiple apps.</td></tr>
+<tr style="border-bottom:1px solid rgba(255,255,255,0.05);"><td style="padding:10px 14px; vertical-align:top;"><span class="ui-badge" style="font-weight:700; font-size:0.75rem; padding:2px 8px; border-radius:4px; background:rgba(34,197,94,0.15); color:#4ade80; border:1px solid rgba(34,197,94,0.3);">POST</span></td><td style="padding:10px 14px; vertical-align:top;"><code style="background:rgba(255,255,255,0.08); padding:2px 6px; border-radius:4px; font-family:monospace; font-size:0.85em; color:var(--ui-primary, #6366f1);">/api/deployment/queue/remove</code></td><td style="padding:10px 14px; vertical-align:top;"><code style="background:rgba(255,255,255,0.08); padding:2px 6px; border-radius:4px; font-family:monospace; font-size:0.85em; color:var(--ui-primary, #6366f1);">{&quot;itemId&quot;: &quot;...&quot;}</code></td><td style="padding:10px 14px; color:var(--ui-text-secondary); vertical-align:top;">Removes pending item, or stops and cancels if currently executing.</td></tr>
+<tr style="border-bottom:1px solid rgba(255,255,255,0.05);"><td style="padding:10px 14px; vertical-align:top;"><span class="ui-badge" style="font-weight:700; font-size:0.75rem; padding:2px 8px; border-radius:4px; background:rgba(34,197,94,0.15); color:#4ade80; border:1px solid rgba(34,197,94,0.3);">POST</span></td><td style="padding:10px 14px; vertical-align:top;"><code style="background:rgba(255,255,255,0.08); padding:2px 6px; border-radius:4px; font-family:monospace; font-size:0.85em; color:var(--ui-primary, #6366f1);">/api/deployment/queue/reorder</code></td><td style="padding:10px 14px; vertical-align:top;"><code style="background:rgba(255,255,255,0.08); padding:2px 6px; border-radius:4px; font-family:monospace; font-size:0.85em; color:var(--ui-primary, #6366f1);">{&quot;itemIds&quot;: [&quot;id1&quot;, &quot;id2&quot;]}</code></td><td style="padding:10px 14px; color:var(--ui-text-secondary); vertical-align:top;">Updates execution order of pending queue items.</td></tr>
+<tr style="border-bottom:1px solid rgba(255,255,255,0.05);"><td style="padding:10px 14px; vertical-align:top;"><span class="ui-badge" style="font-weight:700; font-size:0.75rem; padding:2px 8px; border-radius:4px; background:rgba(34,197,94,0.15); color:#4ade80; border:1px solid rgba(34,197,94,0.3);">POST</span></td><td style="padding:10px 14px; vertical-align:top;"><code style="background:rgba(255,255,255,0.08); padding:2px 6px; border-radius:4px; font-family:monospace; font-size:0.85em; color:var(--ui-primary, #6366f1);">/api/deployment/queue/clear</code></td><td style="padding:10px 14px; vertical-align:top;"><code style="background:rgba(255,255,255,0.08); padding:2px 6px; border-radius:4px; font-family:monospace; font-size:0.85em; color:var(--ui-primary, #6366f1);">{&quot;clearAll&quot;: false}</code></td><td style="padding:10px 14px; color:var(--ui-text-secondary); vertical-align:top;">Purges pending items or completed history.</td></tr>
+<tr style="border-bottom:1px solid rgba(255,255,255,0.05);"><td style="padding:10px 14px; vertical-align:top;"><span class="ui-badge" style="font-weight:700; font-size:0.75rem; padding:2px 8px; border-radius:4px; background:rgba(34,197,94,0.15); color:#4ade80; border:1px solid rgba(34,197,94,0.3);">POST</span></td><td style="padding:10px 14px; vertical-align:top;"><code style="background:rgba(255,255,255,0.08); padding:2px 6px; border-radius:4px; font-family:monospace; font-size:0.85em; color:var(--ui-primary, #6366f1);">/api/deployment/queue/pause</code></td><td style="padding:10px 14px; vertical-align:top;">–</td><td style="padding:10px 14px; color:var(--ui-text-secondary); vertical-align:top;">Pauses queue processing after current running job completes.</td></tr>
+<tr style="border-bottom:1px solid rgba(255,255,255,0.05);"><td style="padding:10px 14px; vertical-align:top;"><span class="ui-badge" style="font-weight:700; font-size:0.75rem; padding:2px 8px; border-radius:4px; background:rgba(34,197,94,0.15); color:#4ade80; border:1px solid rgba(34,197,94,0.3);">POST</span></td><td style="padding:10px 14px; vertical-align:top;"><code style="background:rgba(255,255,255,0.08); padding:2px 6px; border-radius:4px; font-family:monospace; font-size:0.85em; color:var(--ui-primary, #6366f1);">/api/deployment/queue/resume</code></td><td style="padding:10px 14px; vertical-align:top;">–</td><td style="padding:10px 14px; color:var(--ui-text-secondary); vertical-align:top;">Resumes queue processing and starts next pending item.</td></tr>
+<tr style="border-bottom:1px solid rgba(255,255,255,0.05);"><td style="padding:10px 14px; vertical-align:top;"><span class="ui-badge" style="font-weight:700; font-size:0.75rem; padding:2px 8px; border-radius:4px; background:rgba(34,197,94,0.15); color:#4ade80; border:1px solid rgba(34,197,94,0.3);">POST</span></td><td style="padding:10px 14px; vertical-align:top;"><code style="background:rgba(255,255,255,0.08); padding:2px 6px; border-radius:4px; font-family:monospace; font-size:0.85em; color:var(--ui-primary, #6366f1);">/api/deployment/queue/stop-current</code></td><td style="padding:10px 14px; vertical-align:top;">–</td><td style="padding:10px 14px; color:var(--ui-text-secondary); vertical-align:top;">Immediately stops active running job in queue.</td></tr>
+<tr style="border-bottom:1px solid rgba(255,255,255,0.05);"><td style="padding:10px 14px; vertical-align:top;"><span class="ui-badge" style="font-weight:700; font-size:0.75rem; padding:2px 8px; border-radius:4px; background:rgba(34,197,94,0.15); color:#4ade80; border:1px solid rgba(34,197,94,0.3);">POST</span></td><td style="padding:10px 14px; vertical-align:top;"><code style="background:rgba(255,255,255,0.08); padding:2px 6px; border-radius:4px; font-family:monospace; font-size:0.85em; color:var(--ui-primary, #6366f1);">/api/deployment/queue/retry</code></td><td style="padding:10px 14px; vertical-align:top;"><code style="background:rgba(255,255,255,0.08); padding:2px 6px; border-radius:4px; font-family:monospace; font-size:0.85em; color:var(--ui-primary, #6366f1);">{&quot;itemId&quot;: &quot;...&quot;}</code></td><td style="padding:10px 14px; color:var(--ui-text-secondary); vertical-align:top;">Re-enqueues failed or cancelled item back to pending state.</td></tr>
+</tbody></table></div>
+                </article>
+
                 <!-- Article: Workspaces & Apps -->
                 <article data-doc="api-workspaces" data-title="Workspaces &amp; Apps APIs" data-category="API Endpoints" data-filename="docs/API.md#workspaces">
                     <h2 style="font-size:1.5rem; font-weight:800; margin:0 0 14px; color:var(--ui-text-primary);">Workspaces, Projects &amp; App Configuration 📂</h2>
@@ -2550,6 +2678,32 @@ cd dev-deployment
 <tr style="border-bottom:1px solid rgba(255,255,255,0.05);"><td style="padding:10px 14px; vertical-align:top;"><span class="ui-badge" style="font-weight:700; font-size:0.75rem; padding:2px 8px; border-radius:4px; background:rgba(34,197,94,0.15); color:#4ade80; border:1px solid rgba(34,197,94,0.3);">POST</span></td><td style="padding:10px 14px; vertical-align:top;"><code style="background:rgba(255,255,255,0.08); padding:2px 6px; border-radius:4px; font-family:monospace; font-size:0.85em; color:var(--ui-primary, #6366f1);">/api/deployment/github/config</code></td><td style="padding:10px 14px; vertical-align:top;"><code style="background:rgba(255,255,255,0.08); padding:2px 6px; border-radius:4px; font-family:monospace; font-size:0.85em; color:var(--ui-primary, #6366f1);">{&quot;token&quot;, &quot;repo&quot;, &quot;workflow&quot;}</code></td><td style="padding:10px 14px; color:var(--ui-text-secondary); vertical-align:top;">Configures GitHub Actions repository and remote workflow parameters.</td></tr>
 <tr style="border-bottom:1px solid rgba(255,255,255,0.05);"><td style="padding:10px 14px; vertical-align:top;"><span class="ui-badge" style="font-weight:700; font-size:0.75rem; padding:2px 8px; border-radius:4px; background:rgba(34,197,94,0.15); color:#4ade80; border:1px solid rgba(34,197,94,0.3);">POST</span></td><td style="padding:10px 14px; vertical-align:top;"><code style="background:rgba(255,255,255,0.08); padding:2px 6px; border-radius:4px; font-family:monospace; font-size:0.85em; color:var(--ui-primary, #6366f1);">/api/deployment/github/install-template</code></td><td style="padding:10px 14px; vertical-align:top;">–</td><td style="padding:10px 14px; color:var(--ui-text-secondary); vertical-align:top;">Installs starter .github/workflows/deploy.yml into repository.</td></tr>
 <tr style="border-bottom:1px solid rgba(255,255,255,0.05);"><td style="padding:10px 14px; vertical-align:top;"><span class="ui-badge" style="font-weight:700; font-size:0.75rem; padding:2px 8px; border-radius:4px; background:rgba(34,197,94,0.15); color:#4ade80; border:1px solid rgba(34,197,94,0.3);">POST</span></td><td style="padding:10px 14px; vertical-align:top;"><code style="background:rgba(255,255,255,0.08); padding:2px 6px; border-radius:4px; font-family:monospace; font-size:0.85em; color:var(--ui-primary, #6366f1);">/api/deployment/github/dispatch</code></td><td style="padding:10px 14px; vertical-align:top;"><code style="background:rgba(255,255,255,0.08); padding:2px 6px; border-radius:4px; font-family:monospace; font-size:0.85em; color:var(--ui-primary, #6366f1);">{&quot;app&quot;, &quot;flavor&quot;, &quot;workflow&quot;}</code></td><td style="padding:10px 14px; color:var(--ui-text-secondary); vertical-align:top;">Triggers remote GitHub Actions build workflow via dispatch API.</td></tr>
+</tbody></table></div>
+                </article>
+
+                <!-- Article: Deployment Build Queue -->
+                <article data-doc="api-queue" data-title="Deployment Build Queue APIs" data-category="API Endpoints" data-filename="docs/API.md#queue">
+                    <h2 style="font-size:1.5rem; font-weight:800; margin:0 0 14px; color:var(--ui-text-primary);">Deployment &amp; Build Queue 📋⚡</h2>
+                    <p style="margin:8px 0; line-height:1.6; color:var(--ui-text-secondary);">Sequential FIFO multi-app build execution, background worker daemon, reordering, pause/resume, and multi-workspace support.</p>
+                    <hr style="border:0; border-top:1px solid var(--ui-border-color); margin:18px 0;">
+                    <h3 style="font-size:1.2rem; font-weight:700; margin:20px 0 10px; color:var(--ui-text-primary);">Queue Management Endpoints</h3>
+                    <div class="table-responsive" style="overflow-x:auto; margin:16px 0; border:1px solid var(--ui-border-color); border-radius:8px; background:rgba(0,0,0,0.18);">
+<table class="ui-table" style="width:100%; border-collapse:collapse; font-size:0.875rem;">
+<thead><tr style="background:rgba(255,255,255,0.03);">
+<th style="padding:10px 14px; font-weight:600; text-align:left; border-bottom:1px solid var(--ui-border-color); color:var(--ui-text-primary); white-space:nowrap;">Method</th>
+<th style="padding:10px 14px; font-weight:600; text-align:left; border-bottom:1px solid var(--ui-border-color); color:var(--ui-text-primary); white-space:nowrap;">Endpoint</th>
+<th style="padding:10px 14px; font-weight:600; text-align:left; border-bottom:1px solid var(--ui-border-color); color:var(--ui-text-primary); white-space:nowrap;">Query / Body</th>
+<th style="padding:10px 14px; font-weight:600; text-align:left; border-bottom:1px solid var(--ui-border-color); color:var(--ui-text-primary);">Returns / Purpose</th>
+</tr></thead><tbody>
+<tr style="border-bottom:1px solid rgba(255,255,255,0.05);"><td style="padding:10px 14px; vertical-align:top;"><span class="ui-badge" style="font-weight:700; font-size:0.75rem; padding:2px 8px; border-radius:4px; background:rgba(59,130,246,0.15); color:#60a5fa; border:1px solid rgba(59,130,246,0.3);">GET</span></td><td style="padding:10px 14px; vertical-align:top;"><code style="background:rgba(255,255,255,0.08); padding:2px 6px; border-radius:4px; font-family:monospace; font-size:0.85em; color:var(--ui-primary, #6366f1);">/api/deployment/queue</code></td><td style="padding:10px 14px; vertical-align:top;">–</td><td style="padding:10px 14px; color:var(--ui-text-secondary); vertical-align:top;">Returns live queue status: pending list, currently running item, isPaused flag, and stats counts.</td></tr>
+<tr style="border-bottom:1px solid rgba(255,255,255,0.05);"><td style="padding:10px 14px; vertical-align:top;"><span class="ui-badge" style="font-weight:700; font-size:0.75rem; padding:2px 8px; border-radius:4px; background:rgba(34,197,94,0.15); color:#4ade80; border:1px solid rgba(34,197,94,0.3);">POST</span></td><td style="padding:10px 14px; vertical-align:top;"><code style="background:rgba(255,255,255,0.08); padding:2px 6px; border-radius:4px; font-family:monospace; font-size:0.85em; color:var(--ui-primary, #6366f1);">/api/deployment/queue/add</code></td><td style="padding:10px 14px; vertical-align:top;"><code style="background:rgba(255,255,255,0.08); padding:2px 6px; border-radius:4px; font-family:monospace; font-size:0.85em; color:var(--ui-primary, #6366f1);">{&quot;app&quot;, &quot;command&quot;, &quot;flavor&quot;, ...}</code></td><td style="padding:10px 14px; color:var(--ui-text-secondary); vertical-align:top;">Enqueues a build job for sequential FIFO background execution across multiple apps.</td></tr>
+<tr style="border-bottom:1px solid rgba(255,255,255,0.05);"><td style="padding:10px 14px; vertical-align:top;"><span class="ui-badge" style="font-weight:700; font-size:0.75rem; padding:2px 8px; border-radius:4px; background:rgba(34,197,94,0.15); color:#4ade80; border:1px solid rgba(34,197,94,0.3);">POST</span></td><td style="padding:10px 14px; vertical-align:top;"><code style="background:rgba(255,255,255,0.08); padding:2px 6px; border-radius:4px; font-family:monospace; font-size:0.85em; color:var(--ui-primary, #6366f1);">/api/deployment/queue/remove</code></td><td style="padding:10px 14px; vertical-align:top;"><code style="background:rgba(255,255,255,0.08); padding:2px 6px; border-radius:4px; font-family:monospace; font-size:0.85em; color:var(--ui-primary, #6366f1);">{&quot;itemId&quot;: &quot;...&quot;}</code></td><td style="padding:10px 14px; color:var(--ui-text-secondary); vertical-align:top;">Removes pending item, or stops and cancels if currently executing.</td></tr>
+<tr style="border-bottom:1px solid rgba(255,255,255,0.05);"><td style="padding:10px 14px; vertical-align:top;"><span class="ui-badge" style="font-weight:700; font-size:0.75rem; padding:2px 8px; border-radius:4px; background:rgba(34,197,94,0.15); color:#4ade80; border:1px solid rgba(34,197,94,0.3);">POST</span></td><td style="padding:10px 14px; vertical-align:top;"><code style="background:rgba(255,255,255,0.08); padding:2px 6px; border-radius:4px; font-family:monospace; font-size:0.85em; color:var(--ui-primary, #6366f1);">/api/deployment/queue/reorder</code></td><td style="padding:10px 14px; vertical-align:top;"><code style="background:rgba(255,255,255,0.08); padding:2px 6px; border-radius:4px; font-family:monospace; font-size:0.85em; color:var(--ui-primary, #6366f1);">{&quot;itemIds&quot;: [&quot;id1&quot;, &quot;id2&quot;]}</code></td><td style="padding:10px 14px; color:var(--ui-text-secondary); vertical-align:top;">Updates execution order of pending queue items.</td></tr>
+<tr style="border-bottom:1px solid rgba(255,255,255,0.05);"><td style="padding:10px 14px; vertical-align:top;"><span class="ui-badge" style="font-weight:700; font-size:0.75rem; padding:2px 8px; border-radius:4px; background:rgba(34,197,94,0.15); color:#4ade80; border:1px solid rgba(34,197,94,0.3);">POST</span></td><td style="padding:10px 14px; vertical-align:top;"><code style="background:rgba(255,255,255,0.08); padding:2px 6px; border-radius:4px; font-family:monospace; font-size:0.85em; color:var(--ui-primary, #6366f1);">/api/deployment/queue/clear</code></td><td style="padding:10px 14px; vertical-align:top;"><code style="background:rgba(255,255,255,0.08); padding:2px 6px; border-radius:4px; font-family:monospace; font-size:0.85em; color:var(--ui-primary, #6366f1);">{&quot;clearAll&quot;: false}</code></td><td style="padding:10px 14px; color:var(--ui-text-secondary); vertical-align:top;">Purges pending items or completed history.</td></tr>
+<tr style="border-bottom:1px solid rgba(255,255,255,0.05);"><td style="padding:10px 14px; vertical-align:top;"><span class="ui-badge" style="font-weight:700; font-size:0.75rem; padding:2px 8px; border-radius:4px; background:rgba(34,197,94,0.15); color:#4ade80; border:1px solid rgba(34,197,94,0.3);">POST</span></td><td style="padding:10px 14px; vertical-align:top;"><code style="background:rgba(255,255,255,0.08); padding:2px 6px; border-radius:4px; font-family:monospace; font-size:0.85em; color:var(--ui-primary, #6366f1);">/api/deployment/queue/pause</code></td><td style="padding:10px 14px; vertical-align:top;">–</td><td style="padding:10px 14px; color:var(--ui-text-secondary); vertical-align:top;">Pauses queue processing after current running job completes.</td></tr>
+<tr style="border-bottom:1px solid rgba(255,255,255,0.05);"><td style="padding:10px 14px; vertical-align:top;"><span class="ui-badge" style="font-weight:700; font-size:0.75rem; padding:2px 8px; border-radius:4px; background:rgba(34,197,94,0.15); color:#4ade80; border:1px solid rgba(34,197,94,0.3);">POST</span></td><td style="padding:10px 14px; vertical-align:top;"><code style="background:rgba(255,255,255,0.08); padding:2px 6px; border-radius:4px; font-family:monospace; font-size:0.85em; color:var(--ui-primary, #6366f1);">/api/deployment/queue/resume</code></td><td style="padding:10px 14px; vertical-align:top;">–</td><td style="padding:10px 14px; color:var(--ui-text-secondary); vertical-align:top;">Resumes queue processing and starts next pending item.</td></tr>
+<tr style="border-bottom:1px solid rgba(255,255,255,0.05);"><td style="padding:10px 14px; vertical-align:top;"><span class="ui-badge" style="font-weight:700; font-size:0.75rem; padding:2px 8px; border-radius:4px; background:rgba(34,197,94,0.15); color:#4ade80; border:1px solid rgba(34,197,94,0.3);">POST</span></td><td style="padding:10px 14px; vertical-align:top;"><code style="background:rgba(255,255,255,0.08); padding:2px 6px; border-radius:4px; font-family:monospace; font-size:0.85em; color:var(--ui-primary, #6366f1);">/api/deployment/queue/stop-current</code></td><td style="padding:10px 14px; vertical-align:top;">–</td><td style="padding:10px 14px; color:var(--ui-text-secondary); vertical-align:top;">Immediately stops active running job in queue.</td></tr>
+<tr style="border-bottom:1px solid rgba(255,255,255,0.05);"><td style="padding:10px 14px; vertical-align:top;"><span class="ui-badge" style="font-weight:700; font-size:0.75rem; padding:2px 8px; border-radius:4px; background:rgba(34,197,94,0.15); color:#4ade80; border:1px solid rgba(34,197,94,0.3);">POST</span></td><td style="padding:10px 14px; vertical-align:top;"><code style="background:rgba(255,255,255,0.08); padding:2px 6px; border-radius:4px; font-family:monospace; font-size:0.85em; color:var(--ui-primary, #6366f1);">/api/deployment/queue/retry</code></td><td style="padding:10px 14px; vertical-align:top;"><code style="background:rgba(255,255,255,0.08); padding:2px 6px; border-radius:4px; font-family:monospace; font-size:0.85em; color:var(--ui-primary, #6366f1);">{&quot;itemId&quot;: &quot;...&quot;}</code></td><td style="padding:10px 14px; color:var(--ui-text-secondary); vertical-align:top;">Re-enqueues failed or cancelled item back to pending state.</td></tr>
 </tbody></table></div>
                 </article>
             </div>
@@ -2883,6 +3037,7 @@ cd dev-deployment
 <script src="modules/dashboard/app_symbols.js"></script>
 <script src="modules/dashboard/app_version_bump.js"></script>
 <script src="modules/dashboard/app_security.js"></script>
+<script src="modules/dashboard/app_queue.js"></script>
 <script src="modules/setup/setup_state.js"></script>
 <script src="modules/setup/setup_scanner.js"></script>
 <script src="modules/setup/setup_webhooks.js"></script>

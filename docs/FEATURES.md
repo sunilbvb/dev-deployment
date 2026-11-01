@@ -39,6 +39,7 @@ An exhaustive guide to all capabilities available in the Dev Deployment Console.
 ---
 
 ## 🔀 Automation & Universal Webhooks
+- **Deployment & Build Queue**: Sequential FIFO multi-app build runner preventing CPU/RAM exhaustion, with live timeline, reordering, pause/resume, stop-on-error safety, and multi-workspace support.
 - **Saved Pipelines**: Chains multi-step sequences (`Doctor` → `Build` → `Diff` → `Upload` → `Notify`) with fail-fast safety.
 - **Outgoing Team Alerts**: Sends rich notification cards to Slack, Discord, Microsoft Teams, Google Chat, and WhatsApp.
 - **Universal Inbound Webhooks**: Headless CI/CD ingestion verified via SHA-256 HMAC (`X-Hub-Signature-256`) and Slack signatures.

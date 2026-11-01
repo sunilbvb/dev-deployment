@@ -27,6 +27,7 @@ For quickstart and installation, see [README.md](file:///home/sunil-bakale/IdeaP
 18. [Known Limitations](#18-known-limitations)
 19. [Hybrid Distributed Builds (GitHub Actions + Local Parallel Matrix)](#19-hybrid-distributed-builds-github-actions--local-parallel-matrix)
 20. [Mobile Automation Innovations (OTA QR, Wireless ADB, ChatOps, Profiler, Warmer)](#20-mobile-automation-innovations-ota-qr-wireless-adb-chatops-profiler-warmer)
+21. [Deployment & Build Queue (Sequential Multi-App Runner)](#21-deployment--build-queue-sequential-multi-app-runner)
 
 ---
 
@@ -994,6 +995,25 @@ Here are the high-impact mobile automation features built into the Dev Deploymen
 - **The Solution:** Scans AndroidManifest.xml and iOS Info.plist for restricted permissions (SMS, Background Location, Contacts, Camera), cleartext HTTP traffic, unexported components, and missing Apple privacy disclosure strings.
 - **Technical Mechanics:**
   - `GET /api/deployment/security/permissions?app=<id>`: Composite risk analysis score (LOW, MEDIUM, HIGH) with actionable remediation steps.
+
+## 21. Deployment & Build Queue (Sequential Multi-App Runner) 📋⚡
+- **Status:** **Implemented & Fully Operational** ✓
+- **Why was this needed?** In monorepos with multiple apps, developers previously had to wait for App A to finish before manually selecting App B and clicking Run. Running multiple heavy compilation tasks concurrently causes machine slowdowns and out-of-memory errors.
+- **The Solution:** A dedicated FIFO background worker queue. Developers can select multiple apps and their commands or pipelines, click **Add to Queue**, and let the console execute them back-to-back sequentially.
+- **Key Features:**
+  - **Sequential FIFO Execution:** Background worker executes builds safely one after another.
+  - **Live Queue Timeline:** Shows active build with elapsed timer and queued items.
+  - **Interactive Controls:** Reorder pending builds up/down (`↑`, `↓`), pause/resume runner, or stop active jobs.
+  - **Stop-on-Failure Protection:** Checkbox to pause remaining queue if a build fails.
+  - **1-Click Retry:** Re-enqueue failed or cancelled builds instantly.
+- **Technical Mechanics:**
+  - `GET /api/deployment/queue`: Live queue status, active item, and stats.
+  - `POST /api/deployment/queue/add`: Enqueue `{app, type, command, flavor, cleanBuild, stopOnError}`.
+  - `POST /api/deployment/queue/remove`: Remove/cancel queue item.
+  - `POST /api/deployment/queue/reorder`: Reorder pending IDs.
+  - `POST /api/deployment/queue/pause` & `/resume`: Pause or resume queue runner.
+  - `POST /api/deployment/queue/stop-current`: Stop currently executing build.
+  - `POST /api/deployment/queue/retry`: Re-enqueue failed build.
 
 
 ### 11. Where are the REST API endpoints documented, and how does the in-app Documentation Hub work? 🔌📖

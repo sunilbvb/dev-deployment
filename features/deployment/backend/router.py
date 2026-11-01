@@ -1,8 +1,8 @@
 import artifacts
 import automation
 import build_size
-import config
 import credentials
+import deploy_queue
 import docs_provider
 import doctor
 import metadata
@@ -156,6 +156,17 @@ generate_changelog = automation.generate_changelog
 
 # Feature 5: Security & Dangerous Permissions Inspector
 inspect_app_security = doctor.inspect_app_security
+
+# Feature 6: Deployment & Build Queue
+get_queue_status = deploy_queue.get_queue_status
+add_to_queue = deploy_queue.add_to_queue
+remove_from_queue = deploy_queue.remove_from_queue
+reorder_queue = deploy_queue.reorder_queue
+clear_queue = deploy_queue.clear_queue
+pause_queue = deploy_queue.pause_queue
+resume_queue = deploy_queue.resume_queue
+stop_current_queue_item = deploy_queue.stop_current_queue_item
+retry_queue_item = deploy_queue.retry_queue_item
 
 
 def get_github_status(app_id: str = "") -> dict:

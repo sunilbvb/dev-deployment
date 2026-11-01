@@ -169,6 +169,27 @@ The scripts honour those variables first and keep their own fallbacks (`resolveP
 
 ---
 
+## 📋 Deployment & Build Queue Architecture
+
+The build queue (`features/deployment/backend/deploy_queue/`) enables multi-app and multi-workspace batch compilation:
+
+1. **Thread-Safe FIFO Execution Worker**:
+   - Background daemon thread runs an event-driven worker loop under `_QUEUE_LOCK`.
+   - Executes build commands or visual pipelines sequentially, eliminating machine lockups, CPU saturation, and RAM exhaustion from parallel compilation.
+2. **Multi-Workspace Context Isolation**:
+   - Each queue item retains its originating workspace root (`item["workspace"]`).
+   - The worker switches request context dynamically via `set_request_workspace()` before invocation, enabling back-to-back compilation across disparate repositories in a single queue.
+3. **Dual-Tier State Persistence**:
+   - **Central Developer Store**: `~/.config/dev-deployment/deployment_queue.json` preserves workstation queue state across all added projects.
+   - **Project Audit Record**: Synchronized to `<project>/.dev-dashboard/deployment_queue.json`.
+   - Survives server restarts, browser refreshes, and project switches.
+4. **Safety & Runtime Controls**:
+   - Interactive reordering (`↑` and `↓`), cancel active build (`stop_current`), pause/resume runner.
+   - Configurable **Stop queue on failure** switch prevents cascading failures across subsequent apps.
+   - 1-click **↻ Retry** action for failed or cancelled items.
+
+---
+
 ## 🩺 Diagnostics, Sentinels & Artifact Hosting
 
 Pre-flight verification, health monitoring, and zero-cable installation:
@@ -262,6 +283,7 @@ Every tracked file and what it owns. Paths are relative to the repository root.
 | `jobs.py` | Runs jobs as subprocesses with the app's credential env, streams output, per-app locks, history, chained auto-release, iOS cert expiry; job threads keep the request's project | `execute_command`, `get_job`, `stop_job`, `get_running_jobs`, `get_deployment_history`, `check_ios_expiry` |
 | `credentials.py` | Key scanning by content, import/upload, private per-user store, status, environment for jobs, migration of old inline `.p8` | `scan_credentials`, `import_credential_path`, `import_credential_bytes`, `remove_credential`, `get_credentials_status`, `job_env`, `migrate_inline_p8` |
 | `pipelines/` | Visual pipeline model, step execution engine, custom shell steps, continue-on-failure handling, step reordering, persistent pipeline storage (`storage.py`, `engine.py`) | `load_pipelines`, `save_pipeline`, `delete_pipeline`, `execute_pipeline`, `get_pipeline_run`, `stop_pipeline_run` |
+| `deploy_queue/` | Sequential FIFO multi-app build queue, worker thread, pause/resume, reordering, stop-on-error, and JSON persistence (`engine.py`, `storage.py`) | `get_queue_status`, `add_to_queue`, `remove_from_queue`, `reorder_queue`, `clear_queue`, `pause_queue`, `resume_queue`, `stop_current_queue_item`, `retry_queue_item` |
 | `notifications/` | Universal webhook dispatch (Slack, Discord, Teams, Google Chat, WhatsApp Meta Cloud/Twilio, Custom Templates), payload templating, incoming CI/CD ingestion gateway with HMAC SHA-256 / token validation (`templates.py`, `channels.py`, `incoming.py`) | `send_deployment_notification`, `test_notification_channel`, `handle_incoming_webhook`, `render_template` |
 | `server_manager/` | Server process lifecycle management, desktop launcher generation (`.desktop`), and systemd user service registration (`paths.py`, `desktop.py`, `service.py`) | `get_server_status`, `install_desktop_launcher`, `install_systemd_service`, `get_service_status` |
 | `docs_provider.py` | In-app documentation repository provider, dynamic Markdown overview generator, and document security validator | `list_available_docs`, `get_doc_content` |
@@ -304,6 +326,7 @@ Every tracked file and what it owns. Paths are relative to the repository root.
 | `modules/dashboard/app_docs.js` | In-app documentation and user guide viewer with Markdown rendering and search filter |
 | `modules/dashboard/app_server.js` | Server Console modal: uptime, memory, health check, restart/stop controls, and 1-click desktop/systemd launchers |
 | `modules/dashboard/app_demo.js` | Offline Welcome Console and interactive simulated demo mode |
+| `modules/dashboard/app_queue.js` | Deployment build queue modal, live timeline, reorder controls, pause/resume, and instant add-to-queue integration |
 | `modules/setup/setup_scanner.js` | Configure Auto-Scan: static code inspection for bundle IDs, package names, flavors, and keystores |
 | `modules/setup/setup_webhooks.js` | Multi-destination outgoing webhook configuration (Slack, Discord, Teams, Google Chat, WhatsApp) and live test pings |
 | `modules/setup/setup_pipelines.js` | Visual pipeline workflow designer, drag-and-drop step catalog, custom shell steps, and step reordering |
@@ -457,6 +480,7 @@ Run: `python3 -m unittest discover -s tests` (Python ≥ 3.10).
 | `<project>/.dev-dashboard/apps_config.json` | Detected apps |
 | `<project>/.dev-dashboard/deploy_config.json` | Per-app identifiers, paths, auto-release (no secrets) |
 | `<project>/.dev-dashboard/pipelines.json` | Saved visual deployment pipelines |
+| `<project>/.dev-dashboard/deployment_queue.json` | Saved deployment build queue items and execution state |
 | `<project>/.dev-dashboard/deployment_history.jsonl` | Job history |
 | `<project>/.dev-dashboard/build_sizes.json` | Historical build archive sizes for diffing |
 | `~/.config/dev-deployment/auth_token.txt` | API token |
